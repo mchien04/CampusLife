@@ -1,0 +1,46 @@
+package vn.campuslife.controller;
+
+import vn.campuslife.model.Response;
+import vn.campuslife.model.LoginRequest;
+import vn.campuslife.model.RegisterRequest;
+import vn.campuslife.service.AuthService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+    private final AuthService authService;
+
+    public AuthController(AuthService authService) {
+        this.authService = authService;
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<Response> register(@RequestBody RegisterRequest request) {
+        try {
+            Response response = authService.register(request);
+            if (response.isStatus()) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.badRequest().body(response);
+            }
+        } catch (Exception e) {
+            System.err.println("Controller exception: " + e.getMessage());
+            e.printStackTrace();
+            Response errorResponse = new Response(false, "Server error occurred", null);
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<Response> login(@RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
+    }
+
+    @GetMapping("/verify")
+    public ResponseEntity<Response> verifyAccount(@RequestParam("token") String token) {
+        return ResponseEntity.ok(authService.verifyAccount(token));
+    }
+}

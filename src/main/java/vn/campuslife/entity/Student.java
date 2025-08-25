@@ -1,0 +1,58 @@
+package vn.campuslife.entity;
+
+
+import jakarta.persistence.*;
+        import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "students")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class Student {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne
+    @JoinColumn(name = "user_id", unique = true, nullable = false)
+    private User user;
+
+    @Column(unique = true, nullable = false)
+    private String studentCode;
+
+    @Column(nullable = false)
+    private String fullName;
+
+    private String className;
+
+    @ManyToOne
+    @JoinColumn(name = "department_id")
+    private Department department;
+
+    private String phone;
+
+    private String address;
+
+    private LocalDate dob;
+
+    private String avatarUrl;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    private LocalDateTime updatedAt;
+
+    @Column(nullable = false)
+    private boolean isDeleted = false;
+}
