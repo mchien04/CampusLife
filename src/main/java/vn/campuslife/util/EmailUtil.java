@@ -16,8 +16,8 @@ public class EmailUtil {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.base-url}")
-    private String baseUrl;
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
 
     public EmailUtil(JavaMailSender mailSender) {
         this.mailSender = mailSender;
@@ -31,7 +31,7 @@ public class EmailUtil {
             helper.setFrom(fromEmail);
             helper.setTo(to);
             helper.setSubject("Activate Your CampusLife Account");
-            String activationLink = baseUrl + "/api/auth/verify?token=" + token;
+            String activationLink = frontendUrl + "/verify?token=" + token;
             String content = "<h3>Welcome to CampusLife!</h3>" +
                     "<p>Please click the link below to activate your account:</p>" +
                     "<a href=\"" + activationLink + "\">Activate Account</a>" +
@@ -45,7 +45,8 @@ public class EmailUtil {
         } catch (Exception e) {
             System.err.println("Email sending failed to " + to + ": " + e.getMessage());
             if (e.getMessage().contains("Daily user sending limit exceeded")) {
-                System.err.println("Gmail daily sending limit exceeded. Please wait 24 hours or use a different email service.");
+                System.err.println(
+                        "Gmail daily sending limit exceeded. Please wait 24 hours or use a different email service.");
             }
             return false;
         }

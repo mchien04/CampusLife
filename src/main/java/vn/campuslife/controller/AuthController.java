@@ -43,4 +43,5 @@ public class AuthController {
     public ResponseEntity<Response> verifyAccount(@RequestParam("token") String token) {
         return ResponseEntity.ok(authService.verifyAccount(token));
     }
+
 }

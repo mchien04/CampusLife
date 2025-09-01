@@ -18,6 +18,12 @@ public class ActivityResponse {
     private Double maxPoints;
     private LocalDate registrationDeadline;
     private String shareLink;
+    private boolean isImportant;
+    private String bannerUrl;
+    private String location;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private String createdBy;
+    private String lastModifiedBy;
+
 }
