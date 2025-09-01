@@ -4,53 +4,93 @@ import vn.campuslife.entity.ActivationToken;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.AuthResponse;
-import vn.campuslife.model.Response;
 import vn.campuslife.model.LoginRequest;
 import vn.campuslife.model.RegisterRequest;
+import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivationTokenRepository;
 import vn.campuslife.repository.UserRepository;
-import vn.campuslife.service.AuthService;
-import vn.campuslife.util.EmailUtil;
 import vn.campuslife.util.JwtUtil;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import vn.campuslife.util.EmailUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.mail.MessagingException;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.UUID;
 
 @Service
-public class AuthServiceImpl implements AuthService {
+public class AuthServiceImpl implements vn.campuslife.service.AuthService {
 
     private final UserRepository userRepository;
     private final ActivationTokenRepository activationTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final AuthenticationManager authenticationManager;
     private final EmailUtil emailUtil;
-    private final UserDetailsService userDetailsService;
 
     public AuthServiceImpl(UserRepository userRepository, ActivationTokenRepository activationTokenRepository,
-                           PasswordEncoder passwordEncoder, JwtUtil jwtUtil, AuthenticationManager authenticationManager,
-                           EmailUtil emailUtil, UserDetailsService userDetailsService) {
+            PasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailUtil emailUtil) {
         this.userRepository = userRepository;
         this.activationTokenRepository = activationTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
-        this.authenticationManager = authenticationManager;
         this.emailUtil = emailUtil;
-        this.userDetailsService = userDetailsService;
     }
 
     @Override
+    @Transactional
+    public Response login(LoginRequest request) {
+        try {
+            // Validate request
+            if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+                return new Response(false, "Username is required", null);
+            }
+            if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+                return new Response(false, "Password is required", null);
+            }
+
+            // Find user
+            User user = userRepository.findByUsernameAndIsDeletedFalse(request.getUsername())
+                    .orElseThrow(() -> new RuntimeException("User not found with username: " + request.getUsername()));
+
+            // Check if user is activated
+            if (!user.isActivated()) {
+                return new Response(false, "Account is not activated. Please check your email.", null);
+            }
+
+            // Verify password
+            if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                return new Response(false, "Invalid password", null);
+            }
+
+            // Generate JWT token
+            String token = jwtUtil.generateToken(new org.springframework.security.core.userdetails.User(
+                    user.getUsername(), user.getPassword(),
+                    Collections.singletonList(new org.springframework.security.core.authority.SimpleGrantedAuthority(
+                            "ROLE_" + user.getRole().name()))));
+
+            return new Response(true, "Login successful", new AuthResponse(token));
+        } catch (Exception e) {
+            return new Response(false, "Login failed: " + e.getMessage(), null);
+        }
+    }
+
+    @Override
+    @Transactional
     public Response register(RegisterRequest request) {
         try {
+            // Validate request
+            if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+                return new Response(false, "Username is required", null);
+            }
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+                return new Response(false, "Email is required", null);
+            }
+            if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+                return new Response(false, "Password is required", null);
+            }
+
+            // Check if username or email already exists
             if (userRepository.findByUsername(request.getUsername()).isPresent()) {
                 return new Response(false, "Username already exists", null);
             }
@@ -58,80 +98,65 @@ public class AuthServiceImpl implements AuthService {
                 return new Response(false, "Email already exists", null);
             }
 
+            // Create new user
             User user = new User();
             user.setUsername(request.getUsername());
             user.setEmail(request.getEmail());
             user.setPassword(passwordEncoder.encode(request.getPassword()));
             user.setRole(Role.STUDENT);
             user.setActivated(false);
-            userRepository.save(user);
 
+            // Save user
+            User savedUser = userRepository.save(user);
+
+            // Generate and save activation token
             String token = UUID.randomUUID().toString();
             ActivationToken activationToken = new ActivationToken();
-            activationToken.setUser(user);
+            activationToken.setUser(savedUser);
             activationToken.setToken(token);
-            activationToken.setExpiryDate(LocalDateTime.now().plusHours(24));
+            activationToken.setExpiryDate(LocalDateTime.now().plusDays(1)); // Token valid for 1 day
             activationToken.setUsed(false);
             activationTokenRepository.save(activationToken);
 
-            boolean emailSent = emailUtil.sendActivationEmail(user.getEmail(), token);
-            if (emailSent) {
-                return new Response(true, "Registration successful. Please check your email to activate your account.", null);
-            } else {
-                return new Response(true, "Registration successful, but failed to send activation email. Please contact support.", null);
+            // GỬI EMAIL KÍCH HOẠT
+            boolean emailSent = emailUtil.sendActivationEmail(savedUser.getEmail(), token);
+            if (!emailSent) {
+                // Log error nhưng vẫn trả về success để user có thể request gửi lại email
+                System.err.println("Failed to send activation email to: " + savedUser.getEmail());
             }
+
+            return new Response(true, "Registration successful. Please check your email to activate your account.",
+                    null);
         } catch (Exception e) {
-            System.err.println("Registration failed with exception: " + e.getMessage());
-            e.printStackTrace();
-            return new Response(false, "Registration failed due to server error.", null);
+            return new Response(false, "Registration failed: " + e.getMessage(), null);
         }
     }
 
     @Override
-    public Response login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getUsername(),
-                        request.getPassword()
-                )
-        );
-
-        if (authentication.isAuthenticated()) {
-            User user = userRepository.findByUsername(request.getUsername())
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-            if (!user.isActivated()) {
-                return new Response(false, "Account not activated. Please check your email.", null);
-            }
-            UserDetails userDetails = userDetailsService.loadUserByUsername(request.getUsername());
-            String jwtToken = jwtUtil.generateToken(userDetails);
-            return new Response(true, "Login successful", new AuthResponse(jwtToken));
-        } else {
-            return new Response(false, "Invalid credentials", null);
-        }
-    }
-
-    @Override
+    @Transactional
     public Response verifyAccount(String token) {
-        ActivationToken activationToken = activationTokenRepository.findByToken(token)
-                .orElseGet(() -> null);
+        try {
+            // Find activation token
+            ActivationToken activationToken = activationTokenRepository.findByTokenAndUsedFalse(token)
+                    .orElseThrow(() -> new RuntimeException("Invalid or used token"));
 
-        if (activationToken == null) {
-            return new Response(false, "Invalid token", null);
+            // Check if token is expired
+            if (activationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+                return new Response(false, "Token has expired", null);
+            }
+
+            // Activate user
+            User user = activationToken.getUser();
+            user.setActivated(true);
+            userRepository.save(user);
+
+            // Mark token as used
+            activationToken.setUsed(true);
+            activationTokenRepository.save(activationToken);
+
+            return new Response(true, "Account activated successfully", null);
+        } catch (Exception e) {
+            return new Response(false, "Account activation failed: " + e.getMessage(), null);
         }
-        if (activationToken.isUsed()) {
-            return new Response(false, "Token already used", null);
-        }
-        if (activationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
-            return new Response(false, "Token expired", null);
-        }
-
-        User user = activationToken.getUser();
-        user.setActivated(true);
-        userRepository.save(user);
-
-        activationToken.setUsed(true);
-        activationTokenRepository.save(activationToken);
-
-        return new Response(true, "Account activated successfully", null);
     }
 }

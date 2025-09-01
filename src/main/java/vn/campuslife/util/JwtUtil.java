@@ -32,6 +32,10 @@ public class JwtUtil {
         return extractClaim(token, Claims::getExpiration);
     }
 
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
@@ -51,6 +55,15 @@ public class JwtUtil {
 
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
+        // Thêm role vào claims nếu có
+        if (userDetails.getAuthorities() != null && !userDetails.getAuthorities().isEmpty()) {
+            String role = userDetails.getAuthorities().iterator().next().getAuthority();
+            // Loại bỏ prefix "ROLE_" nếu có
+            if (role.startsWith("ROLE_")) {
+                role = role.substring(5);
+            }
+            claims.put("role", role);
+        }
         return createToken(claims, userDetails.getUsername());
     }
 
