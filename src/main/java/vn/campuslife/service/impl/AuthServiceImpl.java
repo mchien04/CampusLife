@@ -63,6 +63,10 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
                 return new Response(false, "Invalid password", null);
             }
 
+            // Update last login timestamp
+            user.setLastLogin(LocalDateTime.now());
+            userRepository.save(user);
+
             // Generate JWT token
             String token = jwtUtil.generateToken(new org.springframework.security.core.userdetails.User(
                     user.getUsername(), user.getPassword(),
