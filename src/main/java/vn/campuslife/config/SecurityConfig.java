@@ -1,5 +1,6 @@
 package vn.campuslife.config;
 
+import org.springframework.http.HttpMethod;
 import vn.campuslife.filter.JwtAuthenticationFilter;
 import vn.campuslife.service.impl.UserDetailsServiceImpl;
 import org.springframework.context.annotation.Bean;
@@ -28,8 +29,8 @@ public class SecurityConfig {
     private final CorsConfigurationSource corsConfigurationSource;
 
     public SecurityConfig(@Lazy JwtAuthenticationFilter jwtAuthenticationFilter,
-            @Lazy UserDetailsService userDetailsService,
-            CorsConfigurationSource corsConfigurationSource) {
+                          @Lazy UserDetailsService userDetailsService,
+                          CorsConfigurationSource corsConfigurationSource) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.corsConfigurationSource = corsConfigurationSource;
@@ -54,22 +55,36 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .cors(c -> c.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Preflight
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                        // Public
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/api/upload/**").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers("/api/departments/**").permitAll()
+
+                        // Admin-only endpoints
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Activities
+                        .requestMatchers(HttpMethod.GET, "/api/activities/my").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
+
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
-                        .anyRequest().authenticated())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+                        // Default
+                        .anyRequest().authenticated()
+                )
                 .authenticationProvider(authenticationProvider())
-                // Chỉ áp dụng JWT filter cho các API endpoints, không áp dụng cho static
-                // resources
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
