@@ -43,6 +43,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Transactional(readOnly = true)
     public Response getAll() {
         var list = findAll(); // tái dùng logic public (lọc isDeleted=false)
+
         return new Response(true, "Departments retrieved", list);
     }
 

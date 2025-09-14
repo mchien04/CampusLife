@@ -78,6 +78,7 @@ public class SecurityConfig {
                         // Activities
                         .requestMatchers(HttpMethod.GET, "/api/activities/my").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
+
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
 
                         // Default

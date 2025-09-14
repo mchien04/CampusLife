@@ -17,5 +17,6 @@ public interface DepartmentService {
     Response getById(Long id);
     Response create(DepartmentRequest request);
     Response update(Long id, DepartmentRequest request);
+
     Response delete(Long id);
 }
