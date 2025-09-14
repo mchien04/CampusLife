@@ -7,3 +7,5 @@ import vn.campuslife.entity.Criterion;
 @Repository
 public interface CriterionRepository extends JpaRepository<Criterion, Long> {
 }
+
+

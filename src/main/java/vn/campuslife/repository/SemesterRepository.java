@@ -8,3 +8,5 @@ import vn.campuslife.entity.Semester;
 public interface SemesterRepository extends JpaRepository<Semester, Long> {
 }
 
+
+

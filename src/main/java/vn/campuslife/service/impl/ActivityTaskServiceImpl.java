@@ -1,0 +1,380 @@
+package vn.campuslife.service.impl;
+
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityTask;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.TaskAssignment;
+import vn.campuslife.enumeration.TaskStatus;
+import vn.campuslife.model.*;
+import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivityTaskRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.TaskAssignmentRepository;
+import vn.campuslife.service.ActivityTaskService;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class ActivityTaskServiceImpl implements ActivityTaskService {
+
+    private static final Logger logger = LoggerFactory.getLogger(ActivityTaskServiceImpl.class);
+
+    private final ActivityTaskRepository activityTaskRepository;
+    private final ActivityRepository activityRepository;
+    private final TaskAssignmentRepository taskAssignmentRepository;
+    private final StudentRepository studentRepository;
+
+    @Override
+    @Transactional
+    public Response createTask(CreateActivityTaskRequest request) {
+        try {
+            // Validate activity exists and not deleted
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            Activity activity = activityOpt.get();
+
+            // Validate deadline if provided
+            if (request.getDeadline() != null && request.getDeadline().isBefore(activity.getEndDate())) {
+                return new Response(false, "Task deadline must be after activity end date", null);
+            }
+
+            // Create new task
+            ActivityTask task = new ActivityTask();
+            task.setActivity(activity);
+            task.setName(request.getName());
+            task.setDescription(request.getDescription());
+            task.setDeadline(request.getDeadline());
+
+            ActivityTask savedTask = activityTaskRepository.save(task);
+            ActivityTaskResponse response = toTaskResponse(savedTask);
+
+            return new Response(true, "Task created successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to create task: {}", e.getMessage(), e);
+            return new Response(false, "Failed to create task due to server error", null);
+        }
+    }
+
+    @Override
+    public Response getTasksByActivity(Long activityId) {
+        try {
+            // Validate activity exists
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            List<ActivityTask> tasks = activityTaskRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
+            List<ActivityTaskResponse> taskResponses = tasks.stream()
+                    .map(this::toTaskResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Tasks retrieved successfully", taskResponses);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve tasks for activity {}: {}", activityId, e.getMessage(), e);
+            return new Response(false, "Failed to retrieve tasks due to server error", null);
+        }
+    }
+
+    @Override
+    public Response getTaskById(Long taskId) {
+        try {
+            Optional<ActivityTask> taskOpt = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId);
+            if (taskOpt.isEmpty()) {
+                return new Response(false, "Task not found", null);
+            }
+
+            ActivityTaskResponse response = toTaskResponse(taskOpt.get());
+            return new Response(true, "Task retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve task {}: {}", taskId, e.getMessage(), e);
+            return new Response(false, "Failed to retrieve task due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response updateTask(Long taskId, CreateActivityTaskRequest request) {
+        try {
+            Optional<ActivityTask> taskOpt = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId);
+            if (taskOpt.isEmpty()) {
+                return new Response(false, "Task not found", null);
+            }
+
+            ActivityTask task = taskOpt.get();
+
+            // Validate activity if changed
+            if (!task.getActivity().getId().equals(request.getActivityId())) {
+                Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
+                if (activityOpt.isEmpty()) {
+                    return new Response(false, "Activity not found", null);
+                }
+                task.setActivity(activityOpt.get());
+            }
+
+            // Validate deadline if provided
+            if (request.getDeadline() != null && request.getDeadline().isBefore(task.getActivity().getEndDate())) {
+                return new Response(false, "Task deadline must be after activity end date", null);
+            }
+
+            // Update task
+            task.setName(request.getName());
+            task.setDescription(request.getDescription());
+            task.setDeadline(request.getDeadline());
+
+            ActivityTask savedTask = activityTaskRepository.save(task);
+            ActivityTaskResponse response = toTaskResponse(savedTask);
+
+            return new Response(true, "Task updated successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to update task {}: {}", taskId, e.getMessage(), e);
+            return new Response(false, "Failed to update task due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response deleteTask(Long taskId) {
+        try {
+            Optional<ActivityTask> taskOpt = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId);
+            if (taskOpt.isEmpty()) {
+                return new Response(false, "Task not found", null);
+            }
+
+            // Check if task has assignments
+            List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(taskId);
+            if (!assignments.isEmpty()) {
+                return new Response(false, "Cannot delete task with existing assignments", null);
+            }
+
+            activityTaskRepository.deleteById(taskId);
+            return new Response(true, "Task deleted successfully", null);
+        } catch (Exception e) {
+            logger.error("Failed to delete task {}: {}", taskId, e.getMessage(), e);
+            return new Response(false, "Failed to delete task due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response assignTask(TaskAssignmentRequest request) {
+        try {
+            // Validate task exists
+            Optional<ActivityTask> taskOpt = activityTaskRepository
+                    .findByIdAndActivityIsDeletedFalse(request.getTaskId());
+            if (taskOpt.isEmpty()) {
+                return new Response(false, "Task not found", null);
+            }
+
+            ActivityTask task = taskOpt.get();
+
+            // Validate students exist
+            List<Student> students = studentRepository.findAllById(request.getStudentIds());
+            if (students.size() != request.getStudentIds().size()) {
+                return new Response(false, "Some students not found", null);
+            }
+
+            // Create assignments
+            List<TaskAssignment> assignments = students.stream()
+                    .filter(student -> !taskAssignmentRepository.existsByTaskIdAndStudentId(request.getTaskId(),
+                            student.getId()))
+                    .map(student -> {
+                        TaskAssignment assignment = new TaskAssignment();
+                        assignment.setTask(task);
+                        assignment.setStudent(student);
+                        assignment.setStatus(request.getStatus());
+                        return assignment;
+                    })
+                    .collect(Collectors.toList());
+
+            List<TaskAssignment> savedAssignments = taskAssignmentRepository.saveAll(assignments);
+            List<TaskAssignmentResponse> responses = savedAssignments.stream()
+                    .map(this::toAssignmentResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Tasks assigned successfully", responses);
+        } catch (Exception e) {
+            logger.error("Failed to assign tasks: {}", e.getMessage(), e);
+            return new Response(false, "Failed to assign tasks due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response updateTaskStatus(Long assignmentId, String status) {
+        try {
+            Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository.findById(assignmentId);
+            if (assignmentOpt.isEmpty()) {
+                return new Response(false, "Task assignment not found", null);
+            }
+
+            TaskAssignment assignment = assignmentOpt.get();
+            TaskStatus taskStatus = TaskStatus.valueOf(status.toUpperCase());
+            assignment.setStatus(taskStatus);
+
+            TaskAssignment savedAssignment = taskAssignmentRepository.save(assignment);
+            TaskAssignmentResponse response = toAssignmentResponse(savedAssignment);
+
+            return new Response(true, "Task status updated successfully", response);
+        } catch (IllegalArgumentException e) {
+            return new Response(false, "Invalid status: " + status, null);
+        } catch (Exception e) {
+            logger.error("Failed to update task status for assignment {}: {}", assignmentId, e.getMessage(), e);
+            return new Response(false, "Failed to update task status due to server error", null);
+        }
+    }
+
+    @Override
+    public Response getStudentTasks(Long studentId) {
+        try {
+            List<TaskAssignment> assignments = taskAssignmentRepository
+                    .findByStudentIdAndTaskActivityIsDeletedFalse(studentId);
+            List<TaskAssignmentResponse> responses = assignments.stream()
+                    .map(this::toAssignmentResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Student tasks retrieved successfully", responses);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve tasks for student {}: {}", studentId, e.getMessage(), e);
+            return new Response(false, "Failed to retrieve student tasks due to server error", null);
+        }
+    }
+
+    @Override
+    public Response getTaskAssignments(Long taskId) {
+        try {
+            List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(taskId);
+            List<TaskAssignmentResponse> responses = assignments.stream()
+                    .map(this::toAssignmentResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Task assignments retrieved successfully", responses);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve assignments for task {}: {}", taskId, e.getMessage(), e);
+            return new Response(false, "Failed to retrieve task assignments due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response removeTaskAssignment(Long assignmentId) {
+        try {
+            Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository.findById(assignmentId);
+            if (assignmentOpt.isEmpty()) {
+                return new Response(false, "Task assignment not found", null);
+            }
+
+            taskAssignmentRepository.deleteById(assignmentId);
+            return new Response(true, "Task assignment removed successfully", null);
+        } catch (Exception e) {
+            logger.error("Failed to remove task assignment {}: {}", assignmentId, e.getMessage(), e);
+            return new Response(false, "Failed to remove task assignment due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response autoAssignMandatoryTasks(Long activityId) {
+        try {
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            Activity activity = activityOpt.get();
+            if (!activity.isMandatoryForFacultyStudents()) {
+                return new Response(false, "Activity is not mandatory for faculty students", null);
+            }
+
+            // Get all tasks for this activity
+            List<ActivityTask> tasks = activityTaskRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
+            if (tasks.isEmpty()) {
+                return new Response(false, "No tasks found for this activity", null);
+            }
+
+            // Get students from organizing departments
+            List<Long> departmentIds = activity.getOrganizers().stream()
+                    .map(department -> department.getId())
+                    .collect(Collectors.toList());
+
+            List<Student> students = studentRepository.findByDepartmentIdInAndIsDeletedFalse(departmentIds);
+
+            // Assign all tasks to all students
+            int totalAssignments = 0;
+            for (ActivityTask task : tasks) {
+                for (Student student : students) {
+                    if (!taskAssignmentRepository.existsByTaskIdAndStudentId(task.getId(), student.getId())) {
+                        TaskAssignment assignment = new TaskAssignment();
+                        assignment.setTask(task);
+                        assignment.setStudent(student);
+                        assignment.setStatus(TaskStatus.PENDING);
+                        taskAssignmentRepository.save(assignment);
+                        totalAssignments++;
+                    }
+                }
+            }
+
+            return new Response(true,
+                    String.format("Auto-assigned %d tasks to %d students", totalAssignments, students.size()),
+                    null);
+        } catch (Exception e) {
+            logger.error("Failed to auto-assign mandatory tasks for activity {}: {}", activityId, e.getMessage(), e);
+            return new Response(false, "Failed to auto-assign mandatory tasks due to server error", null);
+        }
+    }
+
+    private ActivityTaskResponse toTaskResponse(ActivityTask task) {
+        ActivityTaskResponse response = new ActivityTaskResponse();
+        response.setId(task.getId());
+        response.setName(task.getName());
+        response.setDescription(task.getDescription());
+        response.setDeadline(task.getDeadline());
+        response.setActivityId(task.getActivity().getId());
+        response.setActivityName(task.getActivity().getName());
+        response.setCreatedAt(task.getCreatedAt());
+
+        // Get assignments for this task
+        List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(task.getId());
+        response.setAssignments(assignments.stream()
+                .map(this::toAssignmentResponse)
+                .collect(Collectors.toList()));
+
+        // Calculate statistics
+        response.setTotalAssignments((long) assignments.size());
+        response.setCompletedAssignments(assignments.stream()
+                .mapToLong(a -> a.getStatus() == TaskStatus.COMPLETED ? 1 : 0)
+                .sum());
+        response.setPendingAssignments(assignments.stream()
+                .mapToLong(a -> a.getStatus() == TaskStatus.PENDING ? 1 : 0)
+                .sum());
+
+        return response;
+    }
+
+    private TaskAssignmentResponse toAssignmentResponse(TaskAssignment assignment) {
+        TaskAssignmentResponse response = new TaskAssignmentResponse();
+        response.setId(assignment.getId());
+        response.setTaskId(assignment.getTask().getId());
+        response.setTaskName(assignment.getTask().getName());
+        response.setStudentId(assignment.getStudent().getId());
+        response.setStudentName(assignment.getStudent().getFullName());
+        response.setStudentCode(assignment.getStudent().getStudentCode());
+        response.setStatus(assignment.getStatus());
+        response.setUpdatedAt(assignment.getUpdatedAt());
+        // Note: TaskAssignment doesn't have createdAt field, using updatedAt as
+        // fallback
+        response.setCreatedAt(assignment.getUpdatedAt());
+        return response;
+    }
+}

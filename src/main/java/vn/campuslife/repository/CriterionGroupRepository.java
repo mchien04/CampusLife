@@ -7,3 +7,5 @@ import vn.campuslife.entity.CriterionGroup;
 @Repository
 public interface CriterionGroupRepository extends JpaRepository<CriterionGroup, Long> {
 }
+
+

@@ -9,3 +9,5 @@ public class DepartmentRequest {
     private DepartmentType type;
     private String description;
 }
+
+
