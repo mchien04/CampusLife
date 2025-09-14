@@ -1,108 +1,52 @@
 package vn.campuslife.service.impl;
 
-import vn.campuslife.entity.Activity;
-import vn.campuslife.entity.Department;
-import vn.campuslife.model.CreateActivityRequest;
-import vn.campuslife.model.ActivityResponse;
-import vn.campuslife.model.Response;
-import vn.campuslife.repository.ActivityRepository;
-import vn.campuslife.repository.DepartmentRepository;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.Department;
+import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.model.ActivityResponse;
+import vn.campuslife.model.CreateActivityRequest;
+import vn.campuslife.model.Response;
+import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.ActivityService;
 
-import java.math.BigDecimal;
-import java.util.List;
+import java.time.LocalDate;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class ActivityServiceImpl implements ActivityService {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityServiceImpl.class);
 
     private final ActivityRepository activityRepository;
     private final DepartmentRepository departmentRepository;
+    private final StudentRepository studentRepository;
 
-    public ActivityServiceImpl(ActivityRepository activityRepository, DepartmentRepository departmentRepository) {
-        this.activityRepository = activityRepository;
-        this.departmentRepository = departmentRepository;
-    }
 
     @Override
     @Transactional
     public Response createActivity(CreateActivityRequest request) {
         try {
-            // Validate required fields
-            if (request.getName() == null || request.getName().trim().isEmpty()) {
-                return new Response(false, "Activity name is required", null);
-            }
-            if (request.getType() == null) {
-                return new Response(false, "Activity type is required", null);
-            }
-            if (request.getStartDate() == null || request.getEndDate() == null) {
-                return new Response(false, "Start date and end date are required", null);
-            }
-            if (request.getStartDate().isAfter(request.getEndDate())) {
-                return new Response(false, "Start date must be before end date", null);
-            }
-            if (request.getDepartmentId() == null) {
-                return new Response(false, "Department ID is required", null);
-            }
-            if (request.getLocation() == null || request.getLocation().trim().isEmpty()) {
-                return new Response(false, "Location is required", null);
-            }
 
-            // Verify department exists
-            Department department = departmentRepository.findById(request.getDepartmentId())
-                    .orElseGet(() -> null);
-            if (department == null) {
-                return new Response(false, "Department not found", null);
-            }
+            String err = validateRequest(request);
+            if (err != null) return new Response(false, err, null);
 
-            // Create activity entity
-            Activity activity = new Activity();
-            activity.setName(request.getName());
-            activity.setType(request.getType());
-            activity.setDescription(request.getDescription());
-            activity.setStartDate(request.getStartDate());
-            activity.setEndDate(request.getEndDate());
-            activity.setDepartment(department);
-            activity.setRequiresSubmission(request.isRequiresSubmission());
-            activity.setMaxPoints(request.getMaxPoints() != null ? BigDecimal.valueOf(request.getMaxPoints()) : null);
-            activity.setRegistrationDeadline(request.getRegistrationDeadline());
-            activity.setShareLink(request.getShareLink());
-            activity.setImportant(request.isImportant());
-            activity.setBannerUrl(request.getBannerUrl());
-            activity.setLocation(request.getLocation());
+            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
 
-            // Save activity
-            Activity savedActivity = activityRepository.save(activity);
+            Activity a = new Activity();
+            applyRequestToEntity(request, a);
+            a.setOrganizers(organizers);
 
-            // Map to response DTO
-            ActivityResponse activityResponse = new ActivityResponse();
-            activityResponse.setId(savedActivity.getId());
-            activityResponse.setName(savedActivity.getName());
-            activityResponse.setType(savedActivity.getType());
-            activityResponse.setDescription(savedActivity.getDescription());
-            activityResponse.setStartDate(savedActivity.getStartDate());
-            activityResponse.setEndDate(savedActivity.getEndDate());
-            activityResponse.setDepartmentId(savedActivity.getDepartment().getId());
-            activityResponse.setRequiresSubmission(savedActivity.isRequiresSubmission());
-            activityResponse.setMaxPoints(
-                    savedActivity.getMaxPoints() != null ? savedActivity.getMaxPoints().doubleValue() : null);
-            activityResponse.setRegistrationDeadline(savedActivity.getRegistrationDeadline());
-            activityResponse.setShareLink(savedActivity.getShareLink());
-            activityResponse.setImportant(savedActivity.isImportant());
-            activityResponse.setBannerUrl(savedActivity.getBannerUrl());
-            activityResponse.setLocation(savedActivity.getLocation());
-            activityResponse.setCreatedAt(savedActivity.getCreatedAt());
-            activityResponse.setUpdatedAt(savedActivity.getUpdatedAt());
-            activityResponse.setCreatedBy(savedActivity.getCreatedBy());
-            activityResponse.setLastModifiedBy(savedActivity.getLastModifiedBy());
-
-            return new Response(true, "Activity created successfully", activityResponse);
+            Activity saved = activityRepository.save(a);
+            return new Response(true, "Activity created successfully", toResponse(saved));
         } catch (Exception e) {
             logger.error("Failed to create activity: {}", e.getMessage(), e);
             return new Response(false, "Failed to create activity due to server error", null);
@@ -112,12 +56,9 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     public Response getAllActivities() {
         try {
-            List<Activity> activities = activityRepository.findByIsDeletedFalse();
-            List<ActivityResponse> activityResponses = activities.stream()
-                    .map(this::mapToActivityResponse)
-                    .collect(Collectors.toList());
-
-            return new Response(true, "Activities retrieved successfully", activityResponses);
+            var list = activityRepository.findByIsDeletedFalseOrderByStartDateAsc();
+            var data = list.stream().map(this::toResponse).toList();
+            return new Response(true, "Activities retrieved successfully", data);
         } catch (Exception e) {
             logger.error("Failed to retrieve activities: {}", e.getMessage(), e);
             return new Response(false, "Failed to retrieve activities due to server error", null);
@@ -127,17 +68,11 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     public Response getActivityById(Long id) {
         try {
-            Activity activity = activityRepository.findByIdAndIsDeletedFalse(id)
-                    .orElse(null);
-
-            if (activity == null) {
-                return new Response(false, "Activity not found", null);
-            }
-
-            ActivityResponse activityResponse = mapToActivityResponse(activity);
-            return new Response(true, "Activity retrieved successfully", activityResponse);
+            var opt = activityRepository.findByIdAndIsDeletedFalse(id);
+            if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+            return new Response(true, "Activity retrieved successfully", toResponse(opt.get()));
         } catch (Exception e) {
-            logger.error("Failed to retrieve activity with id {}: {}", id, e.getMessage(), e);
+            logger.error("Failed to retrieve activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to retrieve activity due to server error", null);
         }
     }
@@ -146,62 +81,25 @@ public class ActivityServiceImpl implements ActivityService {
     @Transactional
     public Response updateActivity(Long id, CreateActivityRequest request) {
         try {
-            // Validate required fields
-            if (request.getName() == null || request.getName().trim().isEmpty()) {
-                return new Response(false, "Activity name is required", null);
-            }
-            if (request.getType() == null) {
-                return new Response(false, "Activity type is required", null);
-            }
-            if (request.getStartDate() == null || request.getEndDate() == null) {
-                return new Response(false, "Start date and end date are required", null);
-            }
-            if (request.getStartDate().isAfter(request.getEndDate())) {
-                return new Response(false, "Start date must be before end date", null);
-            }
-            if (request.getDepartmentId() == null) {
-                return new Response(false, "Department ID is required", null);
-            }
-            if (request.getLocation() == null || request.getLocation().trim().isEmpty()) {
-                return new Response(false, "Location is required", null);
-            }
+            var opt = activityRepository.findByIdAndIsDeletedFalse(id);
+            if (opt.isEmpty()) return new Response(false, "Activity not found", null);
 
-            // Find existing activity
-            Activity activity = activityRepository.findByIdAndIsDeletedFalse(id)
-                    .orElse(null);
-            if (activity == null) {
-                return new Response(false, "Activity not found", null);
-            }
+            String err = validateRequest(request);
+            if (err != null) return new Response(false, err, null);
 
-            // Verify department exists
-            Department department = departmentRepository.findById(request.getDepartmentId())
-                    .orElse(null);
-            if (department == null) {
-                return new Response(false, "Department not found", null);
-            }
+            Activity a = opt.get();
 
-            // Update activity fields
-            activity.setName(request.getName());
-            activity.setType(request.getType());
-            activity.setDescription(request.getDescription());
-            activity.setStartDate(request.getStartDate());
-            activity.setEndDate(request.getEndDate());
-            activity.setDepartment(department);
-            activity.setRequiresSubmission(request.isRequiresSubmission());
-            activity.setMaxPoints(request.getMaxPoints() != null ? BigDecimal.valueOf(request.getMaxPoints()) : null);
-            activity.setRegistrationDeadline(request.getRegistrationDeadline());
-            activity.setShareLink(request.getShareLink());
-            activity.setImportant(request.isImportant());
-            activity.setBannerUrl(request.getBannerUrl());
-            activity.setLocation(request.getLocation());
+            applyRequestToEntity(request, a);
 
-            // Save updated activity
-            Activity savedActivity = activityRepository.save(activity);
-            ActivityResponse activityResponse = mapToActivityResponse(savedActivity);
 
-            return new Response(true, "Activity updated successfully", activityResponse);
+            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            a.getOrganizers().clear();
+            a.getOrganizers().addAll(organizers);
+
+            Activity saved = activityRepository.save(a);
+            return new Response(true, "Activity updated successfully", toResponse(saved));
         } catch (Exception e) {
-            logger.error("Failed to update activity with id {}: {}", id, e.getMessage(), e);
+            logger.error("Failed to update activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to update activity due to server error", null);
         }
     }
@@ -210,44 +108,127 @@ public class ActivityServiceImpl implements ActivityService {
     @Transactional
     public Response deleteActivity(Long id) {
         try {
-            Activity activity = activityRepository.findByIdAndIsDeletedFalse(id)
-                    .orElse(null);
+            var opt = activityRepository.findByIdAndIsDeletedFalse(id);
+            if (opt.isEmpty()) return new Response(false, "Activity not found", null);
 
-            if (activity == null) {
-                return new Response(false, "Activity not found", null);
-            }
-
-            // Soft delete
-            activity.setDeleted(true);
-            activityRepository.save(activity);
-
+            Activity a = opt.get();
+            a.setDeleted(true);
+            activityRepository.save(a);
             return new Response(true, "Activity deleted successfully", null);
         } catch (Exception e) {
-            logger.error("Failed to delete activity with id {}: {}", id, e.getMessage(), e);
+            logger.error("Failed to delete activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to delete activity due to server error", null);
         }
     }
 
-    private ActivityResponse mapToActivityResponse(Activity activity) {
-        ActivityResponse activityResponse = new ActivityResponse();
-        activityResponse.setId(activity.getId());
-        activityResponse.setName(activity.getName());
-        activityResponse.setType(activity.getType());
-        activityResponse.setDescription(activity.getDescription());
-        activityResponse.setStartDate(activity.getStartDate());
-        activityResponse.setEndDate(activity.getEndDate());
-        activityResponse.setDepartmentId(activity.getDepartment().getId());
-        activityResponse.setRequiresSubmission(activity.isRequiresSubmission());
-        activityResponse.setMaxPoints(activity.getMaxPoints() != null ? activity.getMaxPoints().doubleValue() : null);
-        activityResponse.setRegistrationDeadline(activity.getRegistrationDeadline());
-        activityResponse.setShareLink(activity.getShareLink());
-        activityResponse.setImportant(activity.isImportant());
-        activityResponse.setBannerUrl(activity.getBannerUrl());
-        activityResponse.setLocation(activity.getLocation());
-        activityResponse.setCreatedAt(activity.getCreatedAt());
-        activityResponse.setUpdatedAt(activity.getUpdatedAt());
-        activityResponse.setCreatedBy(activity.getCreatedBy());
-        activityResponse.setLastModifiedBy(activity.getLastModifiedBy());
-        return activityResponse;
+
+
+    @Override
+    public List<Activity> getActivitiesByScoreType(ScoreType scoreType) {
+        return activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType);
+    }
+
+    @Override
+    public List<Activity> getActivitiesByMonth(LocalDate start, LocalDate end) {
+        return activityRepository.findInMonth(start, end);
+    }
+
+    @Override
+    public List<Activity> getActivitiesForDepartment(Long departmentId) {
+        return activityRepository.findForDepartment(departmentId);
+    }
+
+    @Override
+    public List<Activity> listForCurrentUser(String username) {
+        Long deptId = studentRepository.findDepartmentIdByUsername(username);
+        if (deptId == null) return Collections.emptyList();
+        return activityRepository.findForDepartment(deptId);
+    }
+
+
+    private String validateRequest(CreateActivityRequest r) {
+        if (r.getName() == null || r.getName().isBlank()) return "Activity name is required";
+        if (r.getType() == null) return "Activity type is required";
+        if (r.getScoreType() == null) return "Score type is required";
+        if (r.getStartDate() == null || r.getEndDate() == null) return "Start date and end date are required";
+        if (r.getStartDate().isAfter(r.getEndDate())) return "Start date must be before end date";
+        if (r.getLocation() == null || r.getLocation().isBlank()) return "Location is required";
+        if (r.getOrganizerIds() == null || r.getOrganizerIds().isEmpty()) return "Organizer ids are required";
+        return null;
+    }
+
+    private void applyRequestToEntity(CreateActivityRequest req, Activity a) {
+        a.setName(req.getName());
+        a.setType(req.getType());
+        a.setScoreType(req.getScoreType());
+        a.setDescription(req.getDescription());
+        a.setStartDate(req.getStartDate());
+        a.setEndDate(req.getEndDate());
+
+        a.setRequiresSubmission(Boolean.TRUE.equals(req.getRequiresSubmission()));
+        a.setMaxPoints(req.getMaxPoints());
+
+        a.setRegistrationStartDate(req.getRegistrationStartDate());
+        a.setRegistrationDeadline(req.getRegistrationDeadline());
+
+        a.setShareLink(req.getShareLink());
+        a.setImportant(Boolean.TRUE.equals(req.getIsImportant()));
+        a.setBannerUrl(req.getBannerUrl());
+        a.setLocation(req.getLocation());
+
+        a.setTicketQuantity(req.getTicketQuantity());
+        a.setBenefits(req.getBenefits());
+        a.setRequirements(req.getRequirements());
+        a.setContactInfo(req.getContactInfo());
+        a.setMandatoryForFacultyStudents(Boolean.TRUE.equals(req.getMandatoryForFacultyStudents()));
+        a.setPenaltyPointsIncomplete(req.getPenaltyPointsIncomplete());
+    }
+
+    private Set<Department> resolveOrganizers(List<Long> organizerIds) {
+        if (organizerIds == null || organizerIds.isEmpty()) return new LinkedHashSet<>();
+        var deps = departmentRepository.findAllById(organizerIds);
+        var found = deps.stream().map(Department::getId).collect(Collectors.toSet());
+        var missing = organizerIds.stream().filter(id -> !found.contains(id)).toList();
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Department ids not found: " + missing);
+        }
+        return new LinkedHashSet<>(deps);
+    }
+
+    private ActivityResponse toResponse(Activity a) {
+        ActivityResponse dto = new ActivityResponse();
+        dto.setId(a.getId());
+        dto.setName(a.getName());
+        dto.setType(a.getType());
+        dto.setScoreType(a.getScoreType());
+        dto.setDescription(a.getDescription());
+        dto.setStartDate(a.getStartDate());
+        dto.setEndDate(a.getEndDate());
+
+        dto.setRequiresSubmission(a.isRequiresSubmission());
+        dto.setMaxPoints(a.getMaxPoints());
+
+        dto.setRegistrationStartDate(a.getRegistrationStartDate());
+        dto.setRegistrationDeadline(a.getRegistrationDeadline());
+
+        dto.setShareLink(a.getShareLink());
+        dto.setImportant(a.isImportant());
+        dto.setBannerUrl(a.getBannerUrl());
+        dto.setLocation(a.getLocation());
+
+        dto.setTicketQuantity(a.getTicketQuantity());
+        dto.setBenefits(a.getBenefits());
+        dto.setRequirements(a.getRequirements());
+        dto.setContactInfo(a.getContactInfo());
+        dto.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
+        dto.setPenaltyPointsIncomplete(a.getPenaltyPointsIncomplete());
+        dto.setOrganizerIds(a.getOrganizers() == null ? List.of()
+                : a.getOrganizers().stream().map(Department::getId).toList());
+
+        dto.setCreatedAt(a.getCreatedAt());
+        dto.setUpdatedAt(a.getUpdatedAt());
+        dto.setCreatedBy(a.getCreatedBy());
+        dto.setLastModifiedBy(a.getLastModifiedBy());
+        return dto;
     }
 }
