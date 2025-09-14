@@ -2,6 +2,7 @@ package vn.campuslife.service.impl;
 
 import vn.campuslife.entity.ActivationToken;
 import vn.campuslife.entity.User;
+import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.AuthResponse;
 import vn.campuslife.model.LoginRequest;
@@ -9,6 +10,7 @@ import vn.campuslife.model.RegisterRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivationTokenRepository;
 import vn.campuslife.repository.UserRepository;
+import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.util.JwtUtil;
 import vn.campuslife.util.EmailUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,14 +26,17 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
 
     private final UserRepository userRepository;
     private final ActivationTokenRepository activationTokenRepository;
+    private final StudentRepository studentRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailUtil emailUtil;
 
     public AuthServiceImpl(UserRepository userRepository, ActivationTokenRepository activationTokenRepository,
-            PasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailUtil emailUtil) {
+            StudentRepository studentRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
+            EmailUtil emailUtil) {
         this.userRepository = userRepository;
         this.activationTokenRepository = activationTokenRepository;
+        this.studentRepository = studentRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.emailUtil = emailUtil;
@@ -112,6 +117,14 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
 
             // Save user
             User savedUser = userRepository.save(user);
+
+            // Auto-create student profile if role is STUDENT
+            if (savedUser.getRole() == Role.STUDENT) {
+                Student student = new Student();
+                student.setUser(savedUser);
+                // All other fields remain null - student will fill them later
+                studentRepository.save(student);
+            }
 
             // Generate and save activation token
             String token = UUID.randomUUID().toString();

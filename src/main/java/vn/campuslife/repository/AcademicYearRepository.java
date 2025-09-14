@@ -8,3 +8,5 @@ import vn.campuslife.entity.AcademicYear;
 public interface AcademicYearRepository extends JpaRepository<AcademicYear, Long> {
 }
 
+
+

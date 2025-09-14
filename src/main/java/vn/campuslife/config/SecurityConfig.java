@@ -2,7 +2,6 @@ package vn.campuslife.config;
 
 import org.springframework.http.HttpMethod;
 import vn.campuslife.filter.JwtAuthenticationFilter;
-import vn.campuslife.service.impl.UserDetailsServiceImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy; // Added Lazy import
@@ -29,8 +28,8 @@ public class SecurityConfig {
     private final CorsConfigurationSource corsConfigurationSource;
 
     public SecurityConfig(@Lazy JwtAuthenticationFilter jwtAuthenticationFilter,
-                          @Lazy UserDetailsService userDetailsService,
-                          CorsConfigurationSource corsConfigurationSource) {
+            @Lazy UserDetailsService userDetailsService,
+            CorsConfigurationSource corsConfigurationSource) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.userDetailsService = userDetailsService;
         this.corsConfigurationSource = corsConfigurationSource;
@@ -56,7 +55,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   CorsConfigurationSource corsConfigurationSource) throws Exception {
+            CorsConfigurationSource corsConfigurationSource) throws Exception {
         http
                 .cors(c -> c.configurationSource(corsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
@@ -78,12 +77,32 @@ public class SecurityConfig {
                         // Activities
                         .requestMatchers(HttpMethod.GET, "/api/activities/my").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
-
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
 
+                        // Tasks and Assignments
+                        .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/assignments/*/status").hasRole("STUDENT")
+                        .requestMatchers("/api/tasks/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/assignments/**").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Activity Registrations
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/my/**").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/registrations").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.DELETE, "/api/registrations/activity/*").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/check/*").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/registrations/participate").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/activity/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/registrations/*/status").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/*").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Student Profile
+                        .requestMatchers(HttpMethod.GET, "/api/student/profile").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/student/profile").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/student/profile/*").hasAnyRole("ADMIN", "MANAGER")
+
                         // Default
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
