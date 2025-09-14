@@ -1,8 +1,7 @@
 package vn.campuslife.entity;
 
-
 import jakarta.persistence.*;
-        import lombok.Data;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
@@ -27,10 +26,10 @@ public class Student {
     @JoinColumn(name = "user_id", unique = true, nullable = false)
     private User user;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true)
     private String studentCode;
 
-    @Column(nullable = false)
+    @Column
     private String fullName;
 
     private String className;
