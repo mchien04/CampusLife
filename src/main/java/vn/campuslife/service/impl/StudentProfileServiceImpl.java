@@ -75,9 +75,10 @@ public class StudentProfileServiceImpl implements StudentProfileService {
             // Update student information
             student.setStudentCode(request.getStudentCode());
             student.setFullName(request.getFullName());
-            student.setClassName(request.getClassName());
+            // className is now handled through StudentClass entity
+            // student.setClassName(request.getClassName());
             student.setPhone(request.getPhone());
-            student.setAddress(request.getAddress());
+            // Address is now handled separately through Address entity
             student.setDob(request.getDob());
             student.setAvatarUrl(request.getAvatarUrl());
 
@@ -141,9 +142,10 @@ public class StudentProfileServiceImpl implements StudentProfileService {
         response.setEmail(student.getUser().getEmail());
         response.setStudentCode(student.getStudentCode());
         response.setFullName(student.getFullName());
-        response.setClassName(student.getClassName());
+        // className is now handled through StudentClass entity
+        // response.setClassName(student.getClassName());
         response.setPhone(student.getPhone());
-        response.setAddress(student.getAddress());
+        // Address is now handled separately through Address entity
         response.setDob(student.getDob());
         response.setAvatarUrl(student.getAvatarUrl());
         response.setCreatedAt(student.getCreatedAt());

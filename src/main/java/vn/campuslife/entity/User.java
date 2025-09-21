@@ -1,7 +1,7 @@
 package vn.campuslife.entity;
 
 import jakarta.persistence.*;
-        import lombok.Data;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;

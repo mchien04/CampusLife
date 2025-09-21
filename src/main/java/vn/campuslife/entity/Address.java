@@ -9,48 +9,39 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 
 @Entity
-@Table(name = "students")
+@Table(name = "addresses")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class Student {
+public class Address {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @OneToOne
-    @JoinColumn(name = "user_id", unique = true, nullable = false)
-    private User user;
+    @JoinColumn(name = "student_id", unique = true, nullable = false)
+    private Student student;
 
-    @Column(unique = true)
-    private String studentCode;
+    @Column(nullable = false)
+    private Integer provinceCode; // matinhTMS từ JSON
+
+    @Column(nullable = false)
+    private String provinceName; // tentinhmoi từ JSON
+
+    @Column(nullable = false)
+    private Integer wardCode; // maphuongxa từ JSON
+
+    @Column(nullable = false)
+    private String wardName; // tenphuongxa từ JSON
 
     @Column
-    private String fullName;
+    private String street; // Địa chỉ cụ thể (số nhà, tên đường)
 
-    // className is now handled through StudentClass entity
-    // private String className;
-
-    @ManyToOne
-    @JoinColumn(name = "department_id")
-    private Department department;
-
-    @ManyToOne
-    @JoinColumn(name = "class_id")
-    private StudentClass studentClass;
-
-    private String phone;
-
-    @OneToOne(mappedBy = "student", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Address address;
-
-    private LocalDate dob;
-
-    private String avatarUrl;
+    @Column
+    private String note; // Ghi chú thêm
 
     @CreatedDate
     private LocalDateTime createdAt;
