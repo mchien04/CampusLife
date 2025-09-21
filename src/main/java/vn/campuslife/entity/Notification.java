@@ -7,50 +7,45 @@ import lombok.AllArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import vn.campuslife.enumeration.NotificationStatus;
+import vn.campuslife.enumeration.NotificationType;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 
 @Entity
-@Table(name = "students")
+@Table(name = "notifications")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class Student {
+public class Notification {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne
-    @JoinColumn(name = "user_id", unique = true, nullable = false)
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(unique = true)
-    private String studentCode;
+    @Column(nullable = false)
+    private String title;
+
+    @Column(columnDefinition = "TEXT")
+    private String content;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private NotificationType type;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private NotificationStatus status = NotificationStatus.UNREAD;
 
     @Column
-    private String fullName;
+    private String actionUrl; // URL để redirect khi click vào notification
 
-    // className is now handled through StudentClass entity
-    // private String className;
-
-    @ManyToOne
-    @JoinColumn(name = "department_id")
-    private Department department;
-
-    @ManyToOne
-    @JoinColumn(name = "class_id")
-    private StudentClass studentClass;
-
-    private String phone;
-
-    @OneToOne(mappedBy = "student", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Address address;
-
-    private LocalDate dob;
-
-    private String avatarUrl;
+    @Column
+    private String metadata; // JSON string chứa thông tin bổ sung
 
     @CreatedDate
     private LocalDateTime createdAt;

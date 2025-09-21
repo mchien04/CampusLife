@@ -101,6 +101,48 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/student/profile").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/student/profile/*").hasAnyRole("ADMIN", "MANAGER")
 
+                        // Notifications
+                        .requestMatchers(HttpMethod.GET, "/api/notifications/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/notifications/**").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/notifications/**").authenticated()
+
+                        // Task Submissions
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/task/*/my").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/submissions/task/*").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/submissions/*").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.DELETE, "/api/submissions/*").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/submissions/task/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/submissions/*/grade").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Address Management
+                        .requestMatchers(HttpMethod.GET, "/api/addresses/provinces").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/addresses/provinces/*/wards").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/addresses/my").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/addresses/my").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/addresses/my").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.DELETE, "/api/addresses/my").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/addresses/search").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/addresses/load-data").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Student Class Management
+                        .requestMatchers(HttpMethod.GET, "/api/classes").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/classes/department/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/classes/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/classes").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/classes/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/classes/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/classes/*/students").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/classes/*/students/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/classes/*/students/*").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Student Management
+                        .requestMatchers(HttpMethod.GET, "/api/students").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/students/search").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/students/without-class").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/students/department/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/students/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/students/username/*").hasAnyRole("ADMIN", "MANAGER")
+
                         // Default
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())

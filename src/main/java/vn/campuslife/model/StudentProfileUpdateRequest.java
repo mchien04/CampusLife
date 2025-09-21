@@ -18,13 +18,15 @@ public class StudentProfileUpdateRequest {
     @NotBlank(message = "Full name is required")
     private String fullName;
 
-    private String className;
+    // className is now handled through StudentClass entity
+    // private String className;
 
     private Long departmentId;
 
     private String phone;
 
-    private String address;
+    // Address is now handled separately through Address entity
+    // private String address;
 
     private LocalDate dob;
 

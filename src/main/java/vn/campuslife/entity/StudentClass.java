@@ -9,48 +9,31 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
+import java.util.List;
 
 @Entity
-@Table(name = "students")
+@Table(name = "student_classes")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class Student {
+public class StudentClass {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne
-    @JoinColumn(name = "user_id", unique = true, nullable = false)
-    private User user;
-
-    @Column(unique = true)
-    private String studentCode;
+    @Column(nullable = false, unique = true)
+    private String className;
 
     @Column
-    private String fullName;
-
-    // className is now handled through StudentClass entity
-    // private String className;
+    private String description;
 
     @ManyToOne
-    @JoinColumn(name = "department_id")
+    @JoinColumn(name = "department_id", nullable = false)
     private Department department;
 
-    @ManyToOne
-    @JoinColumn(name = "class_id")
-    private StudentClass studentClass;
-
-    private String phone;
-
-    @OneToOne(mappedBy = "student", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Address address;
-
-    private LocalDate dob;
-
-    private String avatarUrl;
+    @OneToMany(mappedBy = "studentClass", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<Student> students;
 
     @CreatedDate
     private LocalDateTime createdAt;
