@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.time.LocalDate;
+import vn.campuslife.enumeration.Gender;
 
 @Data
 @NoArgsConstructor
@@ -31,4 +32,6 @@ public class StudentProfileUpdateRequest {
     private LocalDate dob;
 
     private String avatarUrl;
+
+    private Gender gender;
 }

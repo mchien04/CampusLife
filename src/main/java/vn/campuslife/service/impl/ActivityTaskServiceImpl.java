@@ -6,18 +6,23 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.*;
+import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityTaskRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.service.ActivityTaskService;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -29,6 +34,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
     private final ActivityTaskRepository activityTaskRepository;
     private final ActivityRepository activityRepository;
+    private final ActivityRegistrationRepository activityRegistrationRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final StudentRepository studentRepository;
 
@@ -376,5 +382,109 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         // fallback
         response.setCreatedAt(assignment.getUpdatedAt());
         return response;
+    }
+
+    @Override
+    public Response getRegisteredStudentsForActivity(Long activityId) {
+        try {
+            // Validate activity exists
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            // Get registered students for this activity
+            List<ActivityRegistration> registrations = activityRegistrationRepository
+                    .findByActivityIdAndActivityIsDeletedFalse(activityId);
+
+            List<Map<String, Object>> students = registrations.stream()
+                    .map(registration -> {
+                        Map<String, Object> studentInfo = new HashMap<>();
+                        studentInfo.put("id", registration.getStudent().getId());
+                        studentInfo.put("studentCode", registration.getStudent().getStudentCode());
+                        studentInfo.put("fullName", registration.getStudent().getFullName());
+                        studentInfo.put("email", registration.getStudent().getUser().getEmail());
+                        studentInfo.put("phone", registration.getStudent().getPhone());
+                        studentInfo.put("departmentName", registration.getStudent().getDepartment() != null
+                                ? registration.getStudent().getDepartment().getName()
+                                : null);
+                        studentInfo.put("className", registration.getStudent().getStudentClass() != null
+                                ? registration.getStudent().getStudentClass().getClassName()
+                                : null);
+                        studentInfo.put("registrationStatus", registration.getStatus());
+                        studentInfo.put("registeredDate", registration.getRegisteredDate());
+                        return studentInfo;
+                    })
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Registered students retrieved successfully", students);
+        } catch (Exception e) {
+            logger.error("Failed to get registered students for activity {}: {}", activityId, e.getMessage(), e);
+            return new Response(false, "Failed to get registered students due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response assignTaskToRegisteredStudents(Long activityId, Long taskId) {
+        try {
+            // Validate activity exists
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            // Validate task exists and belongs to this activity
+            Optional<ActivityTask> taskOpt = activityTaskRepository
+                    .findByIdAndActivityIdAndActivityIsDeletedFalse(taskId, activityId);
+            if (taskOpt.isEmpty()) {
+                return new Response(false, "Task not found or doesn't belong to this activity", null);
+            }
+
+            ActivityTask task = taskOpt.get();
+
+            // Get registered students for this activity
+            List<ActivityRegistration> registrations = activityRegistrationRepository
+                    .findByActivityIdAndActivityIsDeletedFalse(activityId);
+
+            if (registrations.isEmpty()) {
+                return new Response(false, "No registered students found for this activity", null);
+            }
+
+            // Create assignments for registered students
+            List<TaskAssignment> assignments = new ArrayList<>();
+            int assignedCount = 0;
+
+            for (ActivityRegistration registration : registrations) {
+                Student student = registration.getStudent();
+
+                // Check if already assigned
+                if (!taskAssignmentRepository.existsByTaskIdAndStudentId(taskId, student.getId())) {
+                    TaskAssignment assignment = new TaskAssignment();
+                    assignment.setTask(task);
+                    assignment.setStudent(student);
+                    assignment.setStatus(TaskStatus.PENDING);
+                    assignments.add(assignment);
+                    assignedCount++;
+                }
+            }
+
+            if (assignments.isEmpty()) {
+                return new Response(false, "All registered students already have this task assigned", null);
+            }
+
+            // Save assignments
+            List<TaskAssignment> savedAssignments = taskAssignmentRepository.saveAll(assignments);
+            List<TaskAssignmentResponse> responses = savedAssignments.stream()
+                    .map(this::toAssignmentResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true,
+                    String.format("Task assigned to %d registered students", assignedCount),
+                    responses);
+        } catch (Exception e) {
+            logger.error("Failed to assign task to registered students: {}", e.getMessage(), e);
+            return new Response(false, "Failed to assign task due to server error", null);
+        }
     }
 }
