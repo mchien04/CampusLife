@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.RegistrationStatus;
-import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
@@ -105,9 +104,15 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             ActivityRegistration registration = registrationOpt.get();
 
-            // Check if can cancel (only PENDING or APPROVED can be cancelled)
+            // Check if can cancel (only PENDING can be cancelled, APPROVED cannot be
+            // cancelled)
             if (registration.getStatus() == RegistrationStatus.CANCELLED) {
                 return new Response(false, "Registration already cancelled", null);
+            }
+
+            if (registration.getStatus() == RegistrationStatus.APPROVED) {
+                return new Response(false,
+                        "Cannot cancel approved registration. This is an auto-approved registration.", null);
             }
 
             registration.setStatus(RegistrationStatus.CANCELLED);

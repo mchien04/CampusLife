@@ -21,6 +21,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
+    private final StudentClassRepository studentClassRepository;
 
     @Override
     @Transactional
@@ -81,6 +82,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
             // Address is now handled separately through Address entity
             student.setDob(request.getDob());
             student.setAvatarUrl(request.getAvatarUrl());
+            student.setGender(request.getGender());
 
             // Update department if provided
             if (request.getDepartmentId() != null) {
@@ -89,6 +91,16 @@ public class StudentProfileServiceImpl implements StudentProfileService {
                     student.setDepartment(deptOpt.get());
                 } else {
                     return new Response(false, "Department not found", null);
+                }
+            }
+
+            // Update class if provided
+            if (request.getClassId() != null) {
+                Optional<StudentClass> classOpt = studentClassRepository.findById(request.getClassId());
+                if (classOpt.isPresent()) {
+                    student.setStudentClass(classOpt.get());
+                } else {
+                    return new Response(false, "Class not found", null);
                 }
             }
 
@@ -142,12 +154,25 @@ public class StudentProfileServiceImpl implements StudentProfileService {
         response.setEmail(student.getUser().getEmail());
         response.setStudentCode(student.getStudentCode());
         response.setFullName(student.getFullName());
-        // className is now handled through StudentClass entity
-        // response.setClassName(student.getClassName());
+
+        // Set class info if exists
+        if (student.getStudentClass() != null) {
+            response.setClassId(student.getStudentClass().getId());
+            response.setClassName(student.getStudentClass().getClassName());
+        }
+
         response.setPhone(student.getPhone());
-        // Address is now handled separately through Address entity
+
+        // Set address info if exists
+        if (student.getAddress() != null) {
+            Address address = student.getAddress();
+            String fullAddress = buildFullAddress(address);
+            response.setAddress(fullAddress);
+        }
+
         response.setDob(student.getDob());
         response.setAvatarUrl(student.getAvatarUrl());
+        response.setGender(student.getGender());
         response.setCreatedAt(student.getCreatedAt());
         response.setUpdatedAt(student.getUpdatedAt());
 
@@ -164,5 +189,29 @@ public class StudentProfileServiceImpl implements StudentProfileService {
         response.setProfileComplete(isComplete);
 
         return response;
+    }
+
+    private String buildFullAddress(Address address) {
+        StringBuilder fullAddress = new StringBuilder();
+
+        if (address.getStreet() != null && !address.getStreet().trim().isEmpty()) {
+            fullAddress.append(address.getStreet());
+        }
+
+        if (address.getWardName() != null && !address.getWardName().trim().isEmpty()) {
+            if (fullAddress.length() > 0) {
+                fullAddress.append(", ");
+            }
+            fullAddress.append(address.getWardName());
+        }
+
+        if (address.getProvinceName() != null && !address.getProvinceName().trim().isEmpty()) {
+            if (fullAddress.length() > 0) {
+                fullAddress.append(", ");
+            }
+            fullAddress.append(address.getProvinceName());
+        }
+
+        return fullAddress.toString();
     }
 }

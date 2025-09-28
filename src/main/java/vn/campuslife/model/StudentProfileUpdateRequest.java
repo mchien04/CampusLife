@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.time.LocalDate;
+import vn.campuslife.enumeration.Gender;
 
 @Data
 @NoArgsConstructor
@@ -23,6 +24,8 @@ public class StudentProfileUpdateRequest {
 
     private Long departmentId;
 
+    private Long classId;
+
     private String phone;
 
     // Address is now handled separately through Address entity
@@ -31,4 +34,6 @@ public class StudentProfileUpdateRequest {
     private LocalDate dob;
 
     private String avatarUrl;
+
+    private Gender gender;
 }
