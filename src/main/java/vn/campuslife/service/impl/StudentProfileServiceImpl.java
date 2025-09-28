@@ -21,6 +21,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
+    private final StudentClassRepository studentClassRepository;
 
     @Override
     @Transactional
@@ -90,6 +91,16 @@ public class StudentProfileServiceImpl implements StudentProfileService {
                     student.setDepartment(deptOpt.get());
                 } else {
                     return new Response(false, "Department not found", null);
+                }
+            }
+
+            // Update class if provided
+            if (request.getClassId() != null) {
+                Optional<StudentClass> classOpt = studentClassRepository.findById(request.getClassId());
+                if (classOpt.isPresent()) {
+                    student.setStudentClass(classOpt.get());
+                } else {
+                    return new Response(false, "Class not found", null);
                 }
             }
 
