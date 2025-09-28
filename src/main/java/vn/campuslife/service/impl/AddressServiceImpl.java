@@ -59,15 +59,36 @@ public class AddressServiceImpl implements AddressService {
     @Override
     public Response getWardsByProvince(Integer provinceCode) {
         try {
-            Response provinceDataResponse = loadProvinceDataFromGitHub();
-            if (!provinceDataResponse.isStatus()) {
-                return new Response(false, "Failed to load province data", null);
+            if (provinceCode == null) {
+                return new Response(false, "Province code is required", null);
             }
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> provinceData = (List<Map<String, Object>>) provinceDataResponse.getBody();
 
-            for (Map<String, Object> province : provinceData) {
-                if (province.get("matinhTMS").equals(provinceCode)) {
+            // SỬA LỖI: Lấy data từ Response object
+            Response provinceDataResponse = loadProvinceDataFromGitHub();
+            if (!provinceDataResponse.isStatus() || provinceDataResponse.getBody() == null) {
+                return new Response(false, "No province data available", null);
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> allProvinces = (List<Map<String, Object>>) provinceDataResponse.getBody();
+
+            for (Map<String, Object> province : allProvinces) {
+                // SỬA LỖI: Parse String thành Integer thay vì cast trực tiếp
+                Object matinhTMSObj = province.get("matinhTMS");
+                Integer provinceTMS = null;
+
+                if (matinhTMSObj instanceof String) {
+                    try {
+                        provinceTMS = Integer.parseInt((String) matinhTMSObj);
+                    } catch (NumberFormatException e) {
+                        logger.warn("Invalid province code format: {}", matinhTMSObj);
+                        continue;
+                    }
+                } else if (matinhTMSObj instanceof Integer) {
+                    provinceTMS = (Integer) matinhTMSObj;
+                }
+
+                if (provinceTMS != null && provinceTMS.equals(provinceCode)) {
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> wards = (List<Map<String, Object>>) province.get("phuongxa");
                     return new Response(true, "Wards retrieved successfully", wards);
@@ -76,7 +97,7 @@ public class AddressServiceImpl implements AddressService {
 
             return new Response(false, "Province not found", null);
         } catch (Exception e) {
-            logger.error("Failed to get wards for province {}: {}", provinceCode, e.getMessage(), e);
+            logger.error("Failed to get wards by province: {}", e.getMessage(), e);
             return new Response(false, "Failed to get wards: " + e.getMessage(), null);
         }
     }
@@ -113,6 +134,10 @@ public class AddressServiceImpl implements AddressService {
     public Response updateStudentAddress(Long studentId, Integer provinceCode, String provinceName,
             Integer wardCode, String wardName, String street, String note) {
         try {
+            // Log input parameters for debugging
+            logger.info("Updating address for student {}: provinceCode={}, provinceName={}, wardCode={}, wardName={}",
+                    studentId, provinceCode, provinceName, wardCode, wardName);
+
             Optional<Address> addressOpt = addressRepository.findByStudentIdAndIsDeletedFalse(studentId);
             if (addressOpt.isEmpty()) {
                 return createStudentAddress(studentId, provinceCode, provinceName, wardCode, wardName, street, note);
@@ -126,8 +151,15 @@ public class AddressServiceImpl implements AddressService {
             address.setStreet(street);
             address.setNote(note);
 
-            addressRepository.save(address);
-            return new Response(true, "Address updated successfully", address);
+            Address savedAddress = addressRepository.save(address);
+            // ensure bidirectional consistency
+            Student student = savedAddress.getStudent();
+            if (student != null && student.getAddress() == null) {
+                student.setAddress(savedAddress);
+                studentRepository.save(student);
+            }
+            logger.info("Address updated successfully: provinceName={}", savedAddress.getProvinceName());
+            return new Response(true, "Address updated successfully", savedAddress);
         } catch (Exception e) {
             logger.error("Failed to update student address: {}", e.getMessage(), e);
             return new Response(false, "Failed to update address: " + e.getMessage(), null);
@@ -139,6 +171,10 @@ public class AddressServiceImpl implements AddressService {
     public Response createStudentAddress(Long studentId, Integer provinceCode, String provinceName,
             Integer wardCode, String wardName, String street, String note) {
         try {
+            // Log input parameters for debugging
+            logger.info("Creating address for student {}: provinceCode={}, provinceName={}, wardCode={}, wardName={}",
+                    studentId, provinceCode, provinceName, wardCode, wardName);
+
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {
                 return new Response(false, "Student not found", null);
@@ -151,7 +187,10 @@ public class AddressServiceImpl implements AddressService {
             }
 
             Address address = new Address();
-            address.setStudent(studentOpt.get());
+            Student student = studentOpt.get();
+            address.setStudent(student);
+            // keep bidirectional relation in-memory immediately
+            student.setAddress(address);
             address.setProvinceCode(provinceCode);
             address.setProvinceName(provinceName);
             address.setWardCode(wardCode);
@@ -159,8 +198,12 @@ public class AddressServiceImpl implements AddressService {
             address.setStreet(street);
             address.setNote(note);
 
-            addressRepository.save(address);
-            return new Response(true, "Address created successfully", address);
+            Address savedAddress = addressRepository.save(address);
+            // ensure bidirectional consistency after save
+            student.setAddress(savedAddress);
+            studentRepository.save(student);
+            logger.info("Address created successfully: provinceName={}", savedAddress.getProvinceName());
+            return new Response(true, "Address created successfully", savedAddress);
         } catch (Exception e) {
             logger.error("Failed to create student address: {}", e.getMessage(), e);
             return new Response(false, "Failed to create address: " + e.getMessage(), null);
@@ -179,6 +222,14 @@ public class AddressServiceImpl implements AddressService {
             Address address = addressOpt.get();
             address.setDeleted(true);
             addressRepository.save(address);
+
+            // unlink from student
+            Student student = address.getStudent();
+            if (student != null && student.getAddress() != null
+                    && student.getAddress().getId().equals(address.getId())) {
+                student.setAddress(null);
+                studentRepository.save(student);
+            }
 
             return new Response(true, "Address deleted successfully", null);
         } catch (Exception e) {

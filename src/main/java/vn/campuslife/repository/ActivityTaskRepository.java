@@ -54,4 +54,11 @@ public interface ActivityTaskRepository extends JpaRepository<ActivityTask, Long
      */
     @Query("SELECT COUNT(at) FROM ActivityTask at WHERE at.activity.id = :activityId AND at.activity.isDeleted = false")
     Long countByActivityId(@Param("activityId") Long activityId);
+
+    /**
+     * Lấy nhiệm vụ theo ID và activity ID (chỉ lấy nếu activity chưa bị xóa)
+     */
+    @Query("SELECT at FROM ActivityTask at WHERE at.id = :taskId AND at.activity.id = :activityId AND at.activity.isDeleted = false")
+    Optional<ActivityTask> findByIdAndActivityIdAndActivityIsDeletedFalse(@Param("taskId") Long taskId,
+            @Param("activityId") Long activityId);
 }
