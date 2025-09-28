@@ -24,6 +24,8 @@ public class StudentProfileUpdateRequest {
 
     private Long departmentId;
 
+    private Long classId;
+
     private String phone;
 
     // Address is now handled separately through Address entity
