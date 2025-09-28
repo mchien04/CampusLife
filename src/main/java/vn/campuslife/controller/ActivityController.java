@@ -26,7 +26,6 @@ public class ActivityController {
         this.activityService = activityService;
     }
 
-
     @PostMapping
     public ResponseEntity<Response> createActivity(@RequestBody CreateActivityRequest request) {
         try {
@@ -78,7 +77,7 @@ public class ActivityController {
 
     @PutMapping("/{id}")
     public ResponseEntity<Response> updateActivity(@PathVariable Long id,
-                                                   @RequestBody CreateActivityRequest request) {
+            @RequestBody CreateActivityRequest request) {
         try {
             Response response = activityService.updateActivity(id, request);
             return response.isStatus()
@@ -105,19 +104,17 @@ public class ActivityController {
         }
     }
 
-
     @GetMapping("/score-type/{scoreType}")
     public ResponseEntity<List<Activity>> getByScoreType(@PathVariable ScoreType scoreType) {
         return ResponseEntity.ok(activityService.getActivitiesByScoreType(scoreType));
     }
 
-
     @GetMapping("/month")
     public List<Activity> getByMonth(@RequestParam(required = false) Integer year,
-                                     @RequestParam(required = false) Integer month) {
+            @RequestParam(required = false) Integer month) {
         YearMonth ym = (year == null || month == null) ? YearMonth.now() : YearMonth.of(year, month);
         LocalDate start = ym.atDay(1);
-        LocalDate end   = ym.plusMonths(1).atDay(1);
+        LocalDate end = ym.plusMonths(1).atDay(1);
         return activityService.getActivitiesByMonth(start, end);
     }
 
@@ -125,10 +122,76 @@ public class ActivityController {
     public List<Activity> byDepartment(@PathVariable Long deptId) {
         return activityService.getActivitiesForDepartment(deptId);
     }
+
     @GetMapping("/my")
     public List<Activity> myActivities(org.springframework.security.core.Authentication auth) {
         String username = (auth != null) ? auth.getName() : null;
-        if (username == null) return List.of();
+        if (username == null)
+            return List.of();
         return activityService.listForCurrentUser(username);
+    }
+
+    /**
+     * Kiểm tra activity có yêu cầu nộp bài không
+     */
+    @GetMapping("/{activityId}/requires-submission")
+    public ResponseEntity<Response> checkRequiresSubmission(@PathVariable Long activityId) {
+        try {
+            Response response = activityService.checkRequiresSubmission(activityId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error checking submission requirement for activity {}: {}", activityId, e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(new Response(false, "Server error occurred", null));
+        }
+    }
+
+    /**
+     * Kiểm tra trạng thái đăng ký của student cho activity
+     */
+    @GetMapping("/{activityId}/registration-status")
+    public ResponseEntity<Response> checkRegistrationStatus(@PathVariable Long activityId,
+            org.springframework.security.core.Authentication auth) {
+        try {
+            String username = (auth != null) ? auth.getName() : null;
+            if (username == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Authentication required", null));
+            }
+
+            Response response = activityService.checkRegistrationStatus(activityId, username);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error checking registration status for activity {}: {}", activityId, e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(new Response(false, "Server error occurred", null));
+        }
+    }
+
+    /**
+     * Debug endpoint để kiểm tra thông tin user hiện tại
+     */
+    @GetMapping("/debug/user-info")
+    public ResponseEntity<Response> debugUserInfo(org.springframework.security.core.Authentication auth) {
+        try {
+            if (auth == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "No authentication found", null));
+            }
+
+            java.util.Map<String, Object> userInfo = new java.util.HashMap<>();
+            userInfo.put("username", auth.getName());
+            userInfo.put("authorities", auth.getAuthorities().stream()
+                    .map(authority -> authority.getAuthority())
+                    .collect(java.util.stream.Collectors.toList()));
+            userInfo.put("isAuthenticated", auth.isAuthenticated());
+            userInfo.put("principal", auth.getPrincipal().getClass().getSimpleName());
+
+            return ResponseEntity.ok(new Response(true, "User info retrieved", userInfo));
+        } catch (Exception e) {
+            logger.error("Error getting user info: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(new Response(false, "Server error occurred", null));
+        }
     }
 }

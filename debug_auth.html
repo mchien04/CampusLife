@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Debug Authentication</title>
+</head>
+
+<body>
+    <h1>Debug Authentication</h1>
+
+    <div>
+        <h2>1. Test Debug Endpoint</h2>
+        <button onclick="testDebugEndpoint()">Test Debug User Info</button>
+        <div id="debugResult"></div>
+    </div>
+
+    <div>
+        <h2>2. Test Update Activity</h2>
+        <button onclick="testUpdateActivity()">Test Update Activity</button>
+        <div id="updateResult"></div>
+    </div>
+
+    <script>
+        // Lấy token từ localStorage
+        function getToken() {
+            return localStorage.getItem('token');
+        }
+
+        // Test debug endpoint
+        async function testDebugEndpoint() {
+            const token = getToken();
+            if (!token) {
+                document.getElementById('debugResult').innerHTML = '<p style="color: red;">No token found in localStorage</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8080/api/activities/debug/user-info', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                document.getElementById('debugResult').innerHTML = `
+                    <h3>Debug Result:</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Response:</strong></p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('debugResult').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Test update activity
+        async function testUpdateActivity() {
+            const token = getToken();
+            if (!token) {
+                document.getElementById('updateResult').innerHTML = '<p style="color: red;">No token found in localStorage</p>';
+                return;
+            }
+
+            const updateData = {
+                name: "Test Activity Updated",
+                type: "WORKSHOP",
+                scoreType: "PASS_FAIL",
+                description: "Updated description",
+                startDate: "2024-12-20",
+                endDate: "2024-12-21",
+                location: "Updated Location",
+                organizerIds: [1],
+                isImportant: false,
+                mandatoryForFacultyStudents: false,
+                requiresSubmission: false
+            };
+
+            try {
+                const response = await fetch('http://localhost:8080/api/activities/2', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(updateData)
+                });
+
+                const data = await response.json();
+                document.getElementById('updateResult').innerHTML = `
+                    <h3>Update Result:</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Response:</strong></p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('updateResult').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+
+</html>

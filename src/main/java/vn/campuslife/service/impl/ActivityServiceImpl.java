@@ -6,11 +6,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.Department;
+import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.ActivityResponse;
 import vn.campuslife.model.CreateActivityRequest;
 import vn.campuslife.model.Response;
+import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
@@ -27,9 +30,9 @@ public class ActivityServiceImpl implements ActivityService {
     private static final Logger logger = LoggerFactory.getLogger(ActivityServiceImpl.class);
 
     private final ActivityRepository activityRepository;
+    private final ActivityRegistrationRepository activityRegistrationRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
-
 
     @Override
     @Transactional
@@ -37,7 +40,8 @@ public class ActivityServiceImpl implements ActivityService {
         try {
 
             String err = validateRequest(request);
-            if (err != null) return new Response(false, err, null);
+            if (err != null)
+                return new Response(false, err, null);
 
             Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
 
@@ -46,6 +50,10 @@ public class ActivityServiceImpl implements ActivityService {
             a.setOrganizers(organizers);
 
             Activity saved = activityRepository.save(a);
+
+            // Auto-register students based on flags
+            autoRegisterStudents(saved);
+
             return new Response(true, "Activity created successfully", toResponse(saved));
         } catch (Exception e) {
             logger.error("Failed to create activity: {}", e.getMessage(), e);
@@ -69,7 +77,8 @@ public class ActivityServiceImpl implements ActivityService {
     public Response getActivityById(Long id) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
-            if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+            if (opt.isEmpty())
+                return new Response(false, "Activity not found", null);
             return new Response(true, "Activity retrieved successfully", toResponse(opt.get()));
         } catch (Exception e) {
             logger.error("Failed to retrieve activity {}: {}", id, e.getMessage(), e);
@@ -82,21 +91,26 @@ public class ActivityServiceImpl implements ActivityService {
     public Response updateActivity(Long id, CreateActivityRequest request) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
-            if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+            if (opt.isEmpty())
+                return new Response(false, "Activity not found", null);
 
             String err = validateRequest(request);
-            if (err != null) return new Response(false, err, null);
+            if (err != null)
+                return new Response(false, err, null);
 
             Activity a = opt.get();
 
             applyRequestToEntity(request, a);
-
 
             Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
             a.getOrganizers().clear();
             a.getOrganizers().addAll(organizers);
 
             Activity saved = activityRepository.save(a);
+
+            // Auto-register students if flags changed
+            autoRegisterStudents(saved);
+
             return new Response(true, "Activity updated successfully", toResponse(saved));
         } catch (Exception e) {
             logger.error("Failed to update activity {}: {}", id, e.getMessage(), e);
@@ -109,7 +123,8 @@ public class ActivityServiceImpl implements ActivityService {
     public Response deleteActivity(Long id) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
-            if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+            if (opt.isEmpty())
+                return new Response(false, "Activity not found", null);
 
             Activity a = opt.get();
             a.setDeleted(true);
@@ -120,8 +135,6 @@ public class ActivityServiceImpl implements ActivityService {
             return new Response(false, "Failed to delete activity due to server error", null);
         }
     }
-
-
 
     @Override
     public List<Activity> getActivitiesByScoreType(ScoreType scoreType) {
@@ -141,19 +154,92 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     public List<Activity> listForCurrentUser(String username) {
         Long deptId = studentRepository.findDepartmentIdByUsername(username);
-        if (deptId == null) return Collections.emptyList();
+        if (deptId == null)
+            return Collections.emptyList();
         return activityRepository.findForDepartment(deptId);
     }
 
+    @Override
+    public Response checkRequiresSubmission(Long activityId) {
+        try {
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            Activity activity = activityOpt.get();
+            Map<String, Object> result = new HashMap<>();
+            result.put("activityId", activity.getId());
+            result.put("activityName", activity.getName());
+            result.put("requiresSubmission", activity.isRequiresSubmission());
+            result.put("isImportant", activity.isImportant());
+            result.put("mandatoryForFacultyStudents", activity.isMandatoryForFacultyStudents());
+            result.put("maxPoints", activity.getMaxPoints());
+            result.put("scoreType", activity.getScoreType());
+
+            return new Response(true, "Submission requirement checked successfully", result);
+        } catch (Exception e) {
+            logger.error("Failed to check submission requirement for activity {}: {}", activityId, e.getMessage(), e);
+            return new Response(false, "Failed to check submission requirement", null);
+        }
+    }
+
+    @Override
+    public Response checkRegistrationStatus(Long activityId, String username) {
+        try {
+            // Get student by username
+            Optional<Student> studentOpt = studentRepository.findByUserUsernameAndIsDeletedFalse(username);
+            if (studentOpt.isEmpty()) {
+                return new Response(false, "Student not found", null);
+            }
+
+            // Check if activity exists
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            // Check registration status
+            Optional<ActivityRegistration> registrationOpt = activityRegistrationRepository
+                    .findByActivityIdAndStudentId(activityId, studentOpt.get().getId());
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("activityId", activityId);
+            result.put("studentId", studentOpt.get().getId());
+            result.put("isRegistered", registrationOpt.isPresent());
+
+            if (registrationOpt.isPresent()) {
+                ActivityRegistration registration = registrationOpt.get();
+                result.put("registrationId", registration.getId());
+                result.put("status", registration.getStatus());
+                result.put("registeredDate", registration.getRegisteredDate());
+                result.put("canCancel",
+                        !registration.getStatus().equals(vn.campuslife.enumeration.RegistrationStatus.APPROVED));
+            }
+
+            return new Response(true, "Registration status checked successfully", result);
+        } catch (Exception e) {
+            logger.error("Failed to check registration status for activity {} and user {}: {}", activityId, username,
+                    e.getMessage(), e);
+            return new Response(false, "Failed to check registration status", null);
+        }
+    }
 
     private String validateRequest(CreateActivityRequest r) {
-        if (r.getName() == null || r.getName().isBlank()) return "Activity name is required";
-        if (r.getType() == null) return "Activity type is required";
-        if (r.getScoreType() == null) return "Score type is required";
-        if (r.getStartDate() == null || r.getEndDate() == null) return "Start date and end date are required";
-        if (r.getStartDate().isAfter(r.getEndDate())) return "Start date must be before end date";
-        if (r.getLocation() == null || r.getLocation().isBlank()) return "Location is required";
-        if (r.getOrganizerIds() == null || r.getOrganizerIds().isEmpty()) return "Organizer ids are required";
+        if (r.getName() == null || r.getName().isBlank())
+            return "Activity name is required";
+        if (r.getType() == null)
+            return "Activity type is required";
+        if (r.getScoreType() == null)
+            return "Score type is required";
+        if (r.getStartDate() == null || r.getEndDate() == null)
+            return "Start date and end date are required";
+        if (r.getStartDate().isAfter(r.getEndDate()))
+            return "Start date must be before end date";
+        if (r.getLocation() == null || r.getLocation().isBlank())
+            return "Location is required";
+        if (r.getOrganizerIds() == null || r.getOrganizerIds().isEmpty())
+            return "Organizer ids are required";
         return null;
     }
 
@@ -185,7 +271,8 @@ public class ActivityServiceImpl implements ActivityService {
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
-        if (organizerIds == null || organizerIds.isEmpty()) return new LinkedHashSet<>();
+        if (organizerIds == null || organizerIds.isEmpty())
+            return new LinkedHashSet<>();
         var deps = departmentRepository.findAllById(organizerIds);
         var found = deps.stream().map(Department::getId).collect(Collectors.toSet());
         var missing = organizerIds.stream().filter(id -> !found.contains(id)).toList();
@@ -230,5 +317,64 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setCreatedBy(a.getCreatedBy());
         dto.setLastModifiedBy(a.getLastModifiedBy());
         return dto;
+    }
+
+    /**
+     * Tự động đăng ký sinh viên cho activity dựa trên các flag
+     */
+    private void autoRegisterStudents(Activity activity) {
+        try {
+            List<Student> studentsToRegister = new ArrayList<>();
+
+            // Nếu isImportant = true: đăng ký cho tất cả sinh viên
+            if (activity.isImportant()) {
+                List<Student> allStudents = studentRepository.findAll().stream()
+                        .filter(student -> !student.isDeleted())
+                        .collect(Collectors.toList());
+                studentsToRegister.addAll(allStudents);
+                logger.info("Auto-registering {} students for important activity: {}", allStudents.size(),
+                        activity.getName());
+            }
+
+            // Nếu mandatoryForFacultyStudents = true: đăng ký cho sinh viên thuộc khoa tổ
+            // chức
+            if (activity.isMandatoryForFacultyStudents() && !activity.getOrganizers().isEmpty()) {
+                List<Long> departmentIds = activity.getOrganizers().stream()
+                        .map(Department::getId)
+                        .collect(Collectors.toList());
+
+                List<Student> facultyStudents = studentRepository.findByDepartmentIdInAndIsDeletedFalse(departmentIds);
+                studentsToRegister.addAll(facultyStudents);
+                logger.info("Auto-registering {} faculty students for mandatory activity: {}", facultyStudents.size(),
+                        activity.getName());
+            }
+
+            // Tạo registrations cho các sinh viên (chỉ những sinh viên chưa đăng ký)
+            if (!studentsToRegister.isEmpty()) {
+                List<ActivityRegistration> registrations = studentsToRegister.stream()
+                        .distinct() // Remove duplicates
+                        .filter(student -> !activityRegistrationRepository
+                                .existsByActivityIdAndStudentId(activity.getId(), student.getId()))
+                        .map(student -> {
+                            ActivityRegistration registration = new ActivityRegistration();
+                            registration.setActivity(activity);
+                            registration.setStudent(student);
+                            registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
+                            registration.setRegisteredDate(java.time.LocalDateTime.now());
+                            return registration;
+                        })
+                        .collect(Collectors.toList());
+
+                if (!registrations.isEmpty()) {
+                    activityRegistrationRepository.saveAll(registrations);
+                    logger.info("Successfully auto-registered {} students for activity: {}", registrations.size(),
+                            activity.getName());
+                } else {
+                    logger.info("All students already registered for activity: {}", activity.getName());
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to auto-register students for activity {}: {}", activity.getId(), e.getMessage(), e);
+        }
     }
 }

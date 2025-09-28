@@ -86,4 +86,23 @@ public class ActivityTaskController {
         Response response = activityTaskService.autoAssignMandatoryTasks(activityId);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * Lấy danh sách sinh viên đăng ký cho activity để phân công nhiệm vụ
+     */
+    @GetMapping("/activity/{activityId}/registered-students")
+    public ResponseEntity<Response> getRegisteredStudentsForActivity(@PathVariable Long activityId) {
+        Response response = activityTaskService.getRegisteredStudentsForActivity(activityId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Phân công nhiệm vụ cho tất cả sinh viên đăng ký activity
+     */
+    @PostMapping("/assign-to-registered/{activityId}")
+    public ResponseEntity<Response> assignTaskToRegisteredStudents(@PathVariable Long activityId,
+            @RequestParam Long taskId) {
+        Response response = activityTaskService.assignTaskToRegisteredStudents(activityId, taskId);
+        return ResponseEntity.ok(response);
+    }
 }

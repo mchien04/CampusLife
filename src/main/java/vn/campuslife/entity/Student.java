@@ -10,6 +10,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import vn.campuslife.enumeration.Gender;
 
 @Entity
 @Table(name = "students")
@@ -49,6 +50,10 @@ public class Student {
     private Address address;
 
     private LocalDate dob;
+
+    @Enumerated(EnumType.STRING)
+    @Column
+    private Gender gender;
 
     private String avatarUrl;
 

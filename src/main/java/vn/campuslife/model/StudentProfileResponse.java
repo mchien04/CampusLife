@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import vn.campuslife.enumeration.Gender;
 
 @Data
 @NoArgsConstructor
@@ -18,15 +19,15 @@ public class StudentProfileResponse {
     private String email;
     private String studentCode;
     private String fullName;
-    // className is now handled through StudentClass entity
-    // private String className;
+    private Long classId;
+    private String className;
     private Long departmentId;
     private String departmentName;
     private String phone;
-    // Address is now handled separately through Address entity
-    // private String address;
+    private String address; // Full address string for display
     private LocalDate dob;
     private String avatarUrl;
+    private Gender gender;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private boolean isProfileComplete;

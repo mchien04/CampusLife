@@ -1,12 +1,8 @@
 package vn.campuslife.service;
 
-import vn.campuslife.model.ActivityTaskResponse;
 import vn.campuslife.model.CreateActivityTaskRequest;
 import vn.campuslife.model.TaskAssignmentRequest;
-import vn.campuslife.model.TaskAssignmentResponse;
 import vn.campuslife.model.Response;
-
-import java.util.List;
 
 public interface ActivityTaskService {
 
@@ -64,4 +60,14 @@ public interface ActivityTaskService {
      * Tự động phân công nhiệm vụ cho sinh viên thuộc khoa (nếu bắt buộc)
      */
     Response autoAssignMandatoryTasks(Long activityId);
+
+    /**
+     * Lấy danh sách sinh viên đăng ký cho activity để phân công nhiệm vụ
+     */
+    Response getRegisteredStudentsForActivity(Long activityId);
+
+    /**
+     * Phân công nhiệm vụ cho tất cả sinh viên đăng ký activity
+     */
+    Response assignTaskToRegisteredStudents(Long activityId, Long taskId);
 }
