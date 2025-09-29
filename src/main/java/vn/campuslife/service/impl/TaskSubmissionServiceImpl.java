@@ -9,6 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.TaskSubmissionService;
 
@@ -77,7 +78,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             taskSubmissionRepository.save(submission);
-            return new Response(true, "Task submitted successfully", submission);
+            return new Response(true, "Task submitted successfully", toDto(submission));
         } catch (IOException e) {
             logger.error("Failed to upload files: {}", e.getMessage(), e);
             return new Response(false, "Failed to upload files: " + e.getMessage(), null);
@@ -119,7 +120,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             taskSubmissionRepository.save(submission);
-            return new Response(true, "Submission updated successfully", submission);
+            return new Response(true, "Submission updated successfully", toDto(submission));
         } catch (IOException e) {
             logger.error("Failed to upload files: {}", e.getMessage(), e);
             return new Response(false, "Failed to upload files: " + e.getMessage(), null);
@@ -137,7 +138,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             if (submissionOpt.isEmpty()) {
                 return new Response(false, "No submission found for this task", null);
             }
-            return new Response(true, "Student submission retrieved successfully", submissionOpt.get());
+            return new Response(true, "Student submission retrieved successfully", toDto(submissionOpt.get()));
         } catch (Exception e) {
             logger.error("Failed to get student submissions: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submissions: " + e.getMessage(), null);
@@ -149,7 +150,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         try {
             List<TaskSubmission> submissions = taskSubmissionRepository
                     .findByTaskIdAndIsDeletedFalseOrderBySubmittedAtDesc(taskId);
-            return new Response(true, "Task submissions retrieved successfully", submissions);
+            List<TaskSubmissionResponse> dtos = submissions.stream().map(this::toDto).toList();
+            return new Response(true, "Task submissions retrieved successfully", dtos);
         } catch (Exception e) {
             logger.error("Failed to get task submissions: {}", e.getMessage(), e);
             return new Response(false, "Failed to get task submissions: " + e.getMessage(), null);
@@ -178,7 +180,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             submission.setGradedAt(LocalDateTime.now());
 
             taskSubmissionRepository.save(submission);
-            return new Response(true, "Submission graded successfully", submission);
+            return new Response(true, "Submission graded successfully", toDto(submission));
         } catch (Exception e) {
             logger.error("Failed to grade submission: {}", e.getMessage(), e);
             return new Response(false, "Failed to grade submission: " + e.getMessage(), null);
@@ -193,7 +195,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                 return new Response(false, "Submission not found", null);
             }
 
-            return new Response(true, "Submission details retrieved successfully", submissionOpt.get());
+            return new Response(true, "Submission details retrieved successfully", toDto(submissionOpt.get()));
         } catch (Exception e) {
             logger.error("Failed to get submission details: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submission details: " + e.getMessage(), null);
@@ -242,5 +244,39 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             logger.error("Failed to get submission files: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submission files: " + e.getMessage(), null);
         }
+    }
+
+    private TaskSubmissionResponse toDto(TaskSubmission submission) {
+        TaskSubmissionResponse dto = new TaskSubmissionResponse();
+        dto.setId(submission.getId());
+
+        if (submission.getTask() != null) {
+            dto.setTaskId(submission.getTask().getId());
+            dto.setTaskTitle(submission.getTask().getName());
+        }
+
+        if (submission.getStudent() != null) {
+            dto.setStudentId(submission.getStudent().getId());
+            dto.setStudentCode(submission.getStudent().getStudentCode());
+            dto.setStudentName(submission.getStudent().getFullName());
+        }
+
+        dto.setContent(submission.getContent());
+        if (submission.getFileUrls() != null && !submission.getFileUrls().isEmpty()) {
+            dto.setFileUrls(Arrays.asList(submission.getFileUrls().split(",")));
+        }
+
+        dto.setScore(submission.getScore());
+        dto.setFeedback(submission.getFeedback());
+        if (submission.getGrader() != null) {
+            dto.setGraderId(submission.getGrader().getId());
+            dto.setGraderUsername(submission.getGrader().getUsername());
+        }
+
+        dto.setStatus(submission.getStatus());
+        dto.setSubmittedAt(submission.getSubmittedAt());
+        dto.setUpdatedAt(submission.getUpdatedAt());
+        dto.setGradedAt(submission.getGradedAt());
+        return dto;
     }
 }
