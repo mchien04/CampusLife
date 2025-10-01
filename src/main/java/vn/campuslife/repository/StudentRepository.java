@@ -7,8 +7,10 @@ import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.Student;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public interface StudentRepository extends JpaRepository<Student, Long> {
@@ -42,4 +44,8 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
      * Tìm sinh viên theo ID và chưa bị xóa
      */
     Optional<Student> findByIdAndIsDeletedFalse(Long id);
+
+    //tìm danh sách tất cả sinh viên cùng 1 khoa
+    List<Student> findByDepartment_IdIn(Collection<Long> departmentIds);
+
 }

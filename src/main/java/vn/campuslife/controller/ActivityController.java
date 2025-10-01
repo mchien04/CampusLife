@@ -36,8 +36,8 @@ public class ActivityController {
             logger.info("ScoreType: {}", request.getScoreType());
             logger.info("BannerUrl: {}", request.getBannerUrl());
             logger.info("===============================");
-
             Response response = activityService.createActivity(request);
+
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);

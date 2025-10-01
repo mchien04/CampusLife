@@ -87,14 +87,18 @@ public class SecurityConfig {
                         .requestMatchers("/api/assignments/**").hasAnyRole("ADMIN", "MANAGER")
 
                         // Activity Registrations
-                        .requestMatchers(HttpMethod.GET, "/api/registrations/my/**").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/registrations").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/registrations/activity/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/check/*").hasRole("STUDENT")
-                        .requestMatchers(HttpMethod.POST, "/api/registrations/participate").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").hasAnyRole("ADMIN", "MANAGER")
+
                         .requestMatchers(HttpMethod.GET, "/api/registrations/activity/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/registrations/*/status").hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers(HttpMethod.GET, "/api/registrations/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/*").hasAnyRole("ADMIN", "MANAGER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/activities/*/report").hasRole("MANAGER")
+
+
 
                         // Student Profile
                         .requestMatchers(HttpMethod.GET, "/api/student/profile").hasRole("STUDENT")

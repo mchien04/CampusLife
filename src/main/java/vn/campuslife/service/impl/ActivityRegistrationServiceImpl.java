@@ -11,10 +11,11 @@ import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
+import vn.campuslife.util.TicketCodeUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,65 +33,70 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Transactional
     public Response registerForActivity(ActivityRegistrationRequest request, Long studentId) {
         try {
-            // Validate activity exists and not deleted
+            // 1) Kiểm tra activity
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
             if (activityOpt.isEmpty()) {
                 return new Response(false, "Activity not found", null);
             }
-
             Activity activity = activityOpt.get();
 
-            // Validate student exists
+            // 2) Kiểm tra student
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {
                 return new Response(false, "Student not found", null);
             }
-
             Student student = studentOpt.get();
 
-            // Check if already registered
+            // 3) Đã đăng ký chưa?
             if (registrationRepository.existsByActivityIdAndStudentId(request.getActivityId(), studentId)) {
                 return new Response(false, "Already registered for this activity", null);
             }
 
-            // Check registration deadline
+            // 4) Thời gian mở/đóng đăng ký
             if (activity.getRegistrationDeadline() != null &&
                     LocalDateTime.now().isAfter(activity.getRegistrationDeadline().atStartOfDay())) {
                 return new Response(false, "Registration deadline has passed", null);
             }
-
-            // Check if registration is open
             if (activity.getRegistrationStartDate() != null &&
                     LocalDateTime.now().isBefore(activity.getRegistrationStartDate().atStartOfDay())) {
                 return new Response(false, "Registration is not yet open", null);
             }
 
-            // Check ticket quantity
+            // 5) Kiểm tra số lượng vé (nếu giới hạn theo APPROVED)
             if (activity.getTicketQuantity() != null) {
-                Long currentRegistrations = registrationRepository.countByActivityIdAndStatus(
-                        request.getActivityId(), RegistrationStatus.APPROVED);
-                if (currentRegistrations >= activity.getTicketQuantity()) {
+                Long current = registrationRepository
+                        .countByActivityIdAndStatus(request.getActivityId(), RegistrationStatus.APPROVED);
+                if (current >= activity.getTicketQuantity()) {
                     return new Response(false, "Activity is full", null);
                 }
             }
 
-            // Create registration
+            // 6) Tạo đăng ký + MÃ VÉ
             ActivityRegistration registration = new ActivityRegistration();
             registration.setActivity(activity);
             registration.setStudent(student);
             registration.setRegisteredDate(LocalDateTime.now());
             registration.setStatus(RegistrationStatus.PENDING);
-            registration.setFeedback(request.getFeedback());
 
-            ActivityRegistration savedRegistration = registrationRepository.save(registration);
-            ActivityRegistrationResponse response = toRegistrationResponse(savedRegistration);
 
-            return new Response(true, "Successfully registered for activity", response);
+            String code;
+            int attempts = 0;
+            do {
+                code = TicketCodeUtils.newTicketCode();
+                attempts++;
+            } while (registrationRepository.existsByTicketCode(code) && attempts < 3);
+            registration.setTicketCode(code);
+
+            ActivityRegistration saved = registrationRepository.save(registration);
+            ActivityRegistrationResponse payload = toRegistrationResponse(saved);
+
+            return new Response(true, "Successfully registered for activity", payload);
         } catch (Exception e) {
             logger.error("Failed to register for activity: {}", e.getMessage(), e);
             return new Response(false, "Failed to register due to server error", null);
         }
     }
+
 
     @Override
     @Transactional
@@ -166,11 +172,23 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityRegistration registration = registrationOpt.get();
             RegistrationStatus newStatus = RegistrationStatus.valueOf(status.toUpperCase());
             registration.setStatus(newStatus);
-
             ActivityRegistration savedRegistration = registrationRepository.save(registration);
-            ActivityRegistrationResponse response = toRegistrationResponse(savedRegistration);
 
+            if (newStatus == RegistrationStatus.APPROVED) {
+                boolean exists = participationRepository.existsByRegistration(savedRegistration);
+                if (!exists) {
+                    ActivityParticipation participation = new ActivityParticipation();
+                    participation.setRegistration(savedRegistration);
+                    participation.setParticipationType(ParticipationType.REGISTERED);
+                    participation.setPointsEarned(BigDecimal.ZERO);
+                    participation.setDate(LocalDateTime.now());
+                    participationRepository.save(participation);
+                }
+            }
+
+            ActivityRegistrationResponse response = toRegistrationResponse(savedRegistration);
             return new Response(true, "Registration status updated successfully", response);
+
         } catch (IllegalArgumentException e) {
             return new Response(false, "Invalid status: " + status, null);
         } catch (Exception e) {
@@ -178,6 +196,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to update status due to server error", null);
         }
     }
+
 
     @Override
     public Response getRegistrationById(Long registrationId) {
@@ -195,81 +214,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-    @Override
-    @Transactional
-    public Response recordParticipation(ActivityParticipationRequest request, Long studentId) {
-        try {
-            // Validate activity exists
-            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
-            if (activityOpt.isEmpty()) {
-                return new Response(false, "Activity not found", null);
-            }
 
-            // Validate student exists
-            Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
-            if (studentOpt.isEmpty()) {
-                return new Response(false, "Student not found", null);
-            }
 
-            // Check if student is registered and approved
-            Optional<ActivityRegistration> registrationOpt = registrationRepository
-                    .findByActivityIdAndStudentId(request.getActivityId(), studentId);
-
-            if (registrationOpt.isEmpty() || registrationOpt.get().getStatus() != RegistrationStatus.APPROVED) {
-                return new Response(false, "Student is not approved for this activity", null);
-            }
-
-            // Create participation record
-            ActivityParticipation participation = new ActivityParticipation();
-            participation.setActivity(activityOpt.get());
-            participation.setStudent(studentOpt.get());
-            participation.setParticipationType(request.getParticipationType());
-            participation.setPointsEarned(request.getPointsEarned());
-            participation.setDate(LocalDateTime.now());
-
-            ActivityParticipation savedParticipation = participationRepository.save(participation);
-            ActivityParticipationResponse response = toParticipationResponse(savedParticipation);
-
-            return new Response(true, "Participation recorded successfully", response);
-        } catch (Exception e) {
-            logger.error("Failed to record participation: {}", e.getMessage(), e);
-            return new Response(false, "Failed to record participation due to server error", null);
-        }
-    }
-
-    @Override
-    public Response getStudentParticipations(Long studentId) {
-        try {
-            List<ActivityParticipation> participations = participationRepository
-                    .findByStudentIdAndActivityIsDeletedFalse(studentId);
-
-            List<ActivityParticipationResponse> responses = participations.stream()
-                    .map(this::toParticipationResponse)
-                    .collect(Collectors.toList());
-
-            return new Response(true, "Student participations retrieved successfully", responses);
-        } catch (Exception e) {
-            logger.error("Failed to retrieve student participations: {}", e.getMessage(), e);
-            return new Response(false, "Failed to retrieve participations due to server error", null);
-        }
-    }
-
-    @Override
-    public Response getActivityParticipations(Long activityId) {
-        try {
-            List<ActivityParticipation> participations = participationRepository
-                    .findByActivityIdAndActivityIsDeletedFalse(activityId);
-
-            List<ActivityParticipationResponse> responses = participations.stream()
-                    .map(this::toParticipationResponse)
-                    .collect(Collectors.toList());
-
-            return new Response(true, "Activity participations retrieved successfully", responses);
-        } catch (Exception e) {
-            logger.error("Failed to retrieve activity participations: {}", e.getMessage(), e);
-            return new Response(false, "Failed to retrieve participations due to server error", null);
-        }
-    }
 
     @Override
     public Response checkRegistrationStatus(Long activityId, Long studentId) {
@@ -289,36 +235,126 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-    private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration registration) {
-        ActivityRegistrationResponse response = new ActivityRegistrationResponse();
-        response.setId(registration.getId());
-        response.setActivityId(registration.getActivity().getId());
-        response.setActivityName(registration.getActivity().getName());
-        response.setActivityDescription(registration.getActivity().getDescription());
-        response.setActivityStartDate(registration.getActivity().getStartDate());
-        response.setActivityEndDate(registration.getActivity().getEndDate());
-        response.setActivityLocation(registration.getActivity().getLocation());
-        response.setStudentId(registration.getStudent().getId());
-        response.setStudentName(registration.getStudent().getFullName());
-        response.setStudentCode(registration.getStudent().getStudentCode());
-        response.setStatus(registration.getStatus());
-        response.setFeedback(registration.getFeedback());
-        response.setRegisteredDate(registration.getRegisteredDate());
-        response.setCreatedAt(registration.getCreatedAt());
-        return response;
+
+
+    @Override
+    @Transactional
+    public Response checkIn(ActivityParticipationRequest request) {
+        ActivityRegistration registration;
+
+        // Tìm registration theo ticketCode hoặc studentId
+        if (request.getTicketCode() != null && !request.getTicketCode().isBlank()) {
+            registration = registrationRepository.findByTicketCode(request.getTicketCode())
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy ticketCode"));
+        } else if (request.getStudentId() != null) {
+            registration = registrationRepository.findByStudentIdAndStatus(
+                    request.getStudentId(),
+                    RegistrationStatus.APPROVED
+            )
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này"));
+        } else {
+            return Response.error("Cần cung cấp ticketCode hoặc studentId");
+        }
+
+        // Lấy participation đã tạo khi duyệt
+        ActivityParticipation participation = participationRepository.findByRegistration(registration)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
+
+        // Nếu đã check-in rồi thì không cho check-in lại
+        if (participation.getParticipationType() == ParticipationType.CHECKED_IN) {
+            return Response.error("Sinh viên đã check-in trước đó");
+        }
+
+        // Cập nhật trạng thái check-in
+        participation.setParticipationType(ParticipationType.CHECKED_IN);
+        participation.setPointsEarned(registration.getActivity().getMaxPoints());
+        participation.setDate(LocalDateTime.now());
+        participationRepository.save(participation);
+
+        // Cập nhật status của registration (ví dụ sang ATTENDED)
+        registration.setStatus(RegistrationStatus.ATTENDED);
+        registrationRepository.save(registration);
+
+        ActivityParticipationResponse resp = new ActivityParticipationResponse(
+                participation.getId(),
+                registration.getActivity().getId(),
+                registration.getActivity().getName(),
+                registration.getStudent().getId(),
+                registration.getStudent().getFullName(),
+                registration.getStudent().getStudentCode(),
+                participation.getParticipationType(),
+                participation.getPointsEarned(),
+                participation.getDate(),
+                request.getNotes()
+        );
+
+        return Response.success("Check-in thành công", resp);
     }
 
-    private ActivityParticipationResponse toParticipationResponse(ActivityParticipation participation) {
-        ActivityParticipationResponse response = new ActivityParticipationResponse();
-        response.setId(participation.getId());
-        response.setActivityId(participation.getActivity().getId());
-        response.setActivityName(participation.getActivity().getName());
-        response.setStudentId(participation.getStudent().getId());
-        response.setStudentName(participation.getStudent().getFullName());
-        response.setStudentCode(participation.getStudent().getStudentCode());
-        response.setParticipationType(participation.getParticipationType());
-        response.setPointsEarned(participation.getPointsEarned());
-        response.setDate(participation.getDate());
-        return response;
+
+
+
+    private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration r) {
+        Activity a = r.getActivity();
+        Student s = r.getStudent();
+        ActivityRegistrationResponse res = new ActivityRegistrationResponse();
+        res.setId(r.getId());
+        res.setActivityId(a.getId());
+        res.setActivityName(a.getName());
+        res.setActivityDescription(a.getDescription());
+        res.setActivityStartDate(a.getStartDate());
+        res.setActivityEndDate(a.getEndDate());
+        res.setActivityLocation(a.getLocation());
+        res.setStudentId(s.getId());
+        res.setStudentName(s.getFullName());
+        res.setStudentCode(s.getStudentCode());
+        res.setStatus(r.getStatus());
+        res.setRegisteredDate(r.getRegisteredDate());
+        res.setCreatedAt(r.getCreatedAt());
+        res.setTicketCode(r.getTicketCode());
+        return res;
     }
+    @Override
+    @Transactional(readOnly = true)
+    public Response getParticipationReport(Long activityId) {
+        // Lấy tất cả registration đã duyệt
+        List<ActivityRegistration> approvedRegs =
+                registrationRepository.findByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
+
+        // Lấy tất cả participation đã CHECKED_IN
+        List<ActivityParticipation> checkedInList =
+                participationRepository.findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
+
+        Set<Long> checkedInStudentIds = checkedInList.stream()
+                .map(ap -> ap.getRegistration().getStudent().getId())
+                .collect(Collectors.toSet());
+
+        // Phân loại
+        List<StudentResponse> attended = new ArrayList<>();
+        List<StudentResponse> notAttended = new ArrayList<>();
+
+        for (ActivityRegistration reg : approvedRegs) {
+            Student s = reg.getStudent();
+            StudentResponse dto = new StudentResponse(
+                    s.getId(),
+                    s.getFullName(),
+                    s.getStudentCode()
+            );
+
+            if (checkedInStudentIds.contains(s.getId())) {
+                attended.add(dto);
+            } else {
+                notAttended.add(dto);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("attended", attended);
+        result.put("notAttended", notAttended);
+
+        return Response.success("Danh sách tham gia", result);
+    }
+
+
+
 }

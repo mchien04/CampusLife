@@ -21,4 +21,5 @@ public interface ActivityService {
     List<Activity> getActivitiesByMonth(LocalDate start, LocalDate end);
     List<Activity> getActivitiesForDepartment(Long departmentId);
     List<Activity> listForCurrentUser(String username);
+    void registerAllStudents(Long activityId);
 }
