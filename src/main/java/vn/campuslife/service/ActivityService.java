@@ -36,4 +36,7 @@ public interface ActivityService {
      * Kiểm tra trạng thái đăng ký của student cho activity
      */
     Response checkRegistrationStatus(Long activityId, String username);
+
+    void registerAllStudents(Long activityId);
+
 }

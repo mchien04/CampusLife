@@ -132,52 +132,18 @@ public class ActivityRegistrationController {
     /**
      * Ghi nhận tham gia sự kiện
      */
-    @PostMapping("/participate")
-    public ResponseEntity<Response> recordParticipation(@RequestBody @Valid ActivityParticipationRequest request,
-            Authentication authentication) {
+    @PostMapping("/checkin")
+    public ResponseEntity<Response> checkIn(@RequestBody @Valid ActivityParticipationRequest request) {
         try {
-            Long studentId = getStudentIdFromAuth(authentication);
-            if (studentId == null) {
-                return ResponseEntity.badRequest()
-                        .body(new Response(false, "Student not found", null));
-            }
-
-            Response response = registrationService.recordParticipation(request, studentId);
+            Response response = registrationService.checkIn(request);
             return ResponseEntity.status(response.isStatus() ? 201 : 400).body(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
-                    .body(new Response(false, "Failed to record participation: " + e.getMessage(), null));
+                    .body(new Response(false, "Failed to check-in: " + e.getMessage(), null));
         }
     }
 
-    /**
-     * Lấy danh sách tham gia của sinh viên
-     */
-    @GetMapping("/my/participations")
-    public ResponseEntity<Response> getMyParticipations(Authentication authentication) {
-        try {
-            Long studentId = getStudentIdFromAuth(authentication);
-            if (studentId == null) {
-                return ResponseEntity.badRequest()
-                        .body(new Response(false, "Student not found", null));
-            }
 
-            Response response = registrationService.getStudentParticipations(studentId);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                    .body(new Response(false, "Failed to get participations: " + e.getMessage(), null));
-        }
-    }
-
-    /**
-     * Lấy danh sách tham gia theo sự kiện (Admin/Manager)
-     */
-    @GetMapping("/activity/{activityId}/participations")
-    public ResponseEntity<Response> getActivityParticipations(@PathVariable Long activityId) {
-        Response response = registrationService.getActivityParticipations(activityId);
-        return ResponseEntity.ok(response);
-    }
 
     /**
      * Helper method to get student ID from authentication
@@ -190,4 +156,14 @@ public class ActivityRegistrationController {
             return null;
         }
     }
+    // Lấy báo cáo tham gia / chưa tham gia
+    @GetMapping("/activities/{activityId}/report")
+    public ResponseEntity<Response> getReport(
+            @PathVariable Long activityId,
+            Authentication authentication) {
+        System.out.println("Authorities: " + authentication.getAuthorities());
+        return ResponseEntity.ok(registrationService.getParticipationReport(activityId));
+    }
+
+
 }

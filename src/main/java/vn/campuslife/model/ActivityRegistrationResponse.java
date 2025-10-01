@@ -24,7 +24,7 @@ public class ActivityRegistrationResponse {
     private String studentName;
     private String studentCode;
     private RegistrationStatus status;
-    private String feedback;
     private LocalDateTime registeredDate;
     private LocalDateTime createdAt;
+    private String ticketCode;
 }
