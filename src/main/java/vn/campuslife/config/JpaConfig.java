@@ -19,6 +19,8 @@ public class JpaConfig {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication == null || !authentication.isAuthenticated() ||
                     "anonymousUser".equals(authentication.getPrincipal())) {
+                System.out.println("Authorities: " + authentication.getAuthorities());
+
                 return Optional.of("system");
             }
             return Optional.of(authentication.getName());

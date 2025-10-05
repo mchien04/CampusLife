@@ -1,14 +1,13 @@
 package vn.campuslife.entity;
 
-
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "activity_participations")
@@ -17,17 +16,14 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
 public class ActivityParticipation {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "activity_id", nullable = false)
-    private Activity activity;
-
-    @ManyToOne
-    @JoinColumn(name = "student_id", nullable = false)
-    private Student student;
+    @JoinColumn(name = "registration_id", nullable = false)
+    private ActivityRegistration registration;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

@@ -6,10 +6,12 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.Student;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.util.Set;
 
 @Repository
 public interface StudentRepository extends JpaRepository<Student, Long> {
@@ -77,4 +79,9 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
      * Lấy sinh viên theo lớp có phân trang
      */
     Page<Student> findByStudentClassIdAndIsDeletedFalse(Long classId, Pageable pageable);
+
+    //tìm danh sách tất cả sinh viên cùng 1 khoa
+    List<Student> findByDepartment_IdIn(Collection<Long> departmentIds);
+
 }
+
