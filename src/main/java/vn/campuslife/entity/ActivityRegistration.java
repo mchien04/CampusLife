@@ -34,9 +34,8 @@ public class ActivityRegistration {
     @Column(nullable = false)
     private vn.campuslife.enumeration.RegistrationStatus status;
 
-    @Column(columnDefinition = "TEXT")
-    private String feedback;
-
     @CreatedDate
     private LocalDateTime createdAt;
+    @Column(unique = true, length = 20)
+    private String ticketCode;
 }

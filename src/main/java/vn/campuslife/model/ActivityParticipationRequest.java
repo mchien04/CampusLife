@@ -13,8 +13,9 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class ActivityParticipationRequest {
 
-    @NotNull(message = "Activity ID is required")
-    private Long activityId;
+    private String ticketCode;
+
+    private Long studentId;
 
     @NotNull(message = "Participation type is required")
     private ParticipationType participationType;

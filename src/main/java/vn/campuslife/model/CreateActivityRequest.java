@@ -31,4 +31,5 @@ public class CreateActivityRequest {
     private String contactInfo;
     private Boolean mandatoryForFacultyStudents;
     private List<Long> organizerIds;
+
 }
