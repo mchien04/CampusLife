@@ -8,6 +8,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.enumeration.ScoreSourceType;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
@@ -54,6 +55,23 @@ public class StudentScore {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ScoreType scoreType;
+
+    // Source tracking
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ScoreSourceType scoreSourceType = ScoreSourceType.MANUAL;
+
+    @Column
+    private Long activityId;
+
+    @Column
+    private Long taskId;
+
+    @Column
+    private Long submissionId;
+
+    @Column
+    private String sourceNote;
 
     @CreatedDate
     private LocalDateTime createdAt;

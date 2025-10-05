@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
@@ -77,7 +78,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             registration.setRegisteredDate(LocalDateTime.now());
             registration.setStatus(RegistrationStatus.PENDING);
 
-
             String code;
             int attempts = 0;
             do {
@@ -95,7 +95,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to register due to server error", null);
         }
     }
-
 
     @Override
     @Transactional
@@ -202,7 +201,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-
     @Override
     public Response getRegistrationById(Long registrationId) {
         try {
@@ -218,9 +216,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to retrieve registration due to server error", null);
         }
     }
-
-
-
 
     @Override
     public Response checkRegistrationStatus(Long activityId, Long studentId) {
@@ -240,8 +235,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-
-
     @Override
     @Transactional
     public Response checkIn(ActivityParticipationRequest request) {
@@ -254,8 +247,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         } else if (request.getStudentId() != null) {
             registration = registrationRepository.findByStudentIdAndStatus(
                     request.getStudentId(),
-                    RegistrationStatus.APPROVED
-            )
+                    RegistrationStatus.APPROVED)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này"));
         } else {
             return Response.error("Cần cung cấp ticketCode hoặc studentId");
@@ -290,14 +282,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.getParticipationType(),
                 participation.getPointsEarned(),
                 participation.getDate(),
-                request.getNotes()
-        );
+                request.getNotes());
 
         return Response.success("Check-in thành công", resp);
     }
-
-
-
 
     private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration r) {
         Activity a = r.getActivity();
@@ -319,16 +307,17 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         res.setTicketCode(r.getTicketCode());
         return res;
     }
+
     @Override
     @Transactional(readOnly = true)
     public Response getParticipationReport(Long activityId) {
         // Lấy tất cả registration đã duyệt
-        List<ActivityRegistration> approvedRegs =
-                registrationRepository.findByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
+        List<ActivityRegistration> approvedRegs = registrationRepository.findByActivityIdAndStatus(activityId,
+                RegistrationStatus.APPROVED);
 
         // Lấy tất cả participation đã CHECKED_IN
-        List<ActivityParticipation> checkedInList =
-                participationRepository.findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
+        List<ActivityParticipation> checkedInList = participationRepository
+                .findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
 
         Set<Long> checkedInStudentIds = checkedInList.stream()
                 .map(ap -> ap.getRegistration().getStudent().getId())
@@ -340,11 +329,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
         for (ActivityRegistration reg : approvedRegs) {
             Student s = reg.getStudent();
-            StudentResponse dto = new StudentResponse(
-                    s.getId(),
-                    s.getFullName(),
-                    s.getStudentCode()
-            );
+            StudentResponse dto = StudentResponse.fromEntity(s);
 
             if (checkedInStudentIds.contains(s.getId())) {
                 attended.add(dto);
@@ -359,7 +344,5 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
         return Response.success("Danh sách tham gia", result);
     }
-
-
 
 }
