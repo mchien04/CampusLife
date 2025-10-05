@@ -4,11 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.Department;
 import vn.campuslife.entity.Student;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.ActivityResponse;
 import vn.campuslife.model.CreateActivityRequest;
@@ -18,8 +20,10 @@ import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.ActivityService;
+import vn.campuslife.util.TicketCodeUtils;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -33,7 +37,6 @@ public class ActivityServiceImpl implements ActivityService {
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
-
     @Override
     @Transactional
     public Response createActivity(CreateActivityRequest request) {
@@ -48,11 +51,26 @@ public class ActivityServiceImpl implements ActivityService {
             Activity a = new Activity();
             applyRequestToEntity(request, a);
             a.setOrganizers(organizers);
-
             Activity saved = activityRepository.save(a);
-
             // Auto-register students based on flags
             autoRegisterStudents(saved);
+            if (request.getIsImportant()) {
+                try {
+                    registerAllStudents(saved.getId());
+                } catch (Exception ex) {
+                    logger.error("Auto register all students failed", ex);
+                }
+            }
+
+            if (request.getMandatoryForFacultyStudents()) {
+                try {
+                    registerFacultyStudents(saved.getId(), request.getOrganizerIds());
+                } catch (Exception ex) {
+                    logger.error("Auto register faculty students failed", ex);
+                }
+            }
+
+
 
             return new Response(true, "Activity created successfully", toResponse(saved));
         } catch (Exception e) {
@@ -225,6 +243,8 @@ public class ActivityServiceImpl implements ActivityService {
         }
     }
 
+
+
     private String validateRequest(CreateActivityRequest r) {
         if (r.getName() == null || r.getName().isBlank())
             return "Activity name is required";
@@ -318,7 +338,6 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setLastModifiedBy(a.getLastModifiedBy());
         return dto;
     }
-
     /**
      * Tự động đăng ký sinh viên cho activity dựa trên các flag
      */
@@ -377,4 +396,67 @@ public class ActivityServiceImpl implements ActivityService {
             logger.error("Failed to auto-register students for activity {}: {}", activity.getId(), e.getMessage(), e);
         }
     }
+
+    @Override
+    public void registerAllStudents(Long activityId) {
+        Activity activity = activityRepository.findById(activityId)
+                .orElseThrow(() -> new RuntimeException("Activity not found"));
+
+        List<Student> allStudents = studentRepository.findAll();
+
+        List<ActivityRegistration> registrations = allStudents.stream()
+                .map(student -> {
+                    ActivityRegistration reg = new ActivityRegistration();
+                    reg.setActivity(activity);
+                    reg.setStudent(student);
+                    reg.setRegisteredDate(LocalDateTime.now());
+                    reg.setStatus(RegistrationStatus.PENDING);
+
+                    String code;
+                    int attempts = 0;
+                    do {
+                        code = TicketCodeUtils.newTicketCode();
+                        attempts++;
+                    } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
+                    reg.setTicketCode(code);
+
+                    return reg;
+                })
+                .toList();
+
+        activityRegistrationRepository.saveAll(registrations);
+    }
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registerFacultyStudents(Long activityId, Collection<Long> departmentIds) {
+        Activity activity = activityRepository.findById(activityId)
+                .orElseThrow(() -> new RuntimeException("Activity not found"));
+
+        List<Student> students = studentRepository.findByDepartment_IdIn(departmentIds);
+
+        List<ActivityRegistration> registrations = students.stream()
+                .map(student -> {
+                    ActivityRegistration reg = new ActivityRegistration();
+                    reg.setActivity(activity);
+                    reg.setStudent(student);
+                    reg.setRegisteredDate(LocalDateTime.now());
+                    reg.setStatus(RegistrationStatus.PENDING);
+
+                    String code;
+                    int attempts = 0;
+                    do {
+                        code = TicketCodeUtils.newTicketCode();
+                        attempts++;
+                    } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
+                    reg.setTicketCode(code);
+
+                    return reg;
+                })
+                .toList();
+
+        activityRegistrationRepository.saveAll(registrations);
+        logger.info("Auto registered {} students of departments {} for mandatory activity {}",
+                registrations.size(), departmentIds, activityId);
+    }
+
+
 }

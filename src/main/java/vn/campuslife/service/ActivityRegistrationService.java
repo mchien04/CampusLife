@@ -1,12 +1,11 @@
 package vn.campuslife.service;
 
-import vn.campuslife.model.ActivityRegistrationRequest;
-import vn.campuslife.model.ActivityRegistrationResponse;
-import vn.campuslife.model.ActivityParticipationRequest;
-import vn.campuslife.model.ActivityParticipationResponse;
-import vn.campuslife.model.Response;
+import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.model.*;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ActivityRegistrationService {
 
@@ -41,22 +40,16 @@ public interface ActivityRegistrationService {
     Response getRegistrationById(Long registrationId);
 
     /**
-     * Ghi nhận tham gia sự kiện
-     */
-    Response recordParticipation(ActivityParticipationRequest request, Long studentId);
-
-    /**
-     * Lấy danh sách tham gia của sinh viên
-     */
-    Response getStudentParticipations(Long studentId);
-
-    /**
-     * Lấy danh sách tham gia theo sự kiện
-     */
-    Response getActivityParticipations(Long activityId);
-
-    /**
      * Kiểm tra sinh viên đã đăng ký sự kiện chưa
      */
     Response checkRegistrationStatus(Long activityId, Long studentId);
+
+    /**
+     *  Check-in tham gia sự kiện qua ticketCode
+     */
+    Response checkIn(ActivityParticipationRequest request);
+    /**
+     * Lấy danh sách sinh viên đã tham gia / chưa tham gia
+     */
+    Response getParticipationReport(Long activityId);
 }

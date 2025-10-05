@@ -13,5 +13,4 @@ public class ActivityRegistrationRequest {
     @NotNull(message = "Activity ID is required")
     private Long activityId;
 
-    private String feedback;
 }
