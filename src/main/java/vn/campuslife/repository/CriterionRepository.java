@@ -12,4 +12,6 @@ public interface CriterionRepository extends JpaRepository<Criterion, Long> {
 
     @Query("SELECT c FROM Criterion c WHERE c.group.name IS NOT NULL AND c.isDeleted = false")
     List<Criterion> findAllTrainingCriteria();
+
+    List<Criterion> findByGroupIdAndIsDeletedFalse(Long groupId);
 }
