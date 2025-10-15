@@ -137,4 +137,31 @@ public class ScoreServiceImpl implements ScoreService {
             return new Response(false, "Failed to view scores: " + e.getMessage(), null);
         }
     }
+
+    @Override
+    public Response getTotalScore(Long studentId, Long semesterId) {
+        try {
+            List<StudentScore> rows = studentScoreRepository.findByStudentAndSemester(studentId, semesterId);
+
+            Map<ScoreType, BigDecimal> totalsByType = rows.stream()
+                    .filter(ss -> ss.getScore() != null)
+                    .collect(Collectors.groupingBy(
+                            StudentScore::getScoreType,
+                            Collectors.reducing(BigDecimal.ZERO, StudentScore::getScore, BigDecimal::add)));
+
+            BigDecimal grandTotal = totalsByType.values().stream()
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("studentId", studentId);
+            result.put("semesterId", semesterId);
+            result.put("grandTotal", grandTotal);
+            result.put("totalsByType", totalsByType);
+            result.put("scoreCount", rows.size());
+
+            return new Response(true, "Total score calculated", result);
+        } catch (Exception e) {
+            return new Response(false, "Failed to calculate total score: " + e.getMessage(), null);
+        }
+    }
 }

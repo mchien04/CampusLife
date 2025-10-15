@@ -8,12 +8,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.SubmissionStatus;
+import vn.campuslife.enumeration.ScoreSourceType;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.TaskSubmissionService;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -31,6 +34,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final ActivityTaskRepository activityTaskRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
+    private final StudentScoreRepository studentScoreRepository;
+    private final ScoreHistoryRepository scoreHistoryRepository;
+    private final SemesterRepository semesterRepository;
 
     @Override
     @Transactional
@@ -159,7 +165,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     }
 
     @Override
-    @Transactional
+    // @Transactional - Tạm thời bỏ để test
     public Response gradeSubmission(Long submissionId, Long graderId, Double score, String feedback) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
@@ -180,6 +186,10 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             submission.setGradedAt(LocalDateTime.now());
 
             taskSubmissionRepository.save(submission);
+
+            // Tạm thời disable tự động tạo StudentScore để test
+            // createScoreFromSubmission(submission);
+
             return new Response(true, "Submission graded successfully", toDto(submission));
         } catch (Exception e) {
             logger.error("Failed to grade submission: {}", e.getMessage(), e);
@@ -278,5 +288,87 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         dto.setUpdatedAt(submission.getUpdatedAt());
         dto.setGradedAt(submission.getGradedAt());
         return dto;
+    }
+
+    /**
+     * Tự động tạo StudentScore từ chấm điểm submission
+     */
+    private void createScoreFromSubmission(TaskSubmission submission) {
+        try {
+            logger.info("Creating score from submission {} with score {}", submission.getId(), submission.getScore());
+
+            if (submission.getScore() == null || submission.getScore() <= 0) {
+                logger.info("No score to create for submission {}", submission.getId());
+                return;
+            }
+
+            ActivityTask task = submission.getTask();
+            Student student = submission.getStudent();
+
+            logger.info("Task: {}, Student: {}, Grader: {}", task.getId(), student.getId(),
+                    submission.getGrader() != null ? submission.getGrader().getId() : "null");
+
+            // Lấy học kỳ hiện tại (có thể cần logic phức tạp hơn)
+            Optional<Semester> currentSemester = semesterRepository.findAll().stream().findFirst();
+            if (currentSemester.isEmpty()) {
+                logger.warn("No semester found for score creation");
+                return;
+            }
+
+            // Kiểm tra xem đã có điểm cho submission này chưa
+            boolean exists = studentScoreRepository.existsByStudentIdAndSubmissionIdAndScoreSourceType(
+                    student.getId(), submission.getId(), ScoreSourceType.ACTIVITY_SUBMISSION);
+
+            if (exists) {
+                logger.info("Score already exists for submission {} and student {}", submission.getId(),
+                        student.getId());
+                return;
+            }
+
+            // Đảm bảo grader không null
+            if (submission.getGrader() == null) {
+                logger.warn("Grader is null for submission {}, skipping score creation", submission.getId());
+                return;
+            }
+
+            // Tạo StudentScore
+            StudentScore score = new StudentScore();
+            score.setStudent(student);
+            score.setSemester(currentSemester.get());
+            score.setCriterion(null); // Không có criterion cụ thể cho task
+            score.setScore(BigDecimal.valueOf(submission.getScore()));
+            score.setEnteredBy(submission.getGrader()); // Đã kiểm tra không null
+            score.setEntryDate(LocalDateTime.now());
+            score.setUpdatedDate(LocalDateTime.now());
+            score.setScoreType(task.getActivity().getScoreType());
+            score.setScoreSourceType(ScoreSourceType.ACTIVITY_SUBMISSION);
+            score.setActivityId(task.getActivity().getId());
+            score.setTaskId(task.getId());
+            score.setSubmissionId(submission.getId());
+            score.setSourceNote("Auto-generated from task submission: " + task.getName());
+
+            studentScoreRepository.save(score);
+
+            // Tạo ScoreHistory
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(BigDecimal.ZERO);
+            history.setNewScore(score.getScore());
+            history.setChangedBy(submission.getGrader()); // Đã kiểm tra không null ở trên
+            history.setChangeDate(LocalDateTime.now());
+            history.setScoreSourceType(ScoreSourceType.ACTIVITY_SUBMISSION);
+            history.setReason("Auto-generated from task submission");
+            history.setActivityId(task.getActivity().getId());
+            history.setTaskId(task.getId());
+            history.setSubmissionId(submission.getId());
+
+            scoreHistoryRepository.save(history);
+
+            logger.info("Created score {} for student {} from task submission {}",
+                    score.getScore(), student.getId(), submission.getId());
+
+        } catch (Exception e) {
+            logger.error("Failed to create score from submission: {}", e.getMessage(), e);
+        }
     }
 }

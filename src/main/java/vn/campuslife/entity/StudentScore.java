@@ -33,7 +33,7 @@ public class StudentScore {
     private Semester semester;
 
     @ManyToOne
-    @JoinColumn(name = "criterion_id", nullable = false)
+    @JoinColumn(name = "criterion_id")
     private Criterion criterion;
 
     private BigDecimal score;
