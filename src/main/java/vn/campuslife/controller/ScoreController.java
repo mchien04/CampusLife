@@ -31,4 +31,10 @@ public class ScoreController {
         Response resp = scoreService.viewScores(studentId, semesterId);
         return ResponseEntity.ok(resp);
     }
+
+    @GetMapping("/student/{studentId}/semester/{semesterId}/total")
+    public ResponseEntity<Response> getTotalScore(@PathVariable Long studentId, @PathVariable Long semesterId) {
+        Response resp = scoreService.getTotalScore(studentId, semesterId);
+        return ResponseEntity.ok(resp);
+    }
 }
