@@ -8,6 +8,9 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.Role;
+import vn.campuslife.enumeration.ScoreSourceType;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
@@ -28,6 +31,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRepository activityRepository;
     private final StudentRepository studentRepository;
+    private final StudentScoreRepository studentScoreRepository;
+    private final ScoreHistoryRepository scoreHistoryRepository;
+    private final SemesterRepository semesterRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -272,6 +279,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         registration.setStatus(RegistrationStatus.ATTENDED);
         registrationRepository.save(registration);
 
+        // Tự động tạo StudentScore từ check-in
+        createScoreFromCheckIn(registration, participation);
+
         ActivityParticipationResponse resp = new ActivityParticipationResponse(
                 participation.getId(),
                 registration.getActivity().getId(),
@@ -285,6 +295,73 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 request.getNotes());
 
         return Response.success("Check-in thành công", resp);
+    }
+
+    /**
+     * Tự động tạo StudentScore từ check-in thành công
+     */
+    private void createScoreFromCheckIn(ActivityRegistration registration, ActivityParticipation participation) {
+        try {
+            Activity activity = registration.getActivity();
+            Student student = registration.getStudent();
+
+            // Lấy học kỳ hiện tại (có thể cần logic phức tạp hơn)
+            // Tạm thời lấy học kỳ đầu tiên, cần cải thiện sau
+            Optional<Semester> currentSemester = semesterRepository.findAll().stream().findFirst();
+            if (currentSemester.isEmpty()) {
+                logger.warn("No semester found for score creation");
+                return;
+            }
+
+            // Kiểm tra xem đã có điểm cho hoạt động này chưa
+            boolean exists = studentScoreRepository.existsByStudentIdAndActivityIdAndScoreSourceType(
+                    student.getId(), activity.getId(), ScoreSourceType.ACTIVITY_CHECKIN);
+
+            if (exists) {
+                logger.info("Score already exists for activity {} and student {}", activity.getId(), student.getId());
+                return;
+            }
+
+            // Tìm user hệ thống (ADMIN hoặc MANAGER đầu tiên)
+            Optional<User> systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
+                    .findFirst();
+
+            // Tạo StudentScore
+            StudentScore score = new StudentScore();
+            score.setStudent(student);
+            score.setSemester(currentSemester.get());
+            score.setCriterion(null); // Không có criterion cụ thể cho hoạt động
+            score.setScore(activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO);
+            score.setEnteredBy(systemUser.orElse(null)); // Sử dụng system user hoặc null
+            score.setEntryDate(LocalDateTime.now());
+            score.setUpdatedDate(LocalDateTime.now());
+            score.setScoreType(activity.getScoreType());
+            score.setScoreSourceType(ScoreSourceType.ACTIVITY_CHECKIN);
+            score.setActivityId(activity.getId());
+            score.setSourceNote("Auto-generated from activity check-in: " + activity.getName());
+
+            studentScoreRepository.save(score);
+
+            // Tạo ScoreHistory
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(BigDecimal.ZERO);
+            history.setNewScore(score.getScore());
+            history.setChangedBy(null);
+            history.setChangeDate(LocalDateTime.now());
+            history.setScoreSourceType(ScoreSourceType.ACTIVITY_CHECKIN);
+            history.setReason("Auto-generated from activity check-in");
+            history.setActivityId(activity.getId());
+
+            scoreHistoryRepository.save(history);
+
+            logger.info("Created score {} for student {} from activity check-in {}",
+                    score.getScore(), student.getId(), activity.getId());
+
+        } catch (Exception e) {
+            logger.error("Failed to create score from check-in: {}", e.getMessage(), e);
+        }
     }
 
     private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration r) {

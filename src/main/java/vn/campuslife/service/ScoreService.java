@@ -9,4 +9,6 @@ public interface ScoreService {
             Long enteredByUserId);
 
     Response viewScores(Long studentId, Long semesterId);
+
+    Response getTotalScore(Long studentId, Long semesterId);
 }

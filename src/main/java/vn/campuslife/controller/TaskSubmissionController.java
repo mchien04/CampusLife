@@ -7,8 +7,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.service.TaskSubmissionService;
+import vn.campuslife.service.StudentService;
+import vn.campuslife.repository.UserRepository;
+import vn.campuslife.entity.User;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/submissions")
@@ -16,6 +20,8 @@ import java.util.List;
 public class TaskSubmissionController {
 
     private final TaskSubmissionService taskSubmissionService;
+    private final StudentService studentService;
+    private final UserRepository userRepository;
 
     /**
      * Nộp bài cho task
@@ -102,17 +108,31 @@ public class TaskSubmissionController {
      */
     @PutMapping("/{submissionId}/grade")
     public ResponseEntity<Response> gradeSubmission(@PathVariable Long submissionId,
-            @RequestParam Double score,
+            @RequestParam String score,
             @RequestParam(required = false) String feedback,
             Authentication authentication) {
         try {
+            // Parse string to double
+            Double scoreValue;
+            try {
+                scoreValue = Double.parseDouble(score);
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Invalid score format. Must be a number.", null));
+            }
+
             Long graderId = getUserIdFromAuth(authentication);
+            System.out.println("DEBUG: graderId = " + graderId);
             if (graderId == null) {
                 return ResponseEntity.badRequest()
                         .body(new Response(false, "User not found", null));
             }
 
-            Response response = taskSubmissionService.gradeSubmission(submissionId, graderId, score, feedback);
+            System.out.println("DEBUG: Calling gradeSubmission with submissionId=" + submissionId + ", graderId="
+                    + graderId + ", score=" + scoreValue);
+            Response response = taskSubmissionService.gradeSubmission(submissionId, graderId, scoreValue, feedback);
+            System.out.println(
+                    "DEBUG: gradeSubmission response = " + response.isStatus() + " - " + response.getMessage());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -174,9 +194,7 @@ public class TaskSubmissionController {
     private Long getStudentIdFromAuth(Authentication authentication) {
         try {
             String username = authentication.getName();
-            // You might need to implement a method to get student ID by username
-            // For now, returning a placeholder
-            return 1L; // This should be replaced with actual student ID lookup
+            return studentService.getStudentIdByUsername(username);
         } catch (Exception e) {
             return null;
         }
@@ -188,9 +206,8 @@ public class TaskSubmissionController {
     private Long getUserIdFromAuth(Authentication authentication) {
         try {
             String username = authentication.getName();
-            // You might need to implement a method to get user ID by username
-            // For now, returning a placeholder
-            return 1L; // This should be replaced with actual user ID lookup
+            Optional<User> userOpt = userRepository.findByUsernameAndIsDeletedFalse(username);
+            return userOpt.map(User::getId).orElse(null);
         } catch (Exception e) {
             return null;
         }

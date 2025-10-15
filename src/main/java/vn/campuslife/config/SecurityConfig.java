@@ -115,6 +115,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/criteria/**").hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/academic/**").hasAnyRole("STUDENT", "ADMIN", "MANAGER")
 
+                        // Score Management
+                        .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*/total")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/scores/training/calculate")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
                         // Task Submissions
                         .requestMatchers(HttpMethod.GET, "/api/submissions/task/*/my").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/submissions/task/*").hasRole("STUDENT")
