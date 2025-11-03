@@ -131,6 +131,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/submissions/task/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/submissions/*/grade").hasAnyRole("ADMIN", "MANAGER")
 
+                        // Participation Grading
+                        .requestMatchers(HttpMethod.PUT, "/api/registrations/participations/*/grade")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
                         // Address Management
                         .requestMatchers(HttpMethod.GET, "/api/addresses/provinces").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/addresses/provinces/*/wards").permitAll()

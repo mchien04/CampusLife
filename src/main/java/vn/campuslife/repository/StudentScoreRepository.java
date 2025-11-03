@@ -5,20 +5,22 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.StudentScore;
-import vn.campuslife.enumeration.ScoreSourceType;
+import vn.campuslife.enumeration.ScoreType;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface StudentScoreRepository extends JpaRepository<StudentScore, Long> {
 
-    @Query("SELECT ss FROM StudentScore ss WHERE ss.student.id = :studentId AND ss.semester.id = :semesterId")
-    List<StudentScore> findByStudentAndSemester(@Param("studentId") Long studentId,
-            @Param("semesterId") Long semesterId);
+        @Query("SELECT ss FROM StudentScore ss WHERE ss.student.id = :studentId AND ss.semester.id = :semesterId")
+        List<StudentScore> findByStudentAndSemester(@Param("studentId") Long studentId,
+                        @Param("semesterId") Long semesterId);
 
-    boolean existsByStudentIdAndActivityIdAndScoreSourceType(Long studentId, Long activityId,
-            ScoreSourceType scoreSourceType);
+        Optional<StudentScore> findByStudentIdAndSemesterIdAndScoreType(Long studentId, Long semesterId,
+                        ScoreType scoreType);
 
-    boolean existsByStudentIdAndSubmissionIdAndScoreSourceType(Long studentId, Long submissionId,
-            ScoreSourceType scoreSourceType);
+        @Query("SELECT ss FROM StudentScore ss WHERE ss.student.id = :studentId AND ss.scoreType = :scoreType")
+        List<StudentScore> findByStudentIdAndScoreType(@Param("studentId") Long studentId,
+                        @Param("scoreType") ScoreType scoreType);
 }
