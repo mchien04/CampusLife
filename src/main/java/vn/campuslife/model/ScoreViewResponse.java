@@ -2,7 +2,6 @@ package vn.campuslife.model;
 
 import lombok.Data;
 import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.enumeration.ScoreSourceType;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -23,11 +22,8 @@ public class ScoreViewResponse {
     @Data
     public static class ScoreItem {
         private BigDecimal score;
-        private ScoreSourceType sourceType;
-        private Long activityId;
-        private Long taskId;
-        private Long submissionId;
-        private String sourceNote;
-        private Long criterionId;
+        private List<Long> activityIds; // Danh sách activity đã nhận điểm
+        private Long criterionId; // Nullable
+        private String notes;
     }
 }

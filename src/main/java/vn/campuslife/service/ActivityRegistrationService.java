@@ -45,11 +45,17 @@ public interface ActivityRegistrationService {
     Response checkRegistrationStatus(Long activityId, Long studentId);
 
     /**
-     *  Check-in tham gia sự kiện qua ticketCode
+     * Check-in tham gia sự kiện qua ticketCode
      */
     Response checkIn(ActivityParticipationRequest request);
+
     /**
      * Lấy danh sách sinh viên đã tham gia / chưa tham gia
      */
     Response getParticipationReport(Long activityId);
+
+    /**
+     * Chấm điểm completion (đạt/không đạt)
+     */
+    Response gradeCompletion(Long participationId, boolean isCompleted, String notes);
 }
