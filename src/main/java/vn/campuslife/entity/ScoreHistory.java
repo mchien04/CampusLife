@@ -8,7 +8,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
-import vn.campuslife.enumeration.ScoreSourceType;
 
 @Entity
 @Table(name = "score_histories")
@@ -35,20 +34,9 @@ public class ScoreHistory {
 
     private LocalDateTime changeDate;
 
-    // Additional traceability
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ScoreSourceType scoreSourceType;
-
-    @Column
-    private Long activityId;
-
-    @Column
-    private Long taskId;
-
-    @Column
-    private Long submissionId;
-
-    @Column
+    @Column(columnDefinition = "TEXT")
     private String reason;
+
+    @Column
+    private Long activityId; // Optional: which activity caused this change
 }

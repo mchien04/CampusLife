@@ -32,4 +32,11 @@ public class ActivityParticipation {
     private BigDecimal pointsEarned;
 
     private LocalDateTime date;
+
+    @Column(nullable = true)
+    private Boolean isCompleted; // null = chưa chấm, true = đạt, false = không đạt
+
+    private LocalDateTime checkInTime;
+
+    private LocalDateTime checkOutTime;
 }

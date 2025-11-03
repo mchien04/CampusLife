@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
-import vn.campuslife.enumeration.ScoreSourceType;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.ScoreViewResponse;
@@ -60,12 +59,9 @@ public class ScoreServiceImpl implements ScoreService {
                 ss.setSemester(semesterOpt.get());
                 ss.setCriterion(c);
                 ss.setScore(given);
-                ss.setEnteredBy(enteredByOpt.get());
-                ss.setEntryDate(LocalDateTime.now());
-                ss.setUpdatedDate(LocalDateTime.now());
                 ss.setScoreType(ScoreType.REN_LUYEN);
-                ss.setScoreSourceType(ScoreSourceType.MANUAL);
-                ss.setSourceNote("Training default criteria calculation");
+                ss.setActivityIds("[]");
+                ss.setNotes(ok ? "Full score for criterion" : "Excluded criterion");
 
                 total = total.add(given);
                 scoresToSave.add(ss);
@@ -76,7 +72,6 @@ public class ScoreServiceImpl implements ScoreService {
                 h.setNewScore(given);
                 h.setChangedBy(enteredByOpt.get());
                 h.setChangeDate(LocalDateTime.now());
-                h.setScoreSourceType(ScoreSourceType.MANUAL);
                 h.setReason(ok ? "Full score for criterion" : "Excluded criterion");
                 histories.add(h);
             }
@@ -119,12 +114,24 @@ public class ScoreServiceImpl implements ScoreService {
                 List<ScoreViewResponse.ScoreItem> items = e.getValue().stream().map(ss -> {
                     ScoreViewResponse.ScoreItem it = new ScoreViewResponse.ScoreItem();
                     it.setScore(ss.getScore());
-                    it.setSourceType(ss.getScoreSourceType());
-                    it.setActivityId(ss.getActivityId());
-                    it.setTaskId(ss.getTaskId());
-                    it.setSubmissionId(ss.getSubmissionId());
-                    it.setSourceNote(ss.getSourceNote());
+
+                    // Parse activityIds JSON
+                    List<Long> activityIds = new ArrayList<>();
+                    String activityIdsJson = ss.getActivityIds() != null ? ss.getActivityIds() : "[]";
+                    try {
+                        String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
+                        if (!content.isEmpty()) {
+                            String[] ids = content.split(",");
+                            for (String id : ids) {
+                                activityIds.add(Long.parseLong(id.trim()));
+                            }
+                        }
+                    } catch (Exception ex) {
+                        // Ignore parse error
+                    }
+                    it.setActivityIds(activityIds);
                     it.setCriterionId(ss.getCriterion() != null ? ss.getCriterion().getId() : null);
+                    it.setNotes(ss.getNotes());
                     return it;
                 }).collect(Collectors.toList());
                 s.setItems(items);
