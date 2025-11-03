@@ -11,6 +11,7 @@ import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivationTokenRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.service.StudentScoreInitService;
 import vn.campuslife.util.JwtUtil;
 import vn.campuslife.util.EmailUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,16 +28,18 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
     private final UserRepository userRepository;
     private final ActivationTokenRepository activationTokenRepository;
     private final StudentRepository studentRepository;
+    private final StudentScoreInitService studentScoreInitService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailUtil emailUtil;
 
     public AuthServiceImpl(UserRepository userRepository, ActivationTokenRepository activationTokenRepository,
-            StudentRepository studentRepository, PasswordEncoder passwordEncoder, JwtUtil jwtUtil,
-            EmailUtil emailUtil) {
+            StudentRepository studentRepository, StudentScoreInitService studentScoreInitService,
+            PasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailUtil emailUtil) {
         this.userRepository = userRepository;
         this.activationTokenRepository = activationTokenRepository;
         this.studentRepository = studentRepository;
+        this.studentScoreInitService = studentScoreInitService;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.emailUtil = emailUtil;
@@ -123,7 +126,16 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
                 Student student = new Student();
                 student.setUser(savedUser);
                 // All other fields remain null - student will fill them later
-                studentRepository.save(student);
+                Student savedStudent = studentRepository.save(student);
+
+                // Initialize 3 score records (REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE) for
+                // current semester
+                try {
+                    studentScoreInitService.initializeStudentScoresForCurrentSemester(savedStudent);
+                } catch (Exception e) {
+                    // Log error but don't fail registration
+                    System.err.println("Failed to initialize student scores: " + e.getMessage());
+                }
             }
 
             // Generate and save activation token

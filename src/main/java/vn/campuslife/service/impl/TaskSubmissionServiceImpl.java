@@ -8,8 +8,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.SubmissionStatus;
-import vn.campuslife.enumeration.ScoreSourceType;
-import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
@@ -308,64 +306,92 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             logger.info("Task: {}, Student: {}, Grader: {}", task.getId(), student.getId(),
                     submission.getGrader() != null ? submission.getGrader().getId() : "null");
 
-            // Lấy học kỳ hiện tại (có thể cần logic phức tạp hơn)
-            Optional<Semester> currentSemester = semesterRepository.findAll().stream().findFirst();
+            // Lấy học kỳ hiện tại
+            Optional<Semester> currentSemester = semesterRepository.findAll().stream()
+                    .filter(s -> s.isOpen())
+                    .findFirst();
             if (currentSemester.isEmpty()) {
-                logger.warn("No semester found for score creation");
+                logger.warn("No open semester found for score creation");
                 return;
             }
 
-            // Kiểm tra xem đã có điểm cho submission này chưa
-            boolean exists = studentScoreRepository.existsByStudentIdAndSubmissionIdAndScoreSourceType(
-                    student.getId(), submission.getId(), ScoreSourceType.ACTIVITY_SUBMISSION);
+            // Tìm bản ghi điểm tổng hợp theo scoreType của activity
+            Optional<StudentScore> scoreOpt = studentScoreRepository
+                    .findByStudentIdAndSemesterIdAndScoreType(
+                            student.getId(),
+                            currentSemester.get().getId(),
+                            task.getActivity().getScoreType());
 
-            if (exists) {
-                logger.info("Score already exists for submission {} and student {}", submission.getId(),
-                        student.getId());
+            if (scoreOpt.isEmpty()) {
+                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}",
+                        student.getId(), task.getActivity().getScoreType(), currentSemester.get().getId());
                 return;
             }
 
-            // Đảm bảo grader không null
-            if (submission.getGrader() == null) {
-                logger.warn("Grader is null for submission {}, skipping score creation", submission.getId());
+            StudentScore score = scoreOpt.get();
+
+            // Parse activityIds JSON và kiểm tra nếu đã có activity này
+            String activityIdsJson = score.getActivityIds() != null ? score.getActivityIds() : "[]";
+            if (activityIdsJson.isEmpty()) {
+                activityIdsJson = "[]";
+            }
+
+            java.util.List<Long> activityIds = new java.util.ArrayList<>();
+            try {
+                // Simple JSON parsing: remove brackets and split by comma
+                String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
+                if (!content.isEmpty()) {
+                    String[] ids = content.split(",");
+                    for (String id : ids) {
+                        activityIds.add(Long.parseLong(id.trim()));
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Failed to parse activityIds: {}", activityIdsJson, e);
+            }
+
+            // Kiểm tra nếu đã có điểm từ activity này
+            Long activityId = task.getActivity().getId();
+            if (activityIds.contains(activityId)) {
+                logger.info("Score already exists for activity {} from submission {}", activityId, submission.getId());
                 return;
             }
 
-            // Tạo StudentScore
-            StudentScore score = new StudentScore();
-            score.setStudent(student);
-            score.setSemester(currentSemester.get());
-            score.setCriterion(null); // Không có criterion cụ thể cho task
-            score.setScore(BigDecimal.valueOf(submission.getScore()));
-            score.setEnteredBy(submission.getGrader()); // Đã kiểm tra không null
-            score.setEntryDate(LocalDateTime.now());
-            score.setUpdatedDate(LocalDateTime.now());
-            score.setScoreType(task.getActivity().getScoreType());
-            score.setScoreSourceType(ScoreSourceType.ACTIVITY_SUBMISSION);
-            score.setActivityId(task.getActivity().getId());
-            score.setTaskId(task.getId());
-            score.setSubmissionId(submission.getId());
-            score.setSourceNote("Auto-generated from task submission: " + task.getName());
+            // Thêm activityId vào list
+            activityIds.add(activityId);
+
+            // Cộng điểm
+            BigDecimal oldScore = score.getScore();
+            BigDecimal pointsToAdd = BigDecimal.valueOf(submission.getScore());
+            BigDecimal newScore = oldScore.add(pointsToAdd);
+
+            // Cập nhật
+            score.setScore(newScore);
+            String updatedActivityIds = "["
+                    + activityIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) + "]";
+            score.setActivityIds(updatedActivityIds);
 
             studentScoreRepository.save(score);
 
             // Tạo ScoreHistory
+            User grader = submission.getGrader();
+            if (grader == null) {
+                grader = userRepository.findById(1L).orElse(null);
+            }
+
             ScoreHistory history = new ScoreHistory();
             history.setScore(score);
-            history.setOldScore(BigDecimal.ZERO);
-            history.setNewScore(score.getScore());
-            history.setChangedBy(submission.getGrader()); // Đã kiểm tra không null ở trên
+            history.setOldScore(oldScore);
+            history.setNewScore(newScore);
+            history.setChangedBy(grader);
             history.setChangeDate(LocalDateTime.now());
-            history.setScoreSourceType(ScoreSourceType.ACTIVITY_SUBMISSION);
-            history.setReason("Auto-generated from task submission");
-            history.setActivityId(task.getActivity().getId());
-            history.setTaskId(task.getId());
-            history.setSubmissionId(submission.getId());
+            history.setReason("Added points from task submission: " + task.getName());
+            history.setActivityId(activityId);
 
             scoreHistoryRepository.save(history);
 
-            logger.info("Created score {} for student {} from task submission {}",
-                    score.getScore(), student.getId(), submission.getId());
+            logger.info("Added score {} (total: {}) for student {} from task submission {}",
+                    pointsToAdd, newScore, student.getId(), submission.getId());
 
         } catch (Exception e) {
             logger.error("Failed to create score from submission: {}", e.getMessage(), e);
