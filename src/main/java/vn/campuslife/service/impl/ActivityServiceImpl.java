@@ -3,29 +3,30 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import vn.campuslife.entity.Activity;
-import vn.campuslife.entity.ActivityRegistration;
-import vn.campuslife.entity.Department;
-import vn.campuslife.entity.Student;
+import org.springframework.web.server.ResponseStatusException;
+import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.ActivityResponse;
 import vn.campuslife.model.CreateActivityRequest;
 import vn.campuslife.model.Response;
-import vn.campuslife.repository.ActivityRegistrationRepository;
-import vn.campuslife.repository.ActivityRepository;
-import vn.campuslife.repository.DepartmentRepository;
-import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityService;
+import vn.campuslife.service.MiniGameService;
 import vn.campuslife.util.TicketCodeUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.util.*;
 import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -37,46 +38,111 @@ public class ActivityServiceImpl implements ActivityService {
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
+    private final ActivitySeriesRepository activitySeriesRepository;
+    private final MiniGameService miniGameService;
     @Override
     @Transactional
+
     public Response createActivity(CreateActivityRequest request) {
         try {
-
             String err = validateRequest(request);
-            if (err != null)
+            if (err != null) {
                 return new Response(false, err, null);
+            }
+
+            if (request.getName() == null || request.getName().isBlank()) {
+                return new Response(false, "Tên hoạt động không được để trống", null);
+            }
+            if (request.getOrganizerIds() == null || request.getOrganizerIds().isEmpty()) {
+                return new Response(false, "Organizer IDs không được bỏ trống", null);
+            }
+
+            if (request.getStartDate() != null && request.getEndDate() != null &&
+                    request.getStartDate().isAfter(request.getEndDate())) {
+                return new Response(false, "Ngày bắt đầu phải trước ngày kết thúc", null);
+            }
+
+            if (request.getRegistrationStartDate() != null && request.getRegistrationDeadline() != null &&
+                    request.getRegistrationStartDate().isAfter(request.getRegistrationDeadline())) {
+                return new Response(false, "Thời gian đăng ký không hợp lệ", null);
+            }
+
+
+            if (request.getType() == ActivityType.MINIGAME && request.getMiniGameConfig() == null) {
+                return new Response(false, "MiniGameConfig bắt buộc khi type = MINIGAME", null);
+            }
 
             Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
-
-            Activity a = new Activity();
-            applyRequestToEntity(request, a);
-            a.setOrganizers(organizers);
-            Activity saved = activityRepository.save(a);
-            // Auto-register students based on flags
-            autoRegisterStudents(saved);
-            if (request.getIsImportant()) {
-                try {
-                    registerAllStudents(saved.getId());
-                } catch (Exception ex) {
-                    logger.error("Auto register all students failed", ex);
-                }
+            if (organizers == null || organizers.isEmpty()) {
+                return new Response(false, "Organizer ids không hợp lệ", null);
             }
 
-            if (request.getMandatoryForFacultyStudents()) {
-                try {
-                    registerFacultyStudents(saved.getId(), request.getOrganizerIds());
-                } catch (Exception ex) {
-                    logger.error("Auto register faculty students failed", ex);
-                }
+            Activity activity = new Activity();
+            applyRequestToEntity(request, activity);
+            activity.setOrganizers(organizers);
+
+            if (request.getSeriesId() != null) {
+                ActivitySeries series = activitySeriesRepository.findById(request.getSeriesId())
+                        .orElseThrow(() -> new RuntimeException("Chuỗi sự kiện không tồn tại với ID: " + request.getSeriesId()));
+                series.getActivities().add(activity);
+
             }
 
+            Activity saved;
+
+            switch (request.getType()) {
+                case SUKIEN -> {
+                    logger.info(" Tạo sự kiện SUKIEN: {}", activity.getName());
+                    saved = activityRepository.save(activity);
+                }
+
+                case MINIGAME -> {
+                    logger.info("Tạo hoạt động MINIGAME: {}", activity.getName());
+                    saved = activityRepository.save(activity);
+
+                    miniGameService.createMiniGameForActivity(saved, request.getMiniGameConfig());
+                    logger.info("MiniGame cho hoạt động {} đã được khởi tạo", saved.getName());
 
 
-            return new Response(true, "Activity created successfully", toResponse(saved));
+                    return new Response(true, "Tạo mini game thành công", toResponse(saved));
+                }
+                case CONG_TAC_XA_HOI, CHUYEN_DE -> {
+                    logger.info(" Tạo hoạt động: {}", activity.getName());
+                    saved = activityRepository.save(activity);
+                }
+
+                default -> throw new IllegalArgumentException("Loại hoạt động không hợp lệ: " + request.getType());
+            }
+
+            logger.info("Hoàn tất tạo hoạt động: ID={}, Type={}, Series={}",
+                    saved.getId(),
+                    saved.getType(),
+                    request.getSeriesId() != null ? request.getSeriesId() : "none");
+
+            return new Response(true, "Tạo hoạt động thành công", toResponse(saved));
+
         } catch (Exception e) {
-            logger.error("Failed to create activity: {}", e.getMessage(), e);
-            return new Response(false, "Failed to create activity due to server error", null);
+            logger.error(" Lỗi khi tạo hoạt động: {}", e.getMessage(), e);
+            return new Response(false, "Không thể tạo hoạt động do lỗi hệ thống", null);
         }
+    }
+
+    private ActivitySeries createSeriesFromActivity(Activity activity, CreateActivityRequest request) {
+        ActivitySeries series = new ActivitySeries();
+        series.setName(activity.getName());
+        series.setDescription(activity.getDescription());
+        series.setStartDate(activity.getStartDate());
+        series.setEndDate(activity.getEndDate());
+        series.setRequiredParticipationCount(
+                request.getSeriesConfig() != null
+                        ? request.getSeriesConfig().getRequiredParticipationCount()
+                        : 0);
+        series.setBonusPoints(
+                request.getSeriesConfig() != null
+                        ? request.getSeriesConfig().getBonusPoints()
+                        : BigDecimal.ZERO);
+
+        return activitySeriesRepository.save(series);
     }
 
     @Override
@@ -123,6 +189,14 @@ public class ActivityServiceImpl implements ActivityService {
             Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
             a.getOrganizers().clear();
             a.getOrganizers().addAll(organizers);
+            if (request.getSeriesId() != null) {
+                activitySeriesRepository.findById(request.getSeriesId()).ifPresent(series -> {
+                    series.getActivities().add(a);
+                    activitySeriesRepository.save(series);
+                });
+            }
+
+
 
             Activity saved = activityRepository.save(a);
 
@@ -156,7 +230,7 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public List<Activity> getActivitiesByScoreType(ScoreType scoreType) {
-        return activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType);
+        return activityRepository.findByScoreTypeActive(scoreType);
     }
 
     @Override
@@ -288,6 +362,7 @@ public class ActivityServiceImpl implements ActivityService {
         a.setContactInfo(req.getContactInfo());
         a.setMandatoryForFacultyStudents(Boolean.TRUE.equals(req.getMandatoryForFacultyStudents()));
         a.setPenaltyPointsIncomplete(req.getPenaltyPointsIncomplete());
+
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
@@ -336,6 +411,23 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setUpdatedAt(a.getUpdatedAt());
         dto.setCreatedBy(a.getCreatedBy());
         dto.setLastModifiedBy(a.getLastModifiedBy());
+        try {
+            long participantCount = activityRegistrationRepository.countByActivityId(a.getId());
+            dto.setParticipantCount(participantCount);
+            dto.setTicketQuantity(a.getTicketQuantity() != null ? a.getTicketQuantity() : 0);
+        } catch (Exception ex) {
+            dto.setParticipantCount(0);
+            dto.setTicketQuantity(a.getTicketQuantity() != null ? a.getTicketQuantity() : 0);
+        }
+
+        if (a.getStartDate() != null) {
+            long remaining = Period.between(LocalDate.now(), a.getStartDate()).getDays();
+            dto.setRemainingDays(Math.max(remaining, 0));
+        } else {
+            dto.setRemainingDays(0);
+        }
+
+
         return dto;
     }
     /**

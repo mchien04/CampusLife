@@ -17,8 +17,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -31,38 +34,51 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final ActivityTaskRepository activityTaskRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
+    private final TaskAssignmentRepository taskAssignmentRepository;
 
     @Override
     @Transactional
-    public Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files) {
+    public Response submitTask(Long taskId, String content, List<MultipartFile> files) {
         try {
-            // Validate task exists
+            // Lấy username từ người đăng nhập hiện tại
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            String username = authentication.getName();
+
+            // Tìm student theo username
+            Optional<Student> studentOpt = studentRepository.findByUserUsernameAndIsDeletedFalse(username);
+            if (studentOpt.isEmpty()) {
+                return new Response(false, "Student not found", null);
+            }
+            Student student = studentOpt.get();
+            Long studentId = student.getId();
+
+            // Kiểm tra task
             Optional<ActivityTask> taskOpt = activityTaskRepository.findById(taskId);
             if (taskOpt.isEmpty()) {
                 return new Response(false, "Task not found", null);
             }
+            ActivityTask task = taskOpt.get();
+            LocalDate today = LocalDate.now();
+            if (task.getDeadline() != null && today.isAfter(task.getDeadline())) {
+                return new Response(false, "The submission deadline has passed.", null);
+            }
+            // Kiểm tra phân công
+            boolean isAssigned = taskAssignmentRepository.existsActiveAssignment(taskId, studentId);
 
-            // Validate student exists
-            Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
-            if (studentOpt.isEmpty()) {
-                return new Response(false, "Student not found", null);
+            if (!isAssigned) {
+                return new Response(false, "You are not assigned to this task", null);
             }
 
-            // Check if submission already exists
-            Optional<TaskSubmission> existingSubmission = taskSubmissionRepository
-                    .findByTaskIdAndStudentIdAndIsDeletedFalse(taskId, studentId);
-            if (existingSubmission.isPresent()) {
-                return new Response(false, "Submission already exists for this task", null);
-            }
 
-            // Create submission
+            // Tạo submission
             TaskSubmission submission = new TaskSubmission();
             submission.setTask(taskOpt.get());
-            submission.setStudent(studentOpt.get());
+            submission.setStudent(student);
             submission.setContent(content);
             submission.setStatus(SubmissionStatus.SUBMITTED);
+            submission.setSubmittedAt(LocalDateTime.now());
 
-            // Handle file uploads
+            // Upload file
             if (files != null && !files.isEmpty()) {
                 List<String> fileUrls = new ArrayList<>();
                 for (MultipartFile file : files) {
@@ -79,14 +95,13 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             taskSubmissionRepository.save(submission);
             return new Response(true, "Task submitted successfully", toDto(submission));
-        } catch (IOException e) {
-            logger.error("Failed to upload files: {}", e.getMessage(), e);
-            return new Response(false, "Failed to upload files: " + e.getMessage(), null);
+
         } catch (Exception e) {
             logger.error("Failed to submit task: {}", e.getMessage(), e);
             return new Response(false, "Failed to submit task: " + e.getMessage(), null);
         }
     }
+
 
     @Override
     @Transactional
@@ -101,7 +116,10 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             if (!submission.getStudent().getId().equals(studentId)) {
                 return new Response(false, "Unauthorized to update this submission", null);
             }
-
+            ActivityTask task = submission.getTask();
+            if (task.getDeadline() != null && LocalDate.now().isAfter(task.getDeadline())) {
+                return new Response(false, "Cannot update: deadline has passed.", null);
+            }
             submission.setContent(content);
 
             // Handle file uploads
@@ -215,7 +233,10 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             if (!submission.getStudent().getId().equals(studentId)) {
                 return new Response(false, "Unauthorized to delete this submission", null);
             }
-
+            ActivityTask task = submission.getTask();
+            if (task.getDeadline() != null && LocalDate.now().isAfter(task.getDeadline())) {
+                return new Response(false, "Cannot delete: submission deadline has passed.", null);
+            }
             submission.setDeleted(true);
             taskSubmissionRepository.save(submission);
             return new Response(true, "Submission deleted successfully", null);

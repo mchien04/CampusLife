@@ -6,6 +6,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.TaskSubmissionService;
 
 import java.util.List;
@@ -16,6 +18,8 @@ import java.util.List;
 public class TaskSubmissionController {
 
     private final TaskSubmissionService taskSubmissionService;
+    private final StudentRepository studentRepository;
+    private final UserRepository userRepository;
 
     /**
      * Nộp bài cho task
@@ -32,7 +36,7 @@ public class TaskSubmissionController {
                         .body(new Response(false, "Student not found", null));
             }
 
-            Response response = taskSubmissionService.submitTask(taskId, studentId, content, files);
+            Response response = taskSubmissionService.submitTask(taskId, content, files);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -174,23 +178,25 @@ public class TaskSubmissionController {
     private Long getStudentIdFromAuth(Authentication authentication) {
         try {
             String username = authentication.getName();
-            // You might need to implement a method to get student ID by username
-            // For now, returning a placeholder
-            return 1L; // This should be replaced with actual student ID lookup
+            return studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                    .map(s -> s.getId())
+                    .orElse(null);
         } catch (Exception e) {
             return null;
         }
     }
 
+
     /**
      * Helper method to get user ID from authentication
      */
+
     private Long getUserIdFromAuth(Authentication authentication) {
         try {
             String username = authentication.getName();
-            // You might need to implement a method to get user ID by username
-            // For now, returning a placeholder
-            return 1L; // This should be replaced with actual user ID lookup
+            return userRepository.findByUsername(username)
+                    .map(u -> u.getId())
+                    .orElse(null);
         } catch (Exception e) {
             return null;
         }

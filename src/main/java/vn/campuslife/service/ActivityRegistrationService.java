@@ -51,5 +51,5 @@ public interface ActivityRegistrationService {
     /**
      * Lấy danh sách sinh viên đã tham gia / chưa tham gia
      */
-    Response getParticipationReport(Long activityId);
+//    Response getParticipationReport(Long activityId);
 }

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
@@ -264,22 +265,25 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         // Lấy participation đã tạo khi duyệt
         ActivityParticipation participation = participationRepository.findByRegistration(registration)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
+        // Kiểm tra trạng thái hiện tại
+        if (participation.getParticipationType() == ParticipationType.REGISTERED) {
+            // Check-in lần 1
+            participation.setParticipationType(ParticipationType.CHECKED_IN);
+            participation.setDate(LocalDateTime.now());
+            participationRepository.save(participation);
+        } else if (participation.getParticipationType() == ParticipationType.CHECKED_IN) {
+            // Check-in lần 2
+            participation.setParticipationType(ParticipationType.ATTENDED);
+            participation.setPointsEarned(registration.getActivity().getMaxPoints());
+            participation.setDate(LocalDateTime.now());
+            participationRepository.save(participation);
 
-        // Nếu đã check-in rồi thì không cho check-in lại
-        if (participation.getParticipationType() == ParticipationType.CHECKED_IN) {
-            return Response.error("Sinh viên đã check-in trước đó");
+            // Cập nhật status của registration
+            registration.setStatus(RegistrationStatus.ATTENDED);
+            registrationRepository.save(registration);
+        } else if (participation.getParticipationType() == ParticipationType.ATTENDED) {
+            return Response.error("Sinh viên đã tham dự (check-in đủ 2 lần)");
         }
-
-        // Cập nhật trạng thái check-in
-        participation.setParticipationType(ParticipationType.CHECKED_IN);
-        participation.setPointsEarned(registration.getActivity().getMaxPoints());
-        participation.setDate(LocalDateTime.now());
-        participationRepository.save(participation);
-
-        // Cập nhật status của registration (ví dụ sang ATTENDED)
-        registration.setStatus(RegistrationStatus.ATTENDED);
-        registrationRepository.save(registration);
-
         ActivityParticipationResponse resp = new ActivityParticipationResponse(
                 participation.getId(),
                 registration.getActivity().getId(),
@@ -314,51 +318,55 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         res.setStudentName(s.getFullName());
         res.setStudentCode(s.getStudentCode());
         res.setStatus(r.getStatus());
+        res.setScoreType(a.getScoreType());
+        res.setImportant(a.isImportant());
+        res.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
+
         res.setRegisteredDate(r.getRegisteredDate());
         res.setCreatedAt(r.getCreatedAt());
         res.setTicketCode(r.getTicketCode());
         return res;
     }
-    @Override
-    @Transactional(readOnly = true)
-    public Response getParticipationReport(Long activityId) {
-        // Lấy tất cả registration đã duyệt
-        List<ActivityRegistration> approvedRegs =
-                registrationRepository.findByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
-
-        // Lấy tất cả participation đã CHECKED_IN
-        List<ActivityParticipation> checkedInList =
-                participationRepository.findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
-
-        Set<Long> checkedInStudentIds = checkedInList.stream()
-                .map(ap -> ap.getRegistration().getStudent().getId())
-                .collect(Collectors.toSet());
-
-        // Phân loại
-        List<StudentResponse> attended = new ArrayList<>();
-        List<StudentResponse> notAttended = new ArrayList<>();
-
-        for (ActivityRegistration reg : approvedRegs) {
-            Student s = reg.getStudent();
-            StudentResponse dto = new StudentResponse(
-                    s.getId(),
-                    s.getFullName(),
-                    s.getStudentCode()
-            );
-
-            if (checkedInStudentIds.contains(s.getId())) {
-                attended.add(dto);
-            } else {
-                notAttended.add(dto);
-            }
-        }
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("attended", attended);
-        result.put("notAttended", notAttended);
-
-        return Response.success("Danh sách tham gia", result);
-    }
+//    @Override
+//    @Transactional(readOnly = true)
+//    public Response getParticipationReport(Long activityId) {
+//        // Lấy tất cả registration đã duyệt
+//        List<ActivityRegistration> approvedRegs =
+//                registrationRepository.findByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
+//
+//        // Lấy tất cả participation đã CHECKED_IN
+//        List<ActivityParticipation> checkedInList =
+//                participationRepository.findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
+//
+//        Set<Long> checkedInStudentIds = checkedInList.stream()
+//                .map(ap -> ap.getRegistration().getStudent().getId())
+//                .collect(Collectors.toSet());
+//
+//        // Phân loại
+//        List<StudentResponse> attended = new ArrayList<>();
+//        List<StudentResponse> notAttended = new ArrayList<>();
+//
+//        for (ActivityRegistration reg : approvedRegs) {
+//            Student s = reg.getStudent();
+//            StudentResponse dto = new StudentResponse(
+//                    s.getId(),
+//                    s.getFullName(),
+//                    s.getStudentCode()
+//            );
+//
+//            if (checkedInStudentIds.contains(s.getId())) {
+//                attended.add(dto);
+//            } else {
+//                notAttended.add(dto);
+//            }
+//        }
+//
+//        Map<String, Object> result = new HashMap<>();
+//        result.put("attended", attended);
+//        result.put("notAttended", notAttended);
+//
+//        return Response.success("Danh sách tham gia", result);
+//    }
 
 
 

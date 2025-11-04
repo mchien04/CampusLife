@@ -156,14 +156,14 @@ public class ActivityRegistrationController {
             return null;
         }
     }
-    // Lấy báo cáo tham gia / chưa tham gia
-    @GetMapping("/activities/{activityId}/report")
-    public ResponseEntity<Response> getReport(
-            @PathVariable Long activityId,
-            Authentication authentication) {
-        System.out.println("Authorities: " + authentication.getAuthorities());
-        return ResponseEntity.ok(registrationService.getParticipationReport(activityId));
-    }
+//    // Lấy báo cáo tham gia / chưa tham gia
+//    @GetMapping("/activities/{activityId}/report")
+//    public ResponseEntity<Response> getReport(
+//            @PathVariable Long activityId,
+//            Authentication authentication) {
+//        System.out.println("Authorities: " + authentication.getAuthorities());
+//        return ResponseEntity.ok(registrationService.getParticipationReport(activityId));
+//    }
 
 
 }

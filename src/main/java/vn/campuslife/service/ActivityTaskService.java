@@ -70,4 +70,9 @@ public interface ActivityTaskService {
      * Phân công nhiệm vụ cho tất cả sinh viên đăng ký activity
      */
     Response assignTaskToRegisteredStudents(Long activityId, Long taskId);
+    /**
+     * Lấy danh sách phân công theo Activity ID và Student ID
+     */
+    Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId);
+
 }

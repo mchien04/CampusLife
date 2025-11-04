@@ -18,18 +18,28 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
 
     List<Activity> findByIsDeletedFalse();
     Optional<Activity> findByIdAndIsDeletedFalse(Long id);
-    List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(ScoreType scoreType);
+    @Query("""
+    select a from Activity a
+    where a.isDeleted = false
+      and a.scoreType = :scoreType
+      and a.endDate >= CURRENT_DATE
+    order by a.startDate asc
+    """)
+    List<Activity> findByScoreTypeActive(@Param("scoreType") ScoreType scoreType);
+
     List<Activity> findByIsDeletedFalseOrderByStartDateAsc();
 
     @Query("""
        select a from Activity a
        where a.isDeleted = false
-         and a.startDate >= :start
-         and a.startDate <  :end
+         and a.endDate >= :start
+         and a.endDate <  :end
+         and a.endDate >= CURRENT_DATE  
        order by a.startDate desc
        """)
     List<Activity> findInMonth(@Param("start") LocalDate start,
-                               @Param("end")   LocalDate end);
+                               @Param("end") LocalDate end);
+
 
     @Query("""
         select distinct a
@@ -37,7 +47,18 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
         join a.organizers d
         where a.isDeleted = false
           and d.id = :deptId
+          and a.endDate >= CURRENT_DATE 
         order by a.startDate asc
         """)
     List<Activity> findForDepartment(@Param("deptId") Long deptId);
+
+    @Query("SELECT a FROM ActivitySeries s JOIN s.activities a WHERE s.id = :seriesId AND a.isDeleted = false")
+    List<Activity> findAllBySeries_IdAndIsDeletedFalse(@Param("seriesId") Long seriesId);
+
+    @Query("SELECT a FROM Activity a WHERE a.id = :id AND a.id IN " +
+            "(SELECT act.id FROM ActivitySeries s JOIN s.activities act WHERE s.id = :seriesId)")
+    Optional<Activity> findByIdAndSeriesId(@Param("id") Long id, @Param("seriesId") Long seriesId);
+
+
+
 }
