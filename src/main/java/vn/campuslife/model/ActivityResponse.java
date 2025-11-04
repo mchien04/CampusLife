@@ -27,6 +27,7 @@ public class ActivityResponse {
 
     private String shareLink;
     private boolean isImportant;
+    private boolean mandatoryForFacultyStudents;
     private String bannerUrl;
     private String location;
 
@@ -34,7 +35,7 @@ public class ActivityResponse {
     private String benefits;
     private String requirements;
     private String contactInfo;
-    private boolean mandatoryForFacultyStudents;
+
     private BigDecimal penaltyPointsIncomplete;
 
     private List<Long> organizerIds;
@@ -43,4 +44,11 @@ public class ActivityResponse {
     private LocalDateTime updatedAt;
     private String createdBy;
     private String lastModifiedBy;
+
+    private long participantCount;
+    private long remainingDays;
+    private Long seriesId;
+    private String seriesName;
+
+
 }

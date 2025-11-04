@@ -61,4 +61,5 @@ public interface ActivityTaskRepository extends JpaRepository<ActivityTask, Long
     @Query("SELECT at FROM ActivityTask at WHERE at.id = :taskId AND at.activity.id = :activityId AND at.activity.isDeleted = false")
     Optional<ActivityTask> findByIdAndActivityIdAndActivityIsDeletedFalse(@Param("taskId") Long taskId,
             @Param("activityId") Long activityId);
+
 }

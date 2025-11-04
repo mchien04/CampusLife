@@ -68,7 +68,14 @@ public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, 
     Long countByTaskIdAndStatus(Long taskId, TaskStatus status);
 
     /**
-     * Kiểm tra xem student đã được phân công task này chưa
+     * Kiểm tra xem sinh viên có được phân công hợp lệ cho task không
      */
-    boolean existsByTaskIdAndStudentId(Long taskId, Long studentId);
+    @Query("""
+        SELECT CASE WHEN COUNT(ta) > 0 THEN true ELSE false END
+        FROM TaskAssignment ta
+        WHERE ta.task.id = :taskId
+          AND ta.student.id = :studentId
+          AND ta.status = 'PENDING'
+    """)
+    boolean existsActiveAssignment(@Param("taskId") Long taskId, @Param("studentId") Long studentId);
 }

@@ -26,6 +26,8 @@ public class StudentResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+
+
     public static StudentResponse fromEntity(Student student) {
         StudentResponse response = new StudentResponse();
         response.setId(student.getId());

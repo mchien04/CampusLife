@@ -68,7 +68,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/api/upload/**").permitAll()
-                        .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers("/images/**", "/uploads/**", "/static/**").permitAll()
+
                         .requestMatchers("/api/departments/**").permitAll()
 
                         // Admin-only endpoints
@@ -79,13 +80,27 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/activities/debug/user-info").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
+                        // MiniGames
+                        .requestMatchers(HttpMethod.PUT, "/api/minigames/by-activity/**").hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/minigames/**").permitAll()
 
+                        // series
+                        .requestMatchers(HttpMethod.GET,  "/api/activity-series/**").hasAnyRole("MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/activity-series/**").hasAnyRole("MANAGER")
+                        .requestMatchers(HttpMethod.PUT,  "/api/activity-series/**").hasAnyRole("MANAGER")
+                        .requestMatchers(HttpMethod.DELETE,"/api/activity-series/**").hasAnyRole("MANAGER")
                         // Tasks and Assignments
+                        .requestMatchers(HttpMethod.POST, "/api/assignments/task/**").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/assignments/activity/*/student/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.PUT, "/api/assignments/*/status").hasRole("STUDENT")
-                        .requestMatchers("/api/tasks/**").hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers("/api/assignments/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/activity-series/**").hasAnyRole("MANAGER", "ADMIN")
+
+
+
 
                         // Activity Registrations
                         .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**").hasRole("STUDENT")
@@ -147,6 +162,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/students/department/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/students/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/students/username/*").hasAnyRole("ADMIN", "MANAGER")
+                        //Feedback
+                        .requestMatchers(HttpMethod.GET, "/api/ratings/**").hasAnyRole("ADMIN", "MANAGER", "STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/ratings/**").hasAnyRole("ADMIN", "MANAGER", "STUDENT")
 
                         // Default
                         .anyRequest().authenticated())

@@ -193,7 +193,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
             // Create assignments
             List<TaskAssignment> assignments = students.stream()
-                    .filter(student -> !taskAssignmentRepository.existsByTaskIdAndStudentId(request.getTaskId(),
+                    .filter(student -> !taskAssignmentRepository.existsActiveAssignment(request.getTaskId(),
                             student.getId()))
                     .map(student -> {
                         TaskAssignment assignment = new TaskAssignment();
@@ -320,7 +320,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             int totalAssignments = 0;
             for (ActivityTask task : tasks) {
                 for (Student student : students) {
-                    if (!taskAssignmentRepository.existsByTaskIdAndStudentId(task.getId(), student.getId())) {
+                    if (!taskAssignmentRepository.existsActiveAssignment(task.getId(), student.getId())) {
                         TaskAssignment assignment = new TaskAssignment();
                         assignment.setTask(task);
                         assignment.setStudent(student);
@@ -459,7 +459,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                 Student student = registration.getStudent();
 
                 // Check if already assigned
-                if (!taskAssignmentRepository.existsByTaskIdAndStudentId(taskId, student.getId())) {
+                if (!taskAssignmentRepository.existsActiveAssignment(taskId, student.getId())) {
                     TaskAssignment assignment = new TaskAssignment();
                     assignment.setTask(task);
                     assignment.setStudent(student);
@@ -485,6 +485,22 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         } catch (Exception e) {
             logger.error("Failed to assign task to registered students: {}", e.getMessage(), e);
             return new Response(false, "Failed to assign task due to server error", null);
+        }
+    }
+    @Override
+    public Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId) {
+        try {
+            List<TaskAssignment> assignments =
+                    taskAssignmentRepository.findByActivityIdAndStudentId(activityId, studentId);
+
+            if (assignments.isEmpty()) {
+                return new Response(false, "No task assignments found for this student in the activity", null);
+            }
+
+            return new Response(true, "Assignments retrieved successfully", assignments);
+        } catch (Exception e) {
+            logger.error("Failed to get task assignments by activity and student: {}", e.getMessage(), e);
+            return new Response(false, "Error fetching task assignments: " + e.getMessage(), null);
         }
     }
 }
