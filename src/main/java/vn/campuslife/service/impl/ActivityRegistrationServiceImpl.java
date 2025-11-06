@@ -12,7 +12,9 @@ import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
+import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.TicketCodeUtils;
+import vn.campuslife.enumeration.NotificationType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -33,6 +35,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final ScoreHistoryRepository scoreHistoryRepository;
     private final SemesterRepository semesterRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -45,29 +48,39 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
             Activity activity = activityOpt.get();
 
-            // 2) Kiểm tra student
+            // 2) Block manual registration for important/mandatory activities (they are auto-registered)
+            if (activity.isImportant() || activity.isMandatoryForFacultyStudents()) {
+                return new Response(false, "This activity is automatically registered for eligible students. Manual registration is not allowed.", null);
+            }
+
+            // 3) Block registration if activity is draft
+            if (activity.isDraft()) {
+                return new Response(false, "Activity is not published yet", null);
+            }
+
+            // 4) Kiểm tra student
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {
                 return new Response(false, "Student not found", null);
             }
             Student student = studentOpt.get();
 
-            // 3) Đã đăng ký chưa?
+            // 5) Đã đăng ký chưa?
             if (registrationRepository.existsByActivityIdAndStudentId(request.getActivityId(), studentId)) {
                 return new Response(false, "Already registered for this activity", null);
             }
 
-            // 4) Thời gian mở/đóng đăng ký
+            // 6) Thời gian mở/đóng đăng ký
             if (activity.getRegistrationDeadline() != null &&
-                    LocalDateTime.now().isAfter(activity.getRegistrationDeadline().atStartOfDay())) {
+                    LocalDateTime.now().isAfter(activity.getRegistrationDeadline())) {
                 return new Response(false, "Registration deadline has passed", null);
             }
             if (activity.getRegistrationStartDate() != null &&
-                    LocalDateTime.now().isBefore(activity.getRegistrationStartDate().atStartOfDay())) {
+                    LocalDateTime.now().isBefore(activity.getRegistrationStartDate())) {
                 return new Response(false, "Registration is not yet open", null);
             }
 
-            // 5) Kiểm tra số lượng vé (nếu giới hạn theo APPROVED)
+            // 7) Kiểm tra số lượng vé (nếu giới hạn theo APPROVED)
             if (activity.getTicketQuantity() != null) {
                 Long current = registrationRepository
                         .countByActivityIdAndStatus(request.getActivityId(), RegistrationStatus.APPROVED);
@@ -76,12 +89,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 }
             }
 
-            // 6) Tạo đăng ký + MÃ VÉ
+            // 8) Tạo đăng ký + MÃ VÉ
             ActivityRegistration registration = new ActivityRegistration();
             registration.setActivity(activity);
             registration.setStudent(student);
             registration.setRegisteredDate(LocalDateTime.now());
-            registration.setStatus(RegistrationStatus.PENDING);
+            // Auto-approve if activity does not require approval
+            registration.setStatus(
+                    activity.isRequiresApproval() ? RegistrationStatus.PENDING : RegistrationStatus.APPROVED);
 
             String code;
             int attempts = 0;
@@ -93,6 +108,39 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             ActivityRegistration saved = registrationRepository.save(registration);
             ActivityRegistrationResponse payload = toRegistrationResponse(saved);
+
+            // Send notification to student
+            try {
+                Long userId = student.getUser().getId();
+                String title;
+                String content;
+                Map<String, Object> metadata = new HashMap<>();
+                metadata.put("activityId", activity.getId());
+                metadata.put("activityName", activity.getName());
+                metadata.put("registrationId", saved.getId());
+                metadata.put("ticketCode", saved.getTicketCode());
+
+                if (saved.getStatus() == RegistrationStatus.APPROVED) {
+                    title = "Đăng ký thành công";
+                    content = String.format("Đăng ký thành công cho sự kiện: %s", activity.getName());
+                } else {
+                    title = "Đăng ký đang chờ duyệt";
+                    content = String.format("Đăng ký của bạn đang chờ duyệt: %s", activity.getName());
+                }
+
+                notificationService.sendNotification(
+                        userId,
+                        title,
+                        content,
+                        NotificationType.ACTIVITY_REGISTRATION,
+                        "/activities/" + activity.getId(),
+                        metadata
+                );
+                logger.info("Sent registration notification to user {} for activity {}", userId, activity.getId());
+            } catch (Exception e) {
+                logger.error("Failed to send registration notification: {}", e.getMessage(), e);
+                // Don't fail registration if notification fails
+            }
 
             return new Response(true, "Successfully registered for activity", payload);
         } catch (Exception e) {
@@ -195,6 +243,43 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 }
             }
 
+            // Send notification to student when status is approved or rejected
+            try {
+                if (newStatus == RegistrationStatus.APPROVED || newStatus == RegistrationStatus.REJECTED) {
+                    Long userId = savedRegistration.getStudent().getUser().getId();
+                    Activity activity = savedRegistration.getActivity();
+                    String title;
+                    String content;
+                    Map<String, Object> metadata = new HashMap<>();
+                    metadata.put("activityId", activity.getId());
+                    metadata.put("activityName", activity.getName());
+                    metadata.put("registrationId", savedRegistration.getId());
+                    metadata.put("status", newStatus.toString());
+
+                    if (newStatus == RegistrationStatus.APPROVED) {
+                        title = "Đăng ký đã được duyệt";
+                        content = String.format("Đăng ký của bạn đã được duyệt: %s", activity.getName());
+                    } else {
+                        title = "Đăng ký đã bị từ chối";
+                        content = String.format("Đăng ký của bạn đã bị từ chối: %s", activity.getName());
+                    }
+
+                    notificationService.sendNotification(
+                            userId,
+                            title,
+                            content,
+                            NotificationType.ACTIVITY_REGISTRATION,
+                            "/activities/" + activity.getId(),
+                            metadata
+                    );
+                    logger.info("Sent status update notification to user {} for registration {}", 
+                            userId, savedRegistration.getId());
+                }
+            } catch (Exception e) {
+                logger.error("Failed to send status update notification: {}", e.getMessage(), e);
+                // Don't fail status update if notification fails
+            }
+
             ActivityRegistrationResponse response = toRegistrationResponse(savedRegistration);
             return new Response(true, "Registration status updated successfully", response);
 
@@ -256,6 +341,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này"));
         } else {
             return Response.error("Cần cung cấp ticketCode hoặc studentId");
+        }
+
+        // Block check-in if activity is draft
+        if (registration.getActivity().isDraft()) {
+            return Response.error("Activity is not published yet");
         }
 
         // Lấy participation đã tạo khi duyệt
@@ -330,6 +420,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityParticipation participation = participationRepository
                     .findById(participationId)
                     .orElseThrow(() -> new RuntimeException("Participation not found"));
+
+            // Block grading if activity is draft
+            if (participation.getRegistration().getActivity().isDraft()) {
+                return Response.error("Activity is not published yet");
+            }
 
             // Kiểm tra đã ATTENDED chưa
             if (participation.getParticipationType() != ParticipationType.ATTENDED) {

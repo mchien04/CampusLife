@@ -51,7 +51,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             Activity activity = activityOpt.get();
 
             // Validate deadline if provided
-            if (request.getDeadline() != null && request.getDeadline().isBefore(activity.getEndDate())) {
+            if (request.getDeadline() != null && request.getDeadline().isBefore(activity.getEndDate().toLocalDate())) {
                 return new Response(false, "Task deadline must be after activity end date", null);
             }
 
@@ -130,7 +130,8 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             // Validate deadline if provided
-            if (request.getDeadline() != null && request.getDeadline().isBefore(task.getActivity().getEndDate())) {
+            if (request.getDeadline() != null
+                    && request.getDeadline().isBefore(task.getActivity().getEndDate().toLocalDate())) {
                 return new Response(false, "Task deadline must be after activity end date", null);
             }
 

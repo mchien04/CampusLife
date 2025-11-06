@@ -19,8 +19,8 @@ public interface TaskSubmissionService {
     // Lấy tất cả bài nộp của một task (Admin/Manager)
     Response getTaskSubmissions(Long taskId);
 
-    // Chấm điểm bài nộp
-    Response gradeSubmission(Long submissionId, Long graderId, Double score, String feedback);
+    // Chấm điểm bài nộp (đạt/không đạt)
+    Response gradeSubmission(Long submissionId, Long graderId, boolean isCompleted, String feedback);
 
     // Lấy chi tiết bài nộp
     Response getSubmissionDetails(Long submissionId);

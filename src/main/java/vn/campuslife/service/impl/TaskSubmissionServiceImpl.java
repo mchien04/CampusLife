@@ -167,7 +167,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     // @Transactional - Tạm thời bỏ để test
-    public Response gradeSubmission(Long submissionId, Long graderId, Double score, String feedback) {
+    public Response gradeSubmission(Long submissionId, Long graderId, boolean isCompleted, String feedback) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
             if (submissionOpt.isEmpty()) {
@@ -180,7 +180,24 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             TaskSubmission submission = submissionOpt.get();
-            submission.setScore(score);
+            ActivityTask task = submission.getTask();
+            Activity activity = task.getActivity();
+
+            // Tính điểm từ isCompleted và activity points
+            java.math.BigDecimal points;
+            if (isCompleted) {
+                // Đạt: điểm cộng từ maxPoints
+                points = activity.getMaxPoints() != null ? activity.getMaxPoints() : java.math.BigDecimal.ZERO;
+            } else {
+                // Không đạt: điểm trừ từ penaltyPointsIncomplete
+                java.math.BigDecimal penalty = activity.getPenaltyPointsIncomplete() != null
+                        ? activity.getPenaltyPointsIncomplete()
+                        : java.math.BigDecimal.ZERO;
+                points = penalty.negate(); // Chuyển thành số âm
+            }
+
+            submission.setIsCompleted(isCompleted);
+            submission.setScore(points.doubleValue()); // Lưu điểm số để backward compatibility
             submission.setFeedback(feedback);
             submission.setGrader(graderOpt.get());
             submission.setStatus(SubmissionStatus.GRADED);
@@ -191,8 +208,6 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             // Tự động cập nhật ActivityParticipation và tổng hợp StudentScore nếu đủ điều
             // kiện
             try {
-                ActivityTask task = submission.getTask();
-                Activity activity = task.getActivity();
                 Student student = submission.getStudent();
 
                 if (activity != null && activity.isRequiresSubmission()) {
@@ -210,12 +225,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                             if (partOpt.isPresent()) {
                                 ActivityParticipation participation = partOpt.get();
 
-                                // Đánh dấu hoàn thành và tính điểm theo maxPoints của activity
-                                java.math.BigDecimal points = activity.getMaxPoints() != null
-                                        ? activity.getMaxPoints()
-                                        : java.math.BigDecimal.ZERO;
-
-                                participation.setIsCompleted(true);
+                                // Cập nhật participation với điểm đã tính từ isCompleted
+                                participation.setIsCompleted(isCompleted);
                                 participation.setPointsEarned(points);
                                 participation.setParticipationType(ParticipationType.COMPLETED);
                                 activityParticipationRepository.save(participation);
@@ -375,6 +386,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         }
 
         dto.setScore(submission.getScore());
+        dto.setIsCompleted(submission.getIsCompleted());
         dto.setFeedback(submission.getFeedback());
         if (submission.getGrader() != null) {
             dto.setGraderId(submission.getGrader().getId());

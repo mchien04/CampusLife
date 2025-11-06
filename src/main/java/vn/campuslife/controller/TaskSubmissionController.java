@@ -104,35 +104,21 @@ public class TaskSubmissionController {
     }
 
     /**
-     * Chấm điểm bài nộp
+     * Chấm điểm bài nộp (đạt/không đạt)
      */
     @PutMapping("/{submissionId}/grade")
     public ResponseEntity<Response> gradeSubmission(@PathVariable Long submissionId,
-            @RequestParam String score,
+            @RequestParam boolean isCompleted,
             @RequestParam(required = false) String feedback,
             Authentication authentication) {
         try {
-            // Parse string to double
-            Double scoreValue;
-            try {
-                scoreValue = Double.parseDouble(score);
-            } catch (NumberFormatException e) {
-                return ResponseEntity.badRequest()
-                        .body(new Response(false, "Invalid score format. Must be a number.", null));
-            }
-
             Long graderId = getUserIdFromAuth(authentication);
-            System.out.println("DEBUG: graderId = " + graderId);
             if (graderId == null) {
                 return ResponseEntity.badRequest()
                         .body(new Response(false, "User not found", null));
             }
 
-            System.out.println("DEBUG: Calling gradeSubmission with submissionId=" + submissionId + ", graderId="
-                    + graderId + ", score=" + scoreValue);
-            Response response = taskSubmissionService.gradeSubmission(submissionId, graderId, scoreValue, feedback);
-            System.out.println(
-                    "DEBUG: gradeSubmission response = " + response.isStatus() + " - " + response.getMessage());
+            Response response = taskSubmissionService.gradeSubmission(submissionId, graderId, isCompleted, feedback);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()

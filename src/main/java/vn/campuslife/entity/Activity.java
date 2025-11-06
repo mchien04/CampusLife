@@ -11,7 +11,6 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 import java.math.BigDecimal;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -58,11 +57,11 @@ public class Activity {
 
     /** Ngày bắt đầu. */
     @Comment("Ngày bắt đầu")
-    private LocalDate startDate;
+    private LocalDateTime startDate;
 
     /** Ngày kết thúc. */
     @Comment("Ngày kết thúc")
-    private LocalDate endDate;
+    private LocalDateTime endDate;
 
     /** Có yêu cầu nộp minh chứng/báo cáo sau khi tham gia hay không. */
     @Column(nullable = false)
@@ -75,11 +74,11 @@ public class Activity {
 
     /** Ngày mở đăng ký tham gia. */
     @Comment("Ngày bắt đầu đăng ký")
-    private LocalDate registrationStartDate;
+    private LocalDateTime registrationStartDate;
 
     /** Hạn cuối đăng ký tham gia. */
     @Comment("Hạn chót đăng ký")
-    private LocalDate registrationDeadline;
+    private LocalDateTime registrationDeadline;
 
     /** Đường dẫn chia sẻ hoạt động. */
     @Comment("Link chia sẻ")
@@ -89,6 +88,11 @@ public class Activity {
     @Column(nullable = false)
     @Comment("Hoạt động quan trọng")
     private boolean isImportant = false;
+
+    /** Bản nháp (true = chưa công bố). */
+    @Column(nullable = false)
+    @Comment("Bản nháp")
+    private boolean isDraft = true;
 
     /** Đường dẫn ảnh banner. */
     @Comment("Ảnh banner")
@@ -120,6 +124,11 @@ public class Activity {
     /** Thông tin liên hệ hỗ trợ (email/số điện thoại). */
     @Comment("Thông tin liên hệ")
     private String contactInfo;
+
+    /** Đăng ký có cần duyệt hay không. */
+    @Column(nullable = false)
+    @Comment("Cần duyệt đăng ký")
+    private boolean requiresApproval = true;
 
     /** Có bắt buộc cho sinh viên thuộc khoa tham gia hay không. */
     @Column(nullable = false)
