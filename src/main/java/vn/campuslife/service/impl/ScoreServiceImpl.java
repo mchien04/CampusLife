@@ -3,7 +3,9 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.campuslife.entity.*;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.Semester;
+import vn.campuslife.entity.StudentScore;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.ScoreViewResponse;
@@ -11,7 +13,6 @@ import vn.campuslife.repository.*;
 import vn.campuslife.service.ScoreService;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -21,75 +22,13 @@ public class ScoreServiceImpl implements ScoreService {
 
     private final StudentRepository studentRepository;
     private final SemesterRepository semesterRepository;
-    private final CriterionRepository criterionRepository;
     private final StudentScoreRepository studentScoreRepository;
-    private final UserRepository userRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
 
     @Override
     @Transactional
     public Response calculateTrainingScore(Long studentId, Long semesterId, List<Long> excludedCriterionIds,
             Long enteredByUserId) {
-        try {
-            Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
-            if (studentOpt.isEmpty())
-                return new Response(false, "Student not found", null);
-            Optional<Semester> semesterOpt = semesterRepository.findById(semesterId);
-            if (semesterOpt.isEmpty())
-                return new Response(false, "Semester not found", null);
-            Optional<User> enteredByOpt = userRepository.findById(enteredByUserId);
-            if (enteredByOpt.isEmpty())
-                return new Response(false, "User not found", null);
-
-            Set<Long> excluded = excludedCriterionIds == null ? Set.of() : new HashSet<>(excludedCriterionIds);
-
-            // Lấy tất cả criterion thuộc nhóm rèn luyện
-            List<Criterion> criteria = criterionRepository.findAllTrainingCriteria();
-
-            BigDecimal total = BigDecimal.ZERO;
-            List<StudentScore> scoresToSave = new ArrayList<>();
-            List<ScoreHistory> histories = new ArrayList<>();
-
-            for (Criterion c : criteria) {
-                boolean ok = !excluded.contains(c.getId());
-                BigDecimal given = ok && c.getMaxScore() != null ? c.getMaxScore() : BigDecimal.ZERO;
-
-                StudentScore ss = new StudentScore();
-                ss.setStudent(studentOpt.get());
-                ss.setSemester(semesterOpt.get());
-                ss.setCriterion(c);
-                ss.setScore(given);
-                ss.setScoreType(ScoreType.REN_LUYEN);
-                ss.setActivityIds("[]");
-                ss.setNotes(ok ? "Full score for criterion" : "Excluded criterion");
-
-                total = total.add(given);
-                scoresToSave.add(ss);
-
-                ScoreHistory h = new ScoreHistory();
-                h.setScore(ss);
-                h.setOldScore(BigDecimal.ZERO);
-                h.setNewScore(given);
-                h.setChangedBy(enteredByOpt.get());
-                h.setChangeDate(LocalDateTime.now());
-                h.setReason(ok ? "Full score for criterion" : "Excluded criterion");
-                histories.add(h);
-            }
-
-            studentScoreRepository.saveAll(scoresToSave);
-            scoreHistoryRepository.saveAll(histories);
-
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("total", total);
-            payload.put("items", scoresToSave.stream().map(s -> Map.of(
-                    "criterionId", s.getCriterion().getId(),
-                    "criterionName", s.getCriterion().getName(),
-                    "score", s.getScore())).collect(Collectors.toList()));
-
-            return new Response(true, "Training score calculated", payload);
-        } catch (Exception e) {
-            return new Response(false, "Failed to calculate training score: " + e.getMessage(), null);
-        }
+        return new Response(false, "Deprecated: training score by criteria has been removed.", null);
     }
 
     @Override
@@ -130,7 +69,6 @@ public class ScoreServiceImpl implements ScoreService {
                         // Ignore parse error
                     }
                     it.setActivityIds(activityIds);
-                    it.setCriterionId(ss.getCriterion() != null ? ss.getCriterion().getId() : null);
                     it.setNotes(ss.getNotes());
                     return it;
                 }).collect(Collectors.toList());

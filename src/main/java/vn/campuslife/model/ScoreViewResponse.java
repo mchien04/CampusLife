@@ -23,7 +23,6 @@ public class ScoreViewResponse {
     public static class ScoreItem {
         private BigDecimal score;
         private List<Long> activityIds; // Danh sách activity đã nhận điểm
-        private Long criterionId; // Nullable
         private String notes;
     }
 }

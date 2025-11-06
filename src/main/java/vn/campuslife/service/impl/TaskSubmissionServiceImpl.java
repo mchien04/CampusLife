@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.SubmissionStatus;
+import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
@@ -35,6 +36,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final StudentScoreRepository studentScoreRepository;
     private final ScoreHistoryRepository scoreHistoryRepository;
     private final SemesterRepository semesterRepository;
+    private final ActivityRegistrationRepository activityRegistrationRepository;
+    private final ActivityParticipationRepository activityParticipationRepository;
 
     @Override
     @Transactional
@@ -185,8 +188,105 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             taskSubmissionRepository.save(submission);
 
-            // Tạm thời disable tự động tạo StudentScore để test
-            // createScoreFromSubmission(submission);
+            // Tự động cập nhật ActivityParticipation và tổng hợp StudentScore nếu đủ điều
+            // kiện
+            try {
+                ActivityTask task = submission.getTask();
+                Activity activity = task.getActivity();
+                Student student = submission.getStudent();
+
+                if (activity != null && activity.isRequiresSubmission()) {
+                    // Tìm registration của student cho activity này
+                    Optional<ActivityRegistration> regOpt = activityRegistrationRepository
+                            .findByActivityIdAndStudentId(activity.getId(), student.getId());
+                    if (regOpt.isPresent()) {
+                        ActivityRegistration registration = regOpt.get();
+
+                        // Chỉ tự động khi đã ATTENDED (đã check-in/out)
+                        if (registration.getStatus() == vn.campuslife.enumeration.RegistrationStatus.ATTENDED) {
+                            // Lấy participation theo registration
+                            Optional<ActivityParticipation> partOpt = activityParticipationRepository
+                                    .findByRegistration(registration);
+                            if (partOpt.isPresent()) {
+                                ActivityParticipation participation = partOpt.get();
+
+                                // Đánh dấu hoàn thành và tính điểm theo maxPoints của activity
+                                java.math.BigDecimal points = activity.getMaxPoints() != null
+                                        ? activity.getMaxPoints()
+                                        : java.math.BigDecimal.ZERO;
+
+                                participation.setIsCompleted(true);
+                                participation.setPointsEarned(points);
+                                participation.setParticipationType(ParticipationType.COMPLETED);
+                                activityParticipationRepository.save(participation);
+
+                                // Cộng dồn lại điểm StudentScore theo scoreType của activity
+                                // Lấy tất cả participation COMPLETED cùng student và scoreType
+                                java.util.List<ActivityParticipation> allParts = activityParticipationRepository
+                                        .findByStudentIdAndScoreType(student.getId(), activity.getScoreType());
+
+                                java.math.BigDecimal total = allParts.stream()
+                                        .filter(p -> p.getParticipationType() == ParticipationType.COMPLETED)
+                                        .map(p -> p.getPointsEarned() != null ? p.getPointsEarned()
+                                                : java.math.BigDecimal.ZERO)
+                                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+                                // Cập nhật bản ghi StudentScore tương ứng ở học kỳ hiện tại (đang mở)
+                                Optional<Semester> currentSemester = semesterRepository.findAll().stream()
+                                        .filter(Semester::isOpen)
+                                        .findFirst();
+                                if (currentSemester.isPresent()) {
+                                    Optional<StudentScore> scoreOpt = studentScoreRepository
+                                            .findByStudentIdAndSemesterIdAndScoreType(
+                                                    student.getId(),
+                                                    currentSemester.get().getId(),
+                                                    activity.getScoreType());
+                                    if (scoreOpt.isPresent()) {
+                                        StudentScore agg = scoreOpt.get();
+                                        java.math.BigDecimal oldTotal = agg.getScore();
+                                        agg.setScore(total);
+                                        // Ghi thêm activityId vào danh sách nếu chưa có
+                                        String activityIdsJson = agg.getActivityIds() != null ? agg.getActivityIds()
+                                                : "[]";
+                                        if (activityIdsJson.isEmpty())
+                                            activityIdsJson = "[]";
+                                        java.util.Set<Long> idSet = new java.util.LinkedHashSet<>();
+                                        try {
+                                            String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
+                                            if (!content.isEmpty()) {
+                                                String[] ids = content.split(",");
+                                                for (String id : ids)
+                                                    idSet.add(Long.parseLong(id.trim()));
+                                            }
+                                        } catch (Exception ignore) {
+                                        }
+                                        idSet.add(activity.getId());
+                                        String updatedIds = "[" + idSet.stream().map(String::valueOf)
+                                                .collect(java.util.stream.Collectors.joining(",")) + "]";
+                                        agg.setActivityIds(updatedIds);
+                                        studentScoreRepository.save(agg);
+
+                                        // Lưu lịch sử nếu thay đổi
+                                        if (oldTotal == null || oldTotal.compareTo(total) != 0) {
+                                            ScoreHistory hist = new ScoreHistory();
+                                            hist.setScore(agg);
+                                            hist.setOldScore(oldTotal);
+                                            hist.setNewScore(total);
+                                            hist.setChangedBy(graderOpt.get());
+                                            hist.setChangeDate(LocalDateTime.now());
+                                            hist.setReason("Auto update from graded submission and completion");
+                                            hist.setActivityId(activity.getId());
+                                            scoreHistoryRepository.save(hist);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Auto-update participation/score after grading failed: {}", ex.getMessage());
+            }
 
             return new Response(true, "Submission graded successfully", toDto(submission));
         } catch (Exception e) {

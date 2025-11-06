@@ -120,8 +120,7 @@ public class SecurityConfig {
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*/total")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
-                        .requestMatchers(HttpMethod.POST, "/api/scores/training/calculate")
-                        .hasAnyRole("ADMIN", "MANAGER")
+                        // removed: /api/scores/training/calculate
 
                         // Task Submissions
                         .requestMatchers(HttpMethod.GET, "/api/submissions/task/*/my").hasRole("STUDENT")
