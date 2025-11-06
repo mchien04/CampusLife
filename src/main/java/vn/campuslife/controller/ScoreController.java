@@ -16,15 +16,7 @@ public class ScoreController {
 
     private final ScoreService scoreService;
 
-    @PostMapping("/training/calculate")
-    public ResponseEntity<Response> calculateTraining(@RequestParam Long studentId,
-            @RequestParam Long semesterId,
-            @RequestBody(required = false) List<Long> excludedCriterionIds,
-            Authentication authentication) {
-        Long userId = 1L; // TODO: map from auth
-        Response resp = scoreService.calculateTrainingScore(studentId, semesterId, excludedCriterionIds, userId);
-        return ResponseEntity.ok(resp);
-    }
+    // Deprecated: training score by criteria removed
 
     @GetMapping("/student/{studentId}/semester/{semesterId}")
     public ResponseEntity<Response> viewScores(@PathVariable Long studentId, @PathVariable Long semesterId) {
