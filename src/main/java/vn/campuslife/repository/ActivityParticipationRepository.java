@@ -28,5 +28,7 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
             @Param("activityId") Long activityId,
             @Param("type") ParticipationType type
     );
+    Optional<ActivityParticipation> findByRegistrationId(Long registrationId);
+
 
 }

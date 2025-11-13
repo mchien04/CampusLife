@@ -82,7 +82,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
                         // MiniGames
                         .requestMatchers(HttpMethod.PUT, "/api/minigames/by-activity/**").hasAnyRole("MANAGER", "ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN","STUDENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/minigames/**").permitAll()
 

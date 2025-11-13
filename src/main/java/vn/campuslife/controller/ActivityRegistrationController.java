@@ -5,7 +5,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import vn.campuslife.entity.Student;
 import vn.campuslife.model.*;
+import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.StudentService;
 
@@ -16,6 +18,7 @@ public class ActivityRegistrationController {
 
     private final ActivityRegistrationService registrationService;
     private final StudentService studentService;
+    private final StudentRepository studentRepository;
 
     /**
      * Đăng ký tham gia sự kiện
@@ -145,17 +148,19 @@ public class ActivityRegistrationController {
 
 
 
-    /**
-     * Helper method to get student ID from authentication
-     */
     private Long getStudentIdFromAuth(Authentication authentication) {
-        try {
-            String username = authentication.getName();
-            return studentService.getStudentIdByUsername(username);
-        } catch (Exception e) {
+        if (authentication == null || authentication.getName() == null) {
             return null;
         }
+
+        String username = authentication.getName();
+
+        return studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .map(Student::getId)
+                .orElse(null);
     }
+
+
 //    // Lấy báo cáo tham gia / chưa tham gia
 //    @GetMapping("/activities/{activityId}/report")
 //    public ResponseEntity<Response> getReport(

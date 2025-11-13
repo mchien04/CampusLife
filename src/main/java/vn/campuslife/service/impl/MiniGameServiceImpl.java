@@ -6,14 +6,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.enumeration.MiniGameType;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
-import vn.campuslife.repository.MiniGameQuizOptionRepository;
-import vn.campuslife.repository.MiniGameQuizQuestionRepository;
-import vn.campuslife.repository.MiniGameQuizRepository;
-import vn.campuslife.repository.MiniGameRepository;
+import vn.campuslife.model.mapper.MiniGamePlayMapper;
+import vn.campuslife.repository.*;
 import vn.campuslife.service.MiniGameService;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,7 +27,11 @@ public class MiniGameServiceImpl implements MiniGameService {
     private final MiniGameQuizQuestionRepository questionRepository;
     private final MiniGameQuizOptionRepository optionRepository;
     private final MiniGameQuizRepository miniGameQuizRepository;
-
+    private final MiniGameAttemptRepository miniGameAttemptRepository;
+    private final StudentRepository studentRepository;
+    private final MiniGameAnswerRepository miniGameAnswerRepository;
+    private final ActivityRegistrationRepository activityRegistrationRepository;
+    private final ActivityParticipationRepository activityParticipationRepository;
     //Tạo minigame
     @Override
     public MiniGameResponse create(MiniGameRequest request) {
@@ -211,6 +217,111 @@ public class MiniGameServiceImpl implements MiniGameService {
                 optionRepository.save(opt);
             }
         }
+    }
+
+    @Override
+    @Transactional
+    public StartAttemptResponse startAttempt(Long activityId, Long studentId) {
+        MiniGame mg = miniGameRepository.findByActivityId(activityId)
+                .orElseThrow(() -> new RuntimeException("MiniGame not found"));
+        if (!mg.isActive()) throw new RuntimeException("MiniGame inactive");
+
+        MiniGameAttempt attempt = miniGameAttemptRepository
+                .findByMiniGameIdAndStudentId(mg.getId(), studentId)
+                .orElseGet(() -> {
+                    MiniGameAttempt a = new MiniGameAttempt();
+                    a.setMiniGame(mg);
+                    a.setStudent(studentRepository.getReferenceById(studentId));
+                    a.setStatus(AttemptStatus.IN_PROGRESS);
+                    a.setStartedAt(LocalDateTime.now());
+                    a.setCorrectCount(0);
+                    return miniGameAttemptRepository.save(a);
+                });
+
+        MiniGameQuiz quiz = miniGameQuizRepository.findByMiniGameId(mg.getId())
+                .orElseThrow(() -> new RuntimeException("Quiz not found"));
+
+        var questions = MiniGamePlayMapper.toQuestionsRespHideKey(quiz.getQuestions());
+
+        return new StartAttemptResponse(
+                attempt.getId(), mg.getTitle(), mg.getQuestionCount(), mg.getTimeLimit(), questions
+        );
+    }
+
+
+    @Transactional
+    public SubmitResultResponse submitMiniGame(Long activityId, Long studentId, SubmitRequest req) {
+        MiniGame mg = miniGameRepository.findByActivityId(activityId)
+                .orElseThrow(() -> new RuntimeException("MiniGame not found"));
+
+        MiniGameAttempt attempt = miniGameAttemptRepository.findById(req.getAttemptId())
+                .orElseThrow(() -> new RuntimeException("Attempt not found"));
+
+        if (!attempt.getStudent().getId().equals(studentId)) throw new RuntimeException("Not your attempt");
+        if (attempt.getStatus() != AttemptStatus.IN_PROGRESS) throw new RuntimeException("Attempt already submitted");
+
+        int correct = 0;
+        for (SubmitRequest.Ans a : req.getAnswers()) {
+            var q  = questionRepository.findById(a.getQuestionId())
+                    .orElseThrow(() -> new RuntimeException("Question not found"));
+            var op = optionRepository.findById(a.getOptionId())
+                    .orElseThrow(() -> new RuntimeException("Option not found"));
+
+            boolean ok = op.isCorrect();
+
+            MiniGameAnswer ans = new MiniGameAnswer();
+            ans.setAttempt(attempt);
+            ans.setQuestion(q);
+            ans.setSelectedOption(op);
+            ans.setIsCorrect(ok);
+            miniGameAnswerRepository.save(ans);
+
+            if (ok) correct++;
+        }
+
+        attempt.setCorrectCount(correct);
+        attempt.setSubmittedAt(LocalDateTime.now());
+
+        int required = (mg.getRequiredCorrectAnswers() != null)
+                ? mg.getRequiredCorrectAnswers()
+                : (mg.getQuestionCount() != null ? mg.getQuestionCount() : correct);
+
+        boolean passed = correct >= required;
+        attempt.setStatus(passed ? AttemptStatus.PASSED : AttemptStatus.FAILED);
+        miniGameAttemptRepository.save(attempt);
+
+        // lấy Registration của SV cho Activity
+        ActivityRegistration reg = activityRegistrationRepository
+                .findByActivityIdAndStudentId(activityId, studentId)
+                .orElseThrow(() -> new RuntimeException("Registration not found"));
+
+        // UPSERT Participation theo registration
+        ActivityParticipation par = activityParticipationRepository
+                .findByRegistrationId(reg.getId())
+                .orElseGet(() -> {
+                    ActivityParticipation p = new ActivityParticipation();
+                    p.setRegistration(reg);
+                    return p;
+                });
+
+        if (passed) {
+            par.setParticipationType(vn.campuslife.enumeration.ParticipationType.ATTENDED);
+            par.setPointsEarned(mg.getRewardPoints() != null ? mg.getRewardPoints() : BigDecimal.ZERO);
+            par.setDate(LocalDateTime.now());
+            reg.setStatus(RegistrationStatus.ATTENDED);
+            // nếu có field attendedAt trong reg thì set kèm:
+            // reg.setAttendedAt(LocalDateTime.now());
+        } else {
+            par.setParticipationType(vn.campuslife.enumeration.ParticipationType.REGISTERED);
+            par.setPointsEarned(BigDecimal.ZERO);
+            par.setDate(LocalDateTime.now());
+            reg.setStatus(RegistrationStatus.CANCELLED);
+        }
+
+        activityParticipationRepository.save(par);
+        activityRegistrationRepository.save(reg);
+
+        return new SubmitResultResponse(attempt.getId(), correct, passed);
     }
 
 

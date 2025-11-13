@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vn.campuslife.entity.*;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
@@ -83,6 +84,13 @@ public class StudentProfileServiceImpl implements StudentProfileService {
             student.setDob(request.getDob());
             student.setAvatarUrl(request.getAvatarUrl());
             student.setGender(request.getGender());
+            User user = student.getUser();
+            if (user != null && StringUtils.hasText(request.getEmail())) {
+                user.setEmail(request.getEmail());
+                userRepository.save(user);
+            }
+
+
 
             // Update department if provided
             if (request.getDepartmentId() != null) {

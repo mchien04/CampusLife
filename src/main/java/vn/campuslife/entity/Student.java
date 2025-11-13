@@ -65,4 +65,5 @@ public class Student {
 
     @Column(nullable = false)
     private boolean isDeleted = false;
+
 }

@@ -1,20 +1,17 @@
 package vn.campuslife.controller;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import vn.campuslife.entity.MiniGame;
-import vn.campuslife.entity.MiniGameQuiz;
-import vn.campuslife.entity.MiniGameQuizOption;
-import vn.campuslife.entity.MiniGameQuizQuestion;
+import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.MiniGameType;
+import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.*;
-import vn.campuslife.repository.MiniGameQuizOptionRepository;
-import vn.campuslife.repository.MiniGameQuizQuestionRepository;
-import vn.campuslife.repository.MiniGameQuizRepository;
-import vn.campuslife.repository.MiniGameRepository;
+import vn.campuslife.repository.*;
 import vn.campuslife.service.MiniGameService;
 
 import java.util.List;
@@ -29,6 +26,8 @@ public class MiniGameController {
     private final MiniGameQuizRepository miniGameQuizRepository;
     private final MiniGameQuizQuestionRepository questionRepository;
     private final MiniGameQuizOptionRepository optionRepository;
+    private final StudentRepository studentRepository;
+    private final UserRepository userRepository;
     @GetMapping
     public List<MiniGameResponse> getAll() {
         return miniGameService.getAll();
@@ -117,6 +116,47 @@ public class MiniGameController {
     ) {
         miniGameService.updateMiniGameByActivity(activityId, request);
         return ResponseEntity.ok(new Response(true, "Cập nhật MiniGame thành công", null));
+    }
+    @PostMapping("/{activityId}/start")
+    public ResponseEntity<Response> start(@PathVariable Long activityId, Authentication auth) {
+        Long studentId = getStudentIdFromAuth(auth);
+        var payload = miniGameService.startAttempt(activityId, studentId);
+        return ResponseEntity.ok(new Response(true, "Start mini game", payload));
+    }
+
+    @PostMapping("/{activityId}/submit")
+    public ResponseEntity<Response> submit(@PathVariable Long activityId,
+                                           @RequestBody @Valid SubmitRequest req,
+                                           Authentication auth) {
+        Long studentId = getStudentIdFromAuth(auth);
+        var payload = miniGameService.submitMiniGame(activityId, studentId, req);
+        return ResponseEntity.ok(new Response(true, "Submit result", payload));
+    }
+    private Long getStudentIdFromAuth(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized");
+        }
+
+        String username = authentication.getName();
+
+        return studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .map(Student::getId)
+                .orElseGet(() -> {
+                    User user = userRepository.findByUsernameAndIsDeletedFalse(username)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+
+                    if (user.getRole() != Role.STUDENT) {
+                        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only STUDENT can play mini game");
+                    }
+
+                    Student s = new Student();
+                    s.setUser(user);
+                    s.setStudentCode(username);
+                    s.setFullName(username);
+                    s.setDeleted(false); // boolean isDeleted -> setter là setDeleted
+                    return studentRepository.save(s).getId();
+                });
     }
 
 

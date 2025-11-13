@@ -36,4 +36,6 @@ public class StudentProfileUpdateRequest {
     private String avatarUrl;
 
     private Gender gender;
+
+    private String email;
 }
