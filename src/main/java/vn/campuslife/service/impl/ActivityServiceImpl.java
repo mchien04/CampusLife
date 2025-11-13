@@ -15,7 +15,18 @@ import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.ActivityResponse;
 import vn.campuslife.model.CreateActivityRequest;
 import vn.campuslife.model.Response;
+
 import vn.campuslife.repository.*;
+
+import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.enumeration.ParticipationType;
+import java.math.BigDecimal;
+
 import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.MiniGameService;
 import vn.campuslife.util.TicketCodeUtils;
@@ -36,10 +47,13 @@ public class ActivityServiceImpl implements ActivityService {
 
     private final ActivityRepository activityRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
+    private final ActivityParticipationRepository activityParticipationRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
+
     private final ActivitySeriesRepository activitySeriesRepository;
     private final MiniGameService miniGameService;
+
     @Override
     @Transactional
 
@@ -88,6 +102,7 @@ public class ActivityServiceImpl implements ActivityService {
 
             }
 
+
             Activity saved;
 
             switch (request.getType()) {
@@ -120,6 +135,7 @@ public class ActivityServiceImpl implements ActivityService {
                     request.getSeriesId() != null ? request.getSeriesId() : "none");
 
             return new Response(true, "Tạo hoạt động thành công", toResponse(saved));
+
 
         } catch (Exception e) {
             logger.error(" Lỗi khi tạo hoạt động: {}", e.getMessage(), e);
@@ -317,8 +333,6 @@ public class ActivityServiceImpl implements ActivityService {
         }
     }
 
-
-
     private String validateRequest(CreateActivityRequest r) {
         if (r.getName() == null || r.getName().isBlank())
             return "Activity name is required";
@@ -430,6 +444,7 @@ public class ActivityServiceImpl implements ActivityService {
 
         return dto;
     }
+
     /**
      * Tự động đăng ký sinh viên cho activity dựa trên các flag
      */
@@ -477,8 +492,25 @@ public class ActivityServiceImpl implements ActivityService {
                         .collect(Collectors.toList());
 
                 if (!registrations.isEmpty()) {
+                    // Lưu registrations trước
                     activityRegistrationRepository.saveAll(registrations);
                     logger.info("Successfully auto-registered {} students for activity: {}", registrations.size(),
+                            activity.getName());
+
+                    // Tạo ActivityParticipation ban đầu cho mỗi registration
+                    List<ActivityParticipation> participations = registrations.stream()
+                            .map(reg -> {
+                                ActivityParticipation participation = new ActivityParticipation();
+                                participation.setRegistration(reg);
+                                participation.setParticipationType(ParticipationType.REGISTERED);
+                                participation.setPointsEarned(BigDecimal.ZERO);
+                                participation.setDate(LocalDateTime.now());
+                                return participation;
+                            })
+                            .collect(Collectors.toList());
+
+                    activityParticipationRepository.saveAll(participations);
+                    logger.info("Created {} initial participations for activity: {}", participations.size(),
                             activity.getName());
                 } else {
                     logger.info("All students already registered for activity: {}", activity.getName());
@@ -518,6 +550,7 @@ public class ActivityServiceImpl implements ActivityService {
 
         activityRegistrationRepository.saveAll(registrations);
     }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void registerFacultyStudents(Long activityId, Collection<Long> departmentIds) {
         Activity activity = activityRepository.findById(activityId)
@@ -549,6 +582,5 @@ public class ActivityServiceImpl implements ActivityService {
         logger.info("Auto registered {} students of departments {} for mandatory activity {}",
                 registrations.size(), departmentIds, activityId);
     }
-
 
 }

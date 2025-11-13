@@ -103,7 +103,8 @@ public class SecurityConfig {
 
 
                         // Activity Registrations
-                        .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**")
+                        .hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/registrations").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/registrations/activity/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/check/*").hasRole("STUDENT")
@@ -111,10 +112,9 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.GET, "/api/registrations/activity/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/registrations/*/status").hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers(HttpMethod.GET, "/api/registrations/*").hasAnyRole("ADMIN", "MANAGER", "STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/*")
+                        .hasAnyRole("ADMIN", "MANAGER", "STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/activities/*/report").hasRole("MANAGER")
-
-
 
                         // Student Profile
                         .requestMatchers(HttpMethod.GET, "/api/student/profile").hasRole("STUDENT")
@@ -126,6 +126,18 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/notifications/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/notifications/**").authenticated()
 
+                        // Public catalogs for students
+                        .requestMatchers(HttpMethod.GET, "/api/criteria/**").hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/academic/**").hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+
+                        // Score Management
+                        .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*/total")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/scores/training/calculate")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
                         // Task Submissions
                         .requestMatchers(HttpMethod.GET, "/api/submissions/task/*/my").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/submissions/task/*").hasRole("STUDENT")
@@ -133,6 +145,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/submissions/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/submissions/task/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/submissions/*/grade").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Participation Grading
+                        .requestMatchers(HttpMethod.PUT, "/api/registrations/participations/*/grade")
+                        .hasAnyRole("ADMIN", "MANAGER")
 
                         // Address Management
                         .requestMatchers(HttpMethod.GET, "/api/addresses/provinces").permitAll()

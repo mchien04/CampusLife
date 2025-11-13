@@ -31,29 +31,21 @@ public class StudentScore {
     @JoinColumn(name = "semester_id", nullable = false)
     private Semester semester;
 
-    @ManyToOne
-    @JoinColumn(name = "criterion_id", nullable = false)
-    private Criterion criterion;
-
-    private BigDecimal score;
-
-    @ManyToOne
-    @JoinColumn(name = "entered_by_user_id", nullable = false)
-    private User enteredBy;
-
-    private LocalDateTime entryDate;
-
-    private LocalDateTime updatedDate;
-
-    @Column(columnDefinition = "TEXT")
-    private String notes;
-
-    @Column(nullable = false)
-    private boolean isLocked = false;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ScoreType scoreType;
+
+    private BigDecimal score;
+
+    @Column(columnDefinition = "TEXT")
+    private String activityIds; // JSON array: "[1,5,10]" - list of activity IDs that contributed to this score
+
+    @ManyToOne
+    @JoinColumn(name = "criterion_id")
+    private Criterion criterion; // Nullable, used for detailed training score by criteria
+
+    @Column(columnDefinition = "TEXT")
+    private String notes;
 
     @CreatedDate
     private LocalDateTime createdAt;

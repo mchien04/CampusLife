@@ -146,8 +146,9 @@ public class ActivityRegistrationController {
         }
     }
 
-
-
+    /**
+     * Helper method to get student ID from authentication
+     */
     private Long getStudentIdFromAuth(Authentication authentication) {
         if (authentication == null || authentication.getName() == null) {
             return null;
@@ -160,7 +161,6 @@ public class ActivityRegistrationController {
                 .orElse(null);
     }
 
-
 //    // Lấy báo cáo tham gia / chưa tham gia
 //    @GetMapping("/activities/{activityId}/report")
 //    public ResponseEntity<Response> getReport(
@@ -170,5 +170,31 @@ public class ActivityRegistrationController {
 //        return ResponseEntity.ok(registrationService.getParticipationReport(activityId));
 //    }
 
+    // Lấy báo cáo tham gia / chưa tham gia
+    @GetMapping("/activities/{activityId}/report")
+    public ResponseEntity<Response> getReport(
+            @PathVariable Long activityId,
+            Authentication authentication) {
+        System.out.println("Authorities: " + authentication.getAuthorities());
+        return ResponseEntity.ok(registrationService.getParticipationReport(activityId));
+    }
+
+    /**
+     * Chấm điểm completion (đạt/không đạt)
+     */
+    @PutMapping("/participations/{participationId}/grade")
+    public ResponseEntity<Response> gradeCompletion(
+            @PathVariable Long participationId,
+            @RequestParam boolean isCompleted,
+            @RequestParam(required = false) String notes,
+            Authentication authentication) {
+        try {
+            Response response = registrationService.gradeCompletion(participationId, isCompleted, notes);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to grade completion: " + e.getMessage(), null));
+        }
+    }
 
 }

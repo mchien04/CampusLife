@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
@@ -28,6 +29,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRepository activityRepository;
     private final StudentRepository studentRepository;
+    private final StudentScoreRepository studentScoreRepository;
+    private final ScoreHistoryRepository scoreHistoryRepository;
+    private final SemesterRepository semesterRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -78,7 +83,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             registration.setRegisteredDate(LocalDateTime.now());
             registration.setStatus(RegistrationStatus.PENDING);
 
-
             String code;
             int attempts = 0;
             do {
@@ -96,7 +100,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to register due to server error", null);
         }
     }
-
 
     @Override
     @Transactional
@@ -203,7 +206,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-
     @Override
     public Response getRegistrationById(Long registrationId) {
         try {
@@ -219,9 +221,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to retrieve registration due to server error", null);
         }
     }
-
-
-
 
     @Override
     public Response checkRegistrationStatus(Long activityId, Long studentId) {
@@ -241,8 +240,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-
-
     @Override
     @Transactional
     public Response checkIn(ActivityParticipationRequest request) {
@@ -255,8 +252,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         } else if (request.getStudentId() != null) {
             registration = registrationRepository.findByStudentIdAndStatus(
                     request.getStudentId(),
-                    RegistrationStatus.APPROVED
-            )
+                    RegistrationStatus.APPROVED)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này"));
         } else {
             return Response.error("Cần cung cấp ticketCode hoặc studentId");
@@ -265,43 +261,241 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         // Lấy participation đã tạo khi duyệt
         ActivityParticipation participation = participationRepository.findByRegistration(registration)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
-        // Kiểm tra trạng thái hiện tại
-        if (participation.getParticipationType() == ParticipationType.REGISTERED) {
-            // Check-in lần 1
+
+        ParticipationType currentType = participation.getParticipationType();
+
+        //CHECK-IN LẦN 1 — REGISTERED → CHECKED_IN
+
+        if (currentType == ParticipationType.REGISTERED) {
+
             participation.setParticipationType(ParticipationType.CHECKED_IN);
+            participation.setCheckInTime(LocalDateTime.now());
             participation.setDate(LocalDateTime.now());
             participationRepository.save(participation);
-        } else if (participation.getParticipationType() == ParticipationType.CHECKED_IN) {
-            // Check-in lần 2
+
+            ActivityParticipationResponse resp = new ActivityParticipationResponse(
+                    participation.getId(),
+                    registration.getActivity().getId(),
+                    registration.getActivity().getName(),
+                    registration.getStudent().getId(),
+                    registration.getStudent().getFullName(),
+                    registration.getStudent().getStudentCode(),
+                    participation.getParticipationType(),
+                    participation.getPointsEarned(),
+                    participation.getDate(),
+                    request.getNotes()
+            );
+
+            return Response.success("Check-in thành công. Vui lòng check-out khi rời khỏi sự kiện.", resp);
+        }
+
+        //CHECK-OUT LẦN 2 — CHECKED_IN → CHECKED_OUT → ATTENDED
+
+        else if (currentType == ParticipationType.CHECKED_IN) {
+
+            // Đánh dấu check-out
+            participation.setParticipationType(ParticipationType.CHECKED_OUT);
+            participation.setCheckOutTime(LocalDateTime.now());
+            participationRepository.save(participation);
+
+            // Cập nhật status registration
+            registration.setStatus(RegistrationStatus.ATTENDED);
+            registrationRepository.save(registration);
+
+            // Chuyển participation sang ATTENDED
             participation.setParticipationType(ParticipationType.ATTENDED);
             participation.setPointsEarned(registration.getActivity().getMaxPoints());
             participation.setDate(LocalDateTime.now());
             participationRepository.save(participation);
 
-            // Cập nhật status của registration
-            registration.setStatus(RegistrationStatus.ATTENDED);
-            registrationRepository.save(registration);
-        } else if (participation.getParticipationType() == ParticipationType.ATTENDED) {
-            return Response.error("Sinh viên đã tham dự (check-in đủ 2 lần)");
-        }
-        ActivityParticipationResponse resp = new ActivityParticipationResponse(
-                participation.getId(),
-                registration.getActivity().getId(),
-                registration.getActivity().getName(),
-                registration.getStudent().getId(),
-                registration.getStudent().getFullName(),
-                registration.getStudent().getStudentCode(),
-                participation.getParticipationType(),
-                participation.getPointsEarned(),
-                participation.getDate(),
-                request.getNotes()
-        );
+            ActivityParticipationResponse resp = new ActivityParticipationResponse(
+                    participation.getId(),
+                    registration.getActivity().getId(),
+                    registration.getActivity().getName(),
+                    registration.getStudent().getId(),
+                    registration.getStudent().getFullName(),
+                    registration.getStudent().getStudentCode(),
+                    participation.getParticipationType(),
+                    participation.getPointsEarned(),
+                    participation.getDate(),
+                    request.getNotes()
+            );
 
-        return Response.success("Check-in thành công", resp);
+            return Response.success("Check-out thành công. Đã hoàn thành tham gia sự kiện.", resp);
+        }
+
+        //Đã tham dự rồi — không cho check-in/check-out nữa
+
+        else {
+            return Response.error("Đã hoàn thành check-in/check-out trước đó");
+        }
     }
 
 
+    /**
+     * Chấm điểm completion (đạt/không đạt)
+     */
+    @Transactional
+    public Response gradeCompletion(Long participationId, boolean isCompleted, String notes) {
+        try {
+            ActivityParticipation participation = participationRepository
+                    .findById(participationId)
+                    .orElseThrow(() -> new RuntimeException("Participation not found"));
 
+            // Kiểm tra đã ATTENDED chưa
+            if (participation.getParticipationType() != ParticipationType.ATTENDED) {
+                return Response.error("Sinh viên chưa hoàn thành check-in/check-out");
+            }
+
+            Activity activity = participation.getRegistration().getActivity();
+
+            // Nếu yêu cầu submission, kiểm tra đã nộp và được chấm chưa
+            if (activity.isRequiresSubmission()) {
+                // Kiểm tra có TaskSubmission đã được grade
+                boolean hasGradedSubmission = checkHasGradedSubmission(
+                        participation.getRegistration().getStudent().getId(),
+                        activity.getId());
+
+                if (!hasGradedSubmission) {
+                    return Response.error("Sinh viên chưa nộp bài hoặc chưa được chấm điểm");
+                }
+            }
+
+            // Tính điểm
+            BigDecimal points;
+            if (isCompleted) {
+                points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+            } else {
+                // Điểm trừ
+                BigDecimal penalty = activity.getPenaltyPointsIncomplete() != null
+                        ? activity.getPenaltyPointsIncomplete()
+                        : BigDecimal.ZERO;
+                points = penalty.negate(); // Chuyển thành số âm
+            }
+
+            // Cập nhật participation
+            participation.setIsCompleted(isCompleted);
+            participation.setPointsEarned(points);
+            participation.setParticipationType(ParticipationType.COMPLETED);
+            participationRepository.save(participation);
+
+            // Cập nhật StudentScore (tổng hợp)
+            updateStudentScoreFromParticipation(participation);
+
+            return Response.success("Đã chấm điểm completion", participation);
+        } catch (Exception e) {
+            logger.error("Failed to grade completion: {}", e.getMessage(), e);
+            return Response.error("Failed to grade completion: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Helper method để kiểm tra submission đã được grade
+     */
+    private boolean checkHasGradedSubmission(Long studentId, Long activityId) {
+        // TODO: Implement check logic using TaskSubmissionRepository
+        // Tạm thời return true để không block
+        return true;
+    }
+
+    /**
+     * BỎ METHOD NÀY - Không còn dùng nữa
+     * Tự động tạo StudentScore từ check-in thành công
+     */
+    private void createScoreFromCheckIn_BACKUP(ActivityRegistration registration, ActivityParticipation participation) {
+        try {
+            Activity activity = registration.getActivity();
+            Student student = registration.getStudent();
+
+            // Lấy học kỳ hiện tại (có thể cần logic phức tạp hơn)
+            // Tạm thời lấy học kỳ đầu tiên, cần cải thiện sau
+            Optional<Semester> currentSemester = semesterRepository.findAll().stream().findFirst();
+            if (currentSemester.isEmpty()) {
+                logger.warn("No semester found for score creation");
+                return;
+            }
+
+            // Tìm bản ghi điểm tổng hợp theo scoreType của activity
+            Optional<StudentScore> scoreOpt = studentScoreRepository
+                    .findByStudentIdAndSemesterIdAndScoreType(
+                            student.getId(),
+                            currentSemester.get().getId(),
+                            activity.getScoreType());
+
+            if (scoreOpt.isEmpty()) {
+                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}",
+                        student.getId(), activity.getScoreType(), currentSemester.get().getId());
+                return;
+            }
+
+            StudentScore score = scoreOpt.get();
+
+            // Parse activityIds JSON và kiểm tra nếu đã có activity này
+            String activityIdsJson = score.getActivityIds() != null ? score.getActivityIds() : "[]";
+            if (activityIdsJson.isEmpty()) {
+                activityIdsJson = "[]";
+            }
+
+            java.util.List<Long> activityIds = new java.util.ArrayList<>();
+            try {
+                // Simple JSON parsing: remove brackets and split by comma
+                String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
+                if (!content.isEmpty()) {
+                    String[] ids = content.split(",");
+                    for (String id : ids) {
+                        activityIds.add(Long.parseLong(id.trim()));
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Failed to parse activityIds: {}", activityIdsJson, e);
+            }
+
+            // Kiểm tra nếu đã có điểm từ activity này
+            if (activityIds.contains(activity.getId())) {
+                logger.info("Score already exists for activity {} and student {}", activity.getId(), student.getId());
+                return;
+            }
+
+            // Thêm activityId vào list
+            activityIds.add(activity.getId());
+
+            // Cộng điểm
+            BigDecimal oldScore = score.getScore();
+            BigDecimal pointsToAdd = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+            BigDecimal newScore = oldScore.add(pointsToAdd);
+
+            // Cập nhật
+            score.setScore(newScore);
+            String updatedActivityIds = "["
+                    + activityIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) + "]";
+            score.setActivityIds(updatedActivityIds);
+
+            studentScoreRepository.save(score);
+
+            // Tạo ScoreHistory - find system user for changedBy
+            User systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(oldScore);
+            history.setNewScore(newScore);
+            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+            history.setChangeDate(LocalDateTime.now());
+            history.setReason("Added points from activity check-in: " + activity.getName());
+            history.setActivityId(activity.getId());
+
+            scoreHistoryRepository.save(history);
+
+            logger.info("Added score {} (total: {}) for student {} from activity check-in {}",
+                    pointsToAdd, newScore, student.getId(), activity.getId());
+
+        } catch (Exception e) {
+            logger.error("Failed to create score from check-in: {}", e.getMessage(), e);
+        }
+    }
 
     private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration r) {
         Activity a = r.getActivity();
@@ -327,47 +521,120 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         res.setTicketCode(r.getTicketCode());
         return res;
     }
-//    @Override
-//    @Transactional(readOnly = true)
-//    public Response getParticipationReport(Long activityId) {
-//        // Lấy tất cả registration đã duyệt
-//        List<ActivityRegistration> approvedRegs =
-//                registrationRepository.findByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
-//
-//        // Lấy tất cả participation đã CHECKED_IN
-//        List<ActivityParticipation> checkedInList =
-//                participationRepository.findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
-//
-//        Set<Long> checkedInStudentIds = checkedInList.stream()
-//                .map(ap -> ap.getRegistration().getStudent().getId())
-//                .collect(Collectors.toSet());
-//
-//        // Phân loại
-//        List<StudentResponse> attended = new ArrayList<>();
-//        List<StudentResponse> notAttended = new ArrayList<>();
-//
-//        for (ActivityRegistration reg : approvedRegs) {
-//            Student s = reg.getStudent();
-//            StudentResponse dto = new StudentResponse(
-//                    s.getId(),
-//                    s.getFullName(),
-//                    s.getStudentCode()
-//            );
-//
-//            if (checkedInStudentIds.contains(s.getId())) {
-//                attended.add(dto);
-//            } else {
-//                notAttended.add(dto);
-//            }
-//        }
-//
-//        Map<String, Object> result = new HashMap<>();
-//        result.put("attended", attended);
-//        result.put("notAttended", notAttended);
-//
-//        return Response.success("Danh sách tham gia", result);
-//    }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public Response getParticipationReport(Long activityId) {
+        // Lấy tất cả registration đã duyệt
+        List<ActivityRegistration> approvedRegs = registrationRepository.findByActivityIdAndStatus(activityId,
+                RegistrationStatus.APPROVED);
 
+        // Lấy tất cả participation đã CHECKED_IN
+        List<ActivityParticipation> checkedInList = participationRepository
+                .findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
+
+        Set<Long> checkedInStudentIds = checkedInList.stream()
+                .map(ap -> ap.getRegistration().getStudent().getId())
+                .collect(Collectors.toSet());
+
+        // Phân loại
+        List<StudentResponse> attended = new ArrayList<>();
+        List<StudentResponse> notAttended = new ArrayList<>();
+
+        for (ActivityRegistration reg : approvedRegs) {
+            Student s = reg.getStudent();
+            StudentResponse dto = StudentResponse.fromEntity(s);
+
+            if (checkedInStudentIds.contains(s.getId())) {
+                attended.add(dto);
+            } else {
+                notAttended.add(dto);
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("attended", attended);
+        result.put("notAttended", notAttended);
+
+        return Response.success("Danh sách tham gia", result);
+    }
+
+
+    /**
+     * Tổng hợp điểm StudentScore từ ActivityParticipation
+     */
+    private void updateStudentScoreFromParticipation(ActivityParticipation participation) {
+        try {
+            Student student = participation.getRegistration().getStudent();
+            Activity activity = participation.getRegistration().getActivity();
+
+            // Lấy semester hiện tại (hoặc lấy semester đang mở)
+            Semester currentSemester = semesterRepository.findAll().stream()
+                    .filter(Semester::isOpen)
+                    .findFirst()
+                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+
+            if (currentSemester == null) {
+                logger.warn("No semester found for score aggregation");
+                return;
+            }
+
+            // Tìm bản ghi StudentScore tổng hợp
+            Optional<StudentScore> scoreOpt = studentScoreRepository
+                    .findByStudentIdAndSemesterIdAndScoreType(
+                            student.getId(),
+                            currentSemester.getId(),
+                            activity.getScoreType());
+
+            if (scoreOpt.isEmpty()) {
+                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}",
+                        student.getId(), activity.getScoreType(), currentSemester.getId());
+                return;
+            }
+
+            StudentScore score = scoreOpt.get();
+
+            // Tính lại tổng điểm từ tất cả ActivityParticipation của sinh viên này
+            // Query tất cả participation có COMPLETED status
+            List<ActivityParticipation> allParticipations = participationRepository
+                    .findAll()
+                    .stream()
+                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
+                            && p.getRegistration().getActivity().getScoreType().equals(activity.getScoreType())
+                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .collect(Collectors.toList());
+
+            BigDecimal total = allParticipations.stream()
+                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Cập nhật
+            BigDecimal oldScore = score.getScore();
+            score.setScore(total);
+            studentScoreRepository.save(score);
+
+            // Tạo history
+            User systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(oldScore);
+            history.setNewScore(total);
+            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+            history.setChangeDate(LocalDateTime.now());
+            history.setReason("Recalculated from activity participation: " + activity.getName());
+            history.setActivityId(activity.getId());
+            scoreHistoryRepository.save(history);
+
+            logger.info("Updated student score from participation: {} -> {} for student {}",
+                    oldScore, total, student.getId());
+
+        } catch (Exception e) {
+            logger.error("Failed to update student score from participation: {}", e.getMessage(), e);
+        }
+    }
 }

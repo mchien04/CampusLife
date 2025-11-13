@@ -33,4 +33,10 @@ public class ScoreHistory {
     private User changedBy;
 
     private LocalDateTime changeDate;
+
+    @Column(columnDefinition = "TEXT")
+    private String reason;
+
+    @Column
+    private Long activityId; // Optional: which activity caused this change
 }

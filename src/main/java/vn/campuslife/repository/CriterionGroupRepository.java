@@ -4,8 +4,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.CriterionGroup;
 
+import java.util.List;
+
 @Repository
 public interface CriterionGroupRepository extends JpaRepository<CriterionGroup, Long> {
+    List<CriterionGroup> findByIsDeletedFalse();
 }
-
-
