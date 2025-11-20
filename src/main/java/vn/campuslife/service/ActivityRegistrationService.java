@@ -1,11 +1,6 @@
 package vn.campuslife.service;
 
-import vn.campuslife.entity.ActivityRegistration;
-import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.model.*;
-
-import java.util.List;
-import java.util.Optional;
 
 public interface ActivityRegistrationService {
 
@@ -58,4 +53,19 @@ public interface ActivityRegistrationService {
      * Chấm điểm completion (đạt/không đạt)
      */
     Response gradeCompletion(Long participationId, boolean isCompleted, String notes);
+
+    /**
+     * Validate/lookup ticketCode để preview thông tin trước khi check-in
+     */
+    Response validateTicketCode(String ticketCode);
+
+    /**
+     * Backfill: Tạo participation cho tất cả registration đã APPROVED nhưng chưa có participation
+     */
+    Response backfillMissingParticipations();
+
+    /**
+     * Lấy danh sách participations theo activityId
+     */
+    Response getActivityParticipations(Long activityId);
 }

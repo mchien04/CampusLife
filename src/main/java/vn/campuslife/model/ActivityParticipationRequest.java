@@ -1,6 +1,5 @@
 package vn.campuslife.model;
 
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
@@ -17,10 +16,9 @@ public class ActivityParticipationRequest {
 
     private Long studentId;
 
-    @NotNull(message = "Participation type is required")
+    // ParticipationType is optional - check-in logic automatically determines the type
+    // based on current participation status (REGISTERED -> CHECKED_IN -> ATTENDED)
     private ParticipationType participationType;
 
     private BigDecimal pointsEarned;
-
-    private String notes;
 }

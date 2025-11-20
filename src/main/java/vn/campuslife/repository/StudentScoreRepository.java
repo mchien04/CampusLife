@@ -23,4 +23,45 @@ public interface StudentScoreRepository extends JpaRepository<StudentScore, Long
         @Query("SELECT ss FROM StudentScore ss WHERE ss.student.id = :studentId AND ss.scoreType = :scoreType")
         List<StudentScore> findByStudentIdAndScoreType(@Param("studentId") Long studentId,
                         @Param("scoreType") ScoreType scoreType);
+
+        // Lấy tất cả scores theo semester và scoreType, sắp xếp theo điểm
+        @Query("SELECT ss FROM StudentScore ss " +
+                        "WHERE ss.semester.id = :semesterId " +
+                        "AND ss.scoreType = :scoreType " +
+                        "AND ss.student.isDeleted = false " +
+                        "ORDER BY ss.score DESC")
+        List<StudentScore> findBySemesterIdAndScoreTypeOrderByScoreDesc(
+                        @Param("semesterId") Long semesterId,
+                        @Param("scoreType") ScoreType scoreType);
+
+        // Lấy tất cả scores theo semester, sắp xếp theo điểm
+        @Query("SELECT ss FROM StudentScore ss " +
+                        "WHERE ss.semester.id = :semesterId " +
+                        "AND ss.student.isDeleted = false " +
+                        "ORDER BY ss.score DESC")
+        List<StudentScore> findBySemesterIdOrderByScoreDesc(@Param("semesterId") Long semesterId);
+
+        // Lấy tất cả scores theo semester, scoreType và department, sắp xếp theo điểm
+        @Query("SELECT ss FROM StudentScore ss " +
+                        "WHERE ss.semester.id = :semesterId " +
+                        "AND ss.scoreType = :scoreType " +
+                        "AND ss.student.department.id = :departmentId " +
+                        "AND ss.student.isDeleted = false " +
+                        "ORDER BY ss.score DESC")
+        List<StudentScore> findBySemesterIdAndScoreTypeAndDepartmentIdOrderByScoreDesc(
+                        @Param("semesterId") Long semesterId,
+                        @Param("scoreType") ScoreType scoreType,
+                        @Param("departmentId") Long departmentId);
+
+        // Lấy tất cả scores theo semester, scoreType và class, sắp xếp theo điểm
+        @Query("SELECT ss FROM StudentScore ss " +
+                        "WHERE ss.semester.id = :semesterId " +
+                        "AND ss.scoreType = :scoreType " +
+                        "AND ss.student.studentClass.id = :classId " +
+                        "AND ss.student.isDeleted = false " +
+                        "ORDER BY ss.score DESC")
+        List<StudentScore> findBySemesterIdAndScoreTypeAndClassIdOrderByScoreDesc(
+                        @Param("semesterId") Long semesterId,
+                        @Param("scoreType") ScoreType scoreType,
+                        @Param("classId") Long classId);
 }

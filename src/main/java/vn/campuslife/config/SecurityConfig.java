@@ -71,12 +71,26 @@ public class SecurityConfig {
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/departments/**").permitAll()
 
+                        // Check-in endpoints - place early to avoid pattern conflicts
+                        .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/test").authenticated()
+
                         // Admin-only endpoints
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // Activities
                         .requestMatchers(HttpMethod.GET, "/api/activities/my").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/debug/user-info").authenticated()
+                        // Activity Photos - GET allows all authenticated users (STUDENT/MANAGER/ADMIN)
+                        .requestMatchers(HttpMethod.GET, "/api/activities/*/photos")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Activity Photos - POST/DELETE/PUT require MANAGER/ADMIN
+                        .requestMatchers(HttpMethod.POST, "/api/activities/*/photos")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/activities/*/photos/*")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/activities/*/photos/*/order")
+                        .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
 
@@ -88,18 +102,22 @@ public class SecurityConfig {
                         .requestMatchers("/api/assignments/**").hasAnyRole("ADMIN", "MANAGER")
 
                         // Activity Registrations
+                        // Check-in endpoints (already defined above, but keep validate/debug here)
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/debug").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/validate").authenticated()
+                        // Other specific routes
                         .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**")
                         .hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/registrations").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/registrations/activity/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/check/*").hasRole("STUDENT")
-                        .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").hasAnyRole("ADMIN", "MANAGER")
-
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/activities/*/report").hasRole("MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/registrations/backfill/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/activity/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/registrations/*/status").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/*")
                         .hasAnyRole("ADMIN", "MANAGER", "STUDENT")
-                        .requestMatchers(HttpMethod.GET, "/api/registrations/activities/*/report").hasRole("MANAGER")
 
                         // Student Profile
                         .requestMatchers(HttpMethod.GET, "/api/student/profile").hasRole("STUDENT")
@@ -119,6 +137,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/scores/student/*/semester/*/total")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/scores/ranking")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         // removed: /api/scores/training/calculate
 

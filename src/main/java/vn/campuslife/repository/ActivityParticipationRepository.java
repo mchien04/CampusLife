@@ -38,4 +38,10 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
                         @Param("studentId") Long studentId,
                         @Param("scoreType") ScoreType scoreType);
 
+        // Lấy tất cả participation theo activityId
+        @Query("SELECT ap FROM ActivityParticipation ap " +
+                        "WHERE ap.registration.activity.id = :activityId " +
+                        "AND ap.registration.activity.isDeleted = false")
+        List<ActivityParticipation> findByActivityId(@Param("activityId") Long activityId);
+
 }

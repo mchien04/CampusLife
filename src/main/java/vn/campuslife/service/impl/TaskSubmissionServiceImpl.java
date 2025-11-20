@@ -9,6 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.enumeration.ParticipationType;
+import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
@@ -38,6 +39,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final SemesterRepository semesterRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
+    private final TaskAssignmentRepository taskAssignmentRepository;
 
     @Override
     @Transactional
@@ -85,6 +87,23 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             taskSubmissionRepository.save(submission);
+
+            // Cập nhật TaskAssignment status sang ASSIGNED khi sinh viên nộp bài
+            try {
+                Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository
+                        .findByTaskIdAndStudentId(taskId, studentId);
+                if (assignmentOpt.isPresent()) {
+                    TaskAssignment assignment = assignmentOpt.get();
+                    assignment.setStatus(TaskStatus.ASSIGNED);
+                    taskAssignmentRepository.save(assignment);
+                    logger.info("Updated TaskAssignment status to ASSIGNED for task {} and student {}", 
+                        taskId, studentId);
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to update TaskAssignment status after submission: {}", e.getMessage());
+                // Không fail submission nếu update assignment status lỗi
+            }
+
             return new Response(true, "Task submitted successfully", toDto(submission));
         } catch (IOException e) {
             logger.error("Failed to upload files: {}", e.getMessage(), e);
@@ -204,6 +223,22 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             submission.setGradedAt(LocalDateTime.now());
 
             taskSubmissionRepository.save(submission);
+
+            // Cập nhật TaskAssignment status sang COMPLETED khi chấm điểm
+            try {
+                Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository
+                        .findByTaskIdAndStudentId(task.getId(), submission.getStudent().getId());
+                if (assignmentOpt.isPresent()) {
+                    TaskAssignment assignment = assignmentOpt.get();
+                    assignment.setStatus(TaskStatus.COMPLETED);
+                    taskAssignmentRepository.save(assignment);
+                    logger.info("Updated TaskAssignment status to COMPLETED for task {} and student {}", 
+                        task.getId(), submission.getStudent().getId());
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to update TaskAssignment status after grading: {}", e.getMessage());
+                // Không fail grading nếu update assignment status lỗi
+            }
 
             // Tự động cập nhật ActivityParticipation và tổng hợp StudentScore nếu đủ điều
             // kiện

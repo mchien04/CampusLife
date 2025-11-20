@@ -17,8 +17,10 @@ import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityTaskRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.TaskAssignmentRepository;
+import vn.campuslife.repository.TaskSubmissionRepository;
 import vn.campuslife.service.ActivityTaskService;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,6 +39,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final StudentRepository studentRepository;
+    private final TaskSubmissionRepository taskSubmissionRepository;
 
     @Override
     @Transactional
@@ -192,7 +195,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                 return new Response(false, "Some students not found", null);
             }
 
-            // Create assignments
+            // Create assignments - luôn set status PENDING khi phân công
             List<TaskAssignment> assignments = students.stream()
                     .filter(student -> !taskAssignmentRepository.existsByTaskIdAndStudentId(request.getTaskId(),
                             student.getId()))
@@ -200,7 +203,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                         TaskAssignment assignment = new TaskAssignment();
                         assignment.setTask(task);
                         assignment.setStudent(student);
-                        assignment.setStatus(request.getStatus());
+                        assignment.setStatus(TaskStatus.PENDING); // Luôn PENDING khi phân công
                         return assignment;
                     })
                     .collect(Collectors.toList());
@@ -486,6 +489,55 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         } catch (Exception e) {
             logger.error("Failed to assign task to registered students: {}", e.getMessage(), e);
             return new Response(false, "Failed to assign task due to server error", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response checkAndUpdateOverdueAssignments() {
+        try {
+            LocalDate today = LocalDate.now();
+            int updatedCount = 0;
+
+            // Lấy tất cả assignments có status PENDING hoặc ASSIGNED
+            List<TaskAssignment> assignments = taskAssignmentRepository.findAll().stream()
+                    .filter(assignment -> {
+                        TaskStatus status = assignment.getStatus();
+                        return (status == TaskStatus.PENDING || status == TaskStatus.ASSIGNED)
+                                && assignment.getTask().getDeadline() != null
+                                && assignment.getTask().getDeadline().isBefore(today);
+                    })
+                    .collect(Collectors.toList());
+
+            // Kiểm tra xem đã có submission chưa
+            for (TaskAssignment assignment : assignments) {
+                // Chỉ set OVERDUE nếu:
+                // 1. Đã quá hạn (deadline < today)
+                // 2. Chưa có submission (chưa nộp bài)
+                // 3. Status chưa phải COMPLETED
+                boolean hasSubmission = taskSubmissionRepository
+                        .findByTaskIdAndStudentIdAndIsDeletedFalse(
+                                assignment.getTask().getId(), 
+                                assignment.getStudent().getId())
+                        .isPresent();
+
+                if (!hasSubmission 
+                        && assignment.getTask().getDeadline() != null
+                        && assignment.getTask().getDeadline().isBefore(today)
+                        && assignment.getStatus() != TaskStatus.COMPLETED) {
+                    assignment.setStatus(TaskStatus.OVERDUE);
+                    taskAssignmentRepository.save(assignment);
+                    updatedCount++;
+                }
+            }
+
+            logger.info("Updated {} assignments to OVERDUE status", updatedCount);
+            return new Response(true, 
+                String.format("Updated %d assignments to OVERDUE status", updatedCount), 
+                Map.of("updatedCount", updatedCount));
+        } catch (Exception e) {
+            logger.error("Failed to check and update overdue assignments: {}", e.getMessage(), e);
+            return new Response(false, "Failed to check overdue assignments: " + e.getMessage(), null);
         }
     }
 }
