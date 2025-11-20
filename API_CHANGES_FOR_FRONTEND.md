@@ -10,6 +10,28 @@ Hệ thống điểm và check-in đã được refactor hoàn toàn với các 
 
 ---
 
+## A. Activity Enhancements
+
+### New/Updated Activity Fields
+- startDate, endDate: now LocalDateTime (includes hours)
+- registrationStartDate, registrationDeadline: now LocalDateTime
+- isDraft: boolean (default true)
+- requiresApproval: boolean (default true)
+
+### New Endpoints
+- PUT /api/activities/{id}/publish → publish activity (set isDraft=false)
+- PUT /api/activities/{id}/unpublish → unpublish activity (set isDraft=true)
+- POST /api/activities/{id}/copy?offsetDays=7 → duplicate an activity; shifts all date-times by offsetDays (0 if omitted). Returns the new draft activity.
+
+### Registration Flow Update
+- If activity.requiresApproval=false, student registration is auto-approved immediately (still enforces ticketQuantity and registration windows).
+- Registration windows now use LocalDateTime.
+
+### Security
+- New endpoints require ADMIN or MANAGER. GET activity endpoints remain public as before.
+
+---
+
 ## 1. Thay Đổi Check-in Flow
 
 ### Trước đây:
@@ -66,16 +88,6 @@ Hệ thống điểm và check-in đã được refactor hoàn toàn với các 
 - `src/main/java/vn/campuslife/enumeration/ParticipationType.java` - Enum values mới
 - `src/main/java/vn/campuslife/entity/ActivityParticipation.java` - Fields `checkInTime`, `checkOutTime`
 
-**📁 Files Frontend cần chỉnh:**
-```
-src/
-├── components/CheckIn/
-│   ├── CheckInForm.tsx           # Form nhập ticket code
-│   └── CheckInStatus.tsx         # Hiển thị trạng thái
-├── pages/Activity/ActivityCheckIn.tsx
-├── services/registrationService.ts
-└── types/participation.ts        # Update type ParticipationType
-```
 
 **Thay đổi UI cần làm:**
 
@@ -133,36 +145,10 @@ isCompleted=true&notes=Hoàn thành xuất sắc
 - `src/main/java/vn/campuslife/entity/Activity.java` - Field `penaltyPointsIncomplete`
 - `src/main/java/vn/campuslife/entity/ActivityParticipation.java` - Field `isCompleted`
 
-**📁 Files Frontend cần chỉnh:**
-```
-src/
-├── components/Grade/
-│   └── GradeCompletion.tsx       # MỚI: Form tick đạt/không đạt
-├── pages/Admin/GradeActivities.tsx
-├── services/registrationService.ts
-└── types/participation.ts        # Thêm field isCompleted
-```
 
 **Thay đổi UI cần làm:**
 
 Thay form nhập điểm bằng radio button:
-```jsx
-<div>
-  <label>
-    <input type="radio" value="pass" checked={isCompleted} onChange={() => setIsCompleted(true)} />
-    Đạt
-  </label>
-  <label>
-    <input type="radio" value="fail" checked={!isCompleted} onChange={() => setIsCompleted(false)} />
-    Không đạt
-  </label>
-</div>
-
-<button onClick={handleGradeCompletion}>
-  {isCompleted ? `Chấm điểm: +${activity.maxPoints} điểm` : `Chấm điểm: -${activity.penaltyPointsIncomplete} điểm`}
-</button>
-```
----
 
 ## 3. Tự Động Đăng Ký (Auto-register)
 
@@ -188,37 +174,6 @@ Thay form nhập điểm bằng radio button:
 - `src/main/java/vn/campuslife/service/impl/ActivityServiceImpl.java` - Method `createActivity()`, `autoRegisterStudents()`
 - `src/main/java/vn/campuslife/entity/Activity.java` - Fields `isImportant`, `mandatoryForFacultyStudents`, `penaltyPointsIncomplete`
 
-**📁 Files Frontend cần chỉnh:**
-```
-src/
-├── pages/Admin/CreateActivity.tsx
-├── services/activityService.ts
-└── types/activity.ts              # Thêm fields mới trong request/response
-```
-
-**Thay đổi UI cần làm:**
-
-**Form tạo activity:**
-```jsx
-<div>
-  <label>
-    <input type="checkbox" checked={isImportant} onChange={e => setIsImportant(e.target.checked)} />
-    Sự kiện quan trọng (tự động đăng ký tất cả sinh viên)
-  </label>
-</div>
-
-<div>
-  <label>
-    <input type="checkbox" checked={mandatoryForFacultyStudents} onChange={e => setMandatoryForFacultyStudents(e.target.checked)} />
-    Bắt buộc cho sinh viên thuộc khoa tổ chức
-  </label>
-</div>
-
-<div>
-  <label>Điểm trừ khi không hoàn thành:</label>
-  <input type="number" value={penaltyPointsIncomplete} onChange={e => setPenaltyPointsIncomplete(e.target.value)} />
-</div>
-```
 
 ---
 
@@ -368,32 +323,6 @@ PUT /api/registrations/participations/123/grade?isCompleted=false&notes=Chưa đ
 3. **Auto-register**: Sinh viên không cần tự đăng ký sự kiện quan trọng/bắt buộc
 4. **Điểm trừ**: Có thể set điểm âm nếu không hoàn thành
 5. **ParticipationType**: Luôn check status này thay vì chỉ dựa vào registration.status
-
----
-
-## 11. Testing Scenarios
-
-### Test Case 1: Check-in 2 lần
-```javascript
-1. POST /api/registrations/checkin → participationType = "CHECKED_IN"
-2. POST /api/registrations/checkin lại → participationType = "ATTENDED"
-3. Verify: registration.status = "ATTENDED"
-```
-
-### Test Case 2: Chấm điểm completion
-```javascript
-1. Đảm bảo participationType = "ATTENDED"
-2. PUT /api/registrations/participations/{id}/grade?isCompleted=true
-3. Verify: pointsEarned = activity.maxPoints
-4. Verify: participationType = "COMPLETED"
-```
-
-### Test Case 3: Tự động đăng ký
-```javascript
-1. POST /api/activities với isImportant=true
-2. Verify: Tất cả sinh viên có registration với status="APPROVED"
-3. Verify: Tất cả có ActivityParticipation với participationType="REGISTERED"
-```
 
 ---
 

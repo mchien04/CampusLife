@@ -5,7 +5,6 @@ import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ScoreType;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -16,17 +15,18 @@ public class ActivityResponse {
     private ActivityType type;
     private ScoreType scoreType;
     private String description;
-    private LocalDate startDate;
-    private LocalDate endDate;
+    private LocalDateTime startDate;
+    private LocalDateTime endDate;
 
     private boolean requiresSubmission;
     private BigDecimal maxPoints;
 
-    private LocalDate registrationStartDate;
-    private LocalDate registrationDeadline;
+    private LocalDateTime registrationStartDate;
+    private LocalDateTime registrationDeadline;
 
     private String shareLink;
     private boolean isImportant;
+    private boolean isDraft;
     private String bannerUrl;
     private String location;
 
@@ -34,6 +34,7 @@ public class ActivityResponse {
     private String benefits;
     private String requirements;
     private String contactInfo;
+    private boolean requiresApproval;
     private boolean mandatoryForFacultyStudents;
     private BigDecimal penaltyPointsIncomplete;
 

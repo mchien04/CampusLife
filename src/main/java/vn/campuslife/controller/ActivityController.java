@@ -48,9 +48,10 @@ public class ActivityController {
     }
 
     @GetMapping
-    public ResponseEntity<Response> getAllActivities() {
+    public ResponseEntity<Response> getAllActivities(org.springframework.security.core.Authentication auth) {
         try {
-            Response response = activityService.getAllActivities();
+            String username = (auth != null) ? auth.getName() : null;
+            Response response = activityService.getAllActivities(username);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -62,9 +63,11 @@ public class ActivityController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Response> getActivityById(@PathVariable Long id) {
+    public ResponseEntity<Response> getActivityById(@PathVariable Long id, 
+            org.springframework.security.core.Authentication auth) {
         try {
-            Response response = activityService.getActivityById(id);
+            String username = (auth != null) ? auth.getName() : null;
+            Response response = activityService.getActivityById(id, username);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.notFound().build();
@@ -102,6 +105,24 @@ public class ActivityController {
             return ResponseEntity.internalServerError()
                     .body(new Response(false, "Server error occurred", null));
         }
+    }
+
+    @PutMapping("/{id}/publish")
+    public ResponseEntity<Response> publish(@PathVariable Long id) {
+        Response response = activityService.publishActivity(id);
+        return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
+    }
+
+    @PutMapping("/{id}/unpublish")
+    public ResponseEntity<Response> unpublish(@PathVariable Long id) {
+        Response response = activityService.unpublishActivity(id);
+        return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
+    }
+
+    @PostMapping("/{id}/copy")
+    public ResponseEntity<Response> copy(@PathVariable Long id, @RequestParam(required = false) Integer offsetDays) {
+        Response response = activityService.copyActivity(id, offsetDays);
+        return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
     @GetMapping("/score-type/{scoreType}")

@@ -13,7 +13,11 @@ public interface ActivityService {
 
     Response getAllActivities();
 
+    Response getAllActivities(String username); // username can be null for public access
+
     Response getActivityById(Long id);
+
+    Response getActivityById(Long id, String username); // username can be null for public access
 
     Response updateActivity(Long id, CreateActivityRequest request);
 
@@ -38,5 +42,12 @@ public interface ActivityService {
     Response checkRegistrationStatus(Long activityId, String username);
 
     void registerAllStudents(Long activityId);
+
+    // Publish / Unpublish
+    Response publishActivity(Long id);
+    Response unpublishActivity(Long id);
+
+    // Copy activity with optional offset days
+    Response copyActivity(Long id, Integer offsetDays);
 
 }
