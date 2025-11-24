@@ -2,6 +2,7 @@ package vn.campuslife.service;
 
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
 
 import java.util.List;
@@ -59,5 +60,10 @@ public interface ActivityRegistrationService {
      * Chấm điểm completion (đạt/không đạt)
      */
     Response gradeCompletion(Long participationId, boolean isCompleted, String notes);
+    /**
+     * Lấy danh sách Đăng ký của sinh theo status
+     */
+    Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status);
+
 
 }

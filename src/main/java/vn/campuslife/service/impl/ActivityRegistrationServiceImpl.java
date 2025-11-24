@@ -33,6 +33,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final ScoreHistoryRepository scoreHistoryRepository;
     private final SemesterRepository semesterRepository;
     private final UserRepository userRepository;
+    private final ActivityReminderRepository reminderRepository;
 
     @Override
     @Transactional
@@ -59,11 +60,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             // 4) Thời gian mở/đóng đăng ký
             if (activity.getRegistrationDeadline() != null &&
-                    LocalDateTime.now().isAfter(activity.getRegistrationDeadline().atStartOfDay())) {
+                    LocalDateTime.now().isAfter(activity.getRegistrationDeadline())) {
                 return new Response(false, "Registration deadline has passed", null);
             }
             if (activity.getRegistrationStartDate() != null &&
-                    LocalDateTime.now().isBefore(activity.getRegistrationStartDate().atStartOfDay())) {
+                    LocalDateTime.now().isBefore(activity.getRegistrationStartDate())) {
                 return new Response(false, "Registration is not yet open", null);
             }
 
@@ -194,7 +195,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     participationRepository.save(participation);
                 }
             }
-
+            ActivityReminder reminder = new ActivityReminder();
+            reminder.setRegistration(registration);
+            reminderRepository.save(reminder);
             ActivityRegistrationResponse response = toRegistrationResponse(savedRegistration);
             return new Response(true, "Registration status updated successfully", response);
 
@@ -388,6 +391,25 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return Response.error("Failed to grade completion: " + e.getMessage());
         }
     }
+
+    @Override
+    public Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status) {
+        try {
+            List<ActivityRegistration> registrations =
+                    registrationRepository.findListByStudentIdAndStatus(studentId, status);
+
+            List<ActivityRegistrationResponse> responses = registrations.stream()
+                    .map(this::toRegistrationResponse)
+                    .toList();
+
+            return new Response(true, "Student registrations retrieved successfully", responses);
+
+        } catch (Exception e) {
+            logger.error("Failed to retrieve student registrations: {}", e.getMessage(), e);
+            return new Response(false, "Failed to retrieve registrations due to server error", null);
+        }
+    }
+
 
     /**
      * Helper method để kiểm tra submission đã được grade

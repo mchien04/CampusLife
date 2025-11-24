@@ -6,6 +6,7 @@ import vn.campuslife.model.CreateActivityRequest;
 import vn.campuslife.model.Response;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ActivityService {
@@ -21,7 +22,7 @@ public interface ActivityService {
 
     List<Activity> getActivitiesByScoreType(ScoreType scoreType);
 
-    List<Activity> getActivitiesByMonth(LocalDate start, LocalDate end);
+    List<Activity>getActivitiesByMonth(LocalDateTime start, LocalDateTime end);
 
     List<Activity> getActivitiesForDepartment(Long departmentId);
 
@@ -38,5 +39,7 @@ public interface ActivityService {
     Response checkRegistrationStatus(Long activityId, String username);
 
     void registerAllStudents(Long activityId);
+     //Tim kiem
+    List<Activity>searchUpcomingEvents(String keyword);
 
 }

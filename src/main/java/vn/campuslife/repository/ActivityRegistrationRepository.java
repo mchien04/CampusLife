@@ -2,6 +2,7 @@ package vn.campuslife.repository;
 
 import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -96,5 +97,21 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
      * Tìm bản đăng ký theo ticketCode
      */
     Optional<ActivityRegistration> findByTicketCode(String ticketCode);
+    /**
+     * Lấy danh sách đăng ký theo status của 1 sinh viên
+     */
+    @Query("""
+       SELECT ar 
+       FROM ActivityRegistration ar 
+       WHERE ar.student.id = :studentId 
+         AND ar.status = :status 
+         AND ar.activity.isDeleted = false
+       """)
+    List<ActivityRegistration> findListByStudentIdAndStatus(
+            @Param("studentId") Long studentId,
+            @Param("status") RegistrationStatus status
+    );
+
+
 
 }

@@ -7,6 +7,7 @@ import vn.campuslife.enumeration.ScoreType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -24,10 +25,10 @@ public class CreateActivityRequest {
     private String description;
 
     @NotNull(message = "Ngày bắt đầu bắt buộc")
-    private LocalDate startDate;
+    private LocalDateTime startDate;
 
     @NotNull(message = "Ngày kết thúc bắt buộc")
-    private LocalDate endDate;
+    private LocalDateTime endDate;
 
     private Boolean requiresSubmission = false;
 
@@ -36,8 +37,8 @@ public class CreateActivityRequest {
 
     private BigDecimal penaltyPointsIncomplete;
 
-    private LocalDate registrationStartDate;
-    private LocalDate registrationDeadline;
+    private LocalDateTime registrationStartDate;
+    private LocalDateTime registrationDeadline;
 
     private String shareLink;
     private Boolean isImportant = false;

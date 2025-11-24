@@ -6,11 +6,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.StudentProfileService;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 
 @Service
@@ -63,62 +67,44 @@ public class StudentProfileServiceImpl implements StudentProfileService {
         }
     }
 
-    @Override
-    @Transactional
-    public Response updateStudentProfile(Long studentId, StudentProfileUpdateRequest request) {
+    public Response updateStudentProfile(Long studentId, StudentProfileUpdateRequest request, MultipartFile avatar) {
         try {
-            Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
-            if (studentOpt.isEmpty()) {
-                return new Response(false, "Student not found", null);
-            }
+            Student student = studentRepository.findById(studentId)
+                    .orElseThrow(() -> new RuntimeException("Student not found"));
 
-            Student student = studentOpt.get();
-
-            // Update student information
+            // Update basic fields
             student.setStudentCode(request.getStudentCode());
             student.setFullName(request.getFullName());
-            // className is now handled through StudentClass entity
-            // student.setClassName(request.getClassName());
             student.setPhone(request.getPhone());
-            // Address is now handled separately through Address entity
             student.setDob(request.getDob());
-            student.setAvatarUrl(request.getAvatarUrl());
             student.setGender(request.getGender());
+
+            // Email
             User user = student.getUser();
             if (user != null && StringUtils.hasText(request.getEmail())) {
                 user.setEmail(request.getEmail());
                 userRepository.save(user);
             }
 
+            // ---- UPLOAD IMAGE ----
+            if (avatar != null && !avatar.isEmpty()) {
 
+                String fileName = "avatar_" + studentId + ".jpg";
+                Path path = Paths.get("uploads/avatars/" + fileName);
 
-            // Update department if provided
-            if (request.getDepartmentId() != null) {
-                Optional<Department> deptOpt = departmentRepository.findById(request.getDepartmentId());
-                if (deptOpt.isPresent()) {
-                    student.setDepartment(deptOpt.get());
-                } else {
-                    return new Response(false, "Department not found", null);
-                }
+                Files.createDirectories(path.getParent());
+                Files.write(path, avatar.getBytes());
+
+                String publicUrl = "http://10.0.2.2:8080/uploads/avatars/" + fileName;
+                student.setAvatarUrl(publicUrl);
             }
 
-            // Update class if provided
-            if (request.getClassId() != null) {
-                Optional<StudentClass> classOpt = studentClassRepository.findById(request.getClassId());
-                if (classOpt.isPresent()) {
-                    student.setStudentClass(classOpt.get());
-                } else {
-                    return new Response(false, "Class not found", null);
-                }
-            }
+            studentRepository.save(student);
 
-            Student savedStudent = studentRepository.save(student);
-            StudentProfileResponse response = toProfileResponse(savedStudent);
+            return new Response(true, "Profile updated", student);
 
-            return new Response(true, "Student profile updated successfully", response);
         } catch (Exception e) {
-            logger.error("Failed to update student profile: {}", e.getMessage(), e);
-            return new Response(false, "Failed to update student profile due to server error", null);
+            return new Response(false, "Update failed: " + e.getMessage(), null);
         }
     }
 

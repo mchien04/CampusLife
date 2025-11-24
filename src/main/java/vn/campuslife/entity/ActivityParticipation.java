@@ -1,5 +1,6 @@
 package vn.campuslife.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -35,8 +36,8 @@ public class ActivityParticipation {
 
     @Column(nullable = true)
     private Boolean isCompleted; // null = chưa chấm, true = đạt, false = không đạt
-
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime checkInTime;
-
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime checkOutTime;
 }

@@ -1,5 +1,6 @@
 package vn.campuslife.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
@@ -41,8 +42,10 @@ public class ActivitySeries {
     private Integer totalActivities;
     private Integer requiredParticipationCount;
     private BigDecimal bonusPoints;
-    private LocalDate startDate;
-    private LocalDate endDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime startDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime endDate;
 
     @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JoinColumn(name = "series_id")

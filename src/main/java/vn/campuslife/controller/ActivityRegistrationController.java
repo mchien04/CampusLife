@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.entity.Student;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.ActivityRegistrationService;
@@ -196,5 +197,30 @@ public class ActivityRegistrationController {
                     .body(new Response(false, "Failed to grade completion: " + e.getMessage(), null));
         }
     }
+    /**
+     * Lấy danh sách đăng ký theo status của 1 sinh viên
+     */
+    @GetMapping("/my/{status}")
+    public ResponseEntity<Response> getMyRegistrationsStatus(
+            Authentication authentication,
+            @PathVariable String status
+    ) {
+        try {
+            Long studentId = getStudentIdFromAuth(authentication);
+
+            RegistrationStatus enumStatus =
+                    RegistrationStatus.valueOf(status.toUpperCase());
+
+            Response response =
+                    registrationService.getStudentRegistrationsStatus(studentId, enumStatus);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed: " + e.getMessage(), null));
+        }
+    }
+
+
 
 }

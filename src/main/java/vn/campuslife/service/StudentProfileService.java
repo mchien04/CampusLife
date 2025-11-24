@@ -1,5 +1,6 @@
 package vn.campuslife.service;
 
+import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.StudentProfileUpdateRequest;
 
@@ -13,7 +14,7 @@ public interface StudentProfileService {
     /**
      * Cập nhật thông tin profile của student
      */
-    Response updateStudentProfile(Long studentId, StudentProfileUpdateRequest request);
+    Response updateStudentProfile(Long studentId, StudentProfileUpdateRequest request, MultipartFile avatar) ;
 
     /**
      * Lấy thông tin profile của student

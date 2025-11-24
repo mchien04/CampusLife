@@ -1,5 +1,6 @@
 package vn.campuslife.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,8 +30,8 @@ public class ActivityTask {
     private String name;
 
     private String description;
-
-    private LocalDate deadline;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime deadline;
 
     @CreatedDate
     private LocalDateTime createdAt;

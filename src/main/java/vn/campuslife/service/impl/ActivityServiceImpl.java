@@ -1,8 +1,11 @@
 package vn.campuslife.service.impl;
 
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -36,6 +39,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Period;
 import java.util.*;
+import jakarta.persistence.criteria.Predicate;
+
 import java.util.stream.Collectors;
 
 
@@ -250,7 +255,7 @@ public class ActivityServiceImpl implements ActivityService {
     }
 
     @Override
-    public List<Activity> getActivitiesByMonth(LocalDate start, LocalDate end) {
+    public List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
         return activityRepository.findInMonth(start, end);
     }
 
@@ -418,8 +423,12 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setContactInfo(a.getContactInfo());
         dto.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
         dto.setPenaltyPointsIncomplete(a.getPenaltyPointsIncomplete());
-        dto.setOrganizerIds(a.getOrganizers() == null ? List.of()
-                : a.getOrganizers().stream().map(Department::getId).toList());
+        dto.setOrganizers(
+                a.getOrganizers() == null
+                        ? List.of()
+                        : a.getOrganizers().stream().toList()
+        );
+
 
         dto.setCreatedAt(a.getCreatedAt());
         dto.setUpdatedAt(a.getUpdatedAt());
@@ -435,7 +444,11 @@ public class ActivityServiceImpl implements ActivityService {
         }
 
         if (a.getStartDate() != null) {
-            long remaining = Period.between(LocalDate.now(), a.getStartDate()).getDays();
+            long remaining = Period.between(
+                    LocalDate.now(),
+                    a.getStartDate().toLocalDate()
+            ).getDays();
+
             dto.setRemainingDays(Math.max(remaining, 0));
         } else {
             dto.setRemainingDays(0);
@@ -550,6 +563,43 @@ public class ActivityServiceImpl implements ActivityService {
 
         activityRegistrationRepository.saveAll(registrations);
     }
+    //tim kiêm sự kiện
+    @Override
+    public List<Activity> searchUpcomingEvents(String keyword) {
+        Specification<Activity> spec = (root, query, cb) -> {
+            query.distinct(true);
+            List<Predicate> predicates = new ArrayList<>();
+
+            // chỉ lấy sự kiện chưa diễn ra
+            predicates.add(cb.greaterThanOrEqualTo(
+                    root.get("startDate"),
+                    LocalDateTime.now()
+            ));
+
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String k = "%" + keyword.toLowerCase() + "%";
+
+                Join<Activity, Department> deptJoin =
+                        root.join("organizers", JoinType.LEFT);
+
+                Predicate keywordPredicate = cb.or(
+                        cb.like(cb.lower(root.get("name")), k),
+                        cb.like(cb.lower(root.get("description")), k),
+                        cb.like(cb.lower(deptJoin.get("name")), k)
+                );
+
+                predicates.add(keywordPredicate);
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return activityRepository.findAll(spec);
+    }
+
+
+
+
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void registerFacultyStudents(Long activityId, Collection<Long> departmentIds) {

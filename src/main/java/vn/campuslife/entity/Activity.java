@@ -1,6 +1,7 @@
 package vn.campuslife.entity;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -60,11 +61,14 @@ public class Activity {
 
     /** Ngày bắt đầu. */
     @Comment("Ngày bắt đầu")
-    private LocalDate startDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime startDate;
+
 
     /** Ngày kết thúc. */
     @Comment("Ngày kết thúc")
-    private LocalDate endDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime  endDate;
 
     /** Có yêu cầu nộp minh chứng/báo cáo sau khi tham gia hay không. */
     @Column(nullable = false)
@@ -77,11 +81,13 @@ public class Activity {
 
     /** Ngày mở đăng ký tham gia. */
     @Comment("Ngày bắt đầu đăng ký")
-    private LocalDate registrationStartDate;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime  registrationStartDate;
 
     /** Hạn cuối đăng ký tham gia. */
     @Comment("Hạn chót đăng ký")
-    private LocalDate registrationDeadline;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime  registrationDeadline;
 
     /** Đường dẫn chia sẻ hoạt động. */
     @Comment("Link chia sẻ")

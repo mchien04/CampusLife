@@ -7,6 +7,7 @@ import vn.campuslife.entity.Activity;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -17,8 +18,8 @@ public class ActivitySeriesResponse {
     private Long id;
     private String name;
     private String description;
-    private LocalDate startDate;
-    private LocalDate endDate;
+    private LocalDateTime startDate;
+    private LocalDateTime endDate;
     private Integer requiredParticipationCount;
     private BigDecimal bonusPoints;
     private String createdBy;

@@ -18,8 +18,8 @@ public class ActivityRegistrationResponse {
     private Long activityId;
     private String activityName;
     private String activityDescription;
-    private LocalDate activityStartDate;
-    private LocalDate activityEndDate;
+    private LocalDateTime activityStartDate;
+    private LocalDateTime activityEndDate;
     private String activityLocation;
     private Long studentId;
     private String studentName;

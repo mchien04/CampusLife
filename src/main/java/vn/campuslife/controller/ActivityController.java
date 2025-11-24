@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 
@@ -113,8 +114,8 @@ public class ActivityController {
     public List<Activity> getByMonth(@RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month) {
         YearMonth ym = (year == null || month == null) ? YearMonth.now() : YearMonth.of(year, month);
-        LocalDate start = ym.atDay(1);
-        LocalDate end = ym.plusMonths(1).atDay(1);
+        LocalDateTime start = ym.atDay(1).atStartOfDay();
+        LocalDateTime end = ym.plusMonths(1).atDay(1).atStartOfDay();
         return activityService.getActivitiesByMonth(start, end);
     }
 
@@ -194,4 +195,15 @@ public class ActivityController {
                     .body(new Response(false, "Server error occurred", null));
         }
     }
+    //Tim kiem
+    @GetMapping("/upcoming")
+    public ResponseEntity<List<Activity>> search(
+            @RequestParam(name = "keyword", required = false) String keyword
+    ) {
+        List<Activity> list = activityService.searchUpcomingEvents(keyword);
+        return ResponseEntity.ok(list);
+    }
+
+
+
 }

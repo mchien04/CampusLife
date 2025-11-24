@@ -2,9 +2,11 @@ package vn.campuslife.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.*;
 import vn.campuslife.service.StudentProfileService;
 import vn.campuslife.service.StudentService;
@@ -40,9 +42,12 @@ public class StudentProfileController {
     /**
      * Cập nhật thông tin profile của student
      */
-    @PutMapping
-    public ResponseEntity<Response> updateMyProfile(@RequestBody @Valid StudentProfileUpdateRequest request,
-            Authentication authentication) {
+    @PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Response> updateMyProfile(
+            @RequestPart("data") @Valid StudentProfileUpdateRequest request,
+            @RequestPart(value = "avatar", required = false) MultipartFile avatar,
+            Authentication authentication
+    ) {
         try {
             Long studentId = getStudentIdFromAuth(authentication);
             if (studentId == null) {
@@ -50,13 +55,15 @@ public class StudentProfileController {
                         .body(new Response(false, "Student not found", null));
             }
 
-            Response response = profileService.updateStudentProfile(studentId, request);
+            Response response = profileService.updateStudentProfile(studentId, request, avatar);
             return ResponseEntity.ok(response);
+
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to update profile: " + e.getMessage(), null));
         }
     }
+
 
     /**
      * Lấy thông tin profile theo username (Admin/Manager)

@@ -65,10 +65,12 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                 return new Response(false, "Task not found", null);
             }
             ActivityTask task = taskOpt.get();
-            LocalDate today = LocalDate.now();
-            if (task.getDeadline() != null && today.isAfter(task.getDeadline())) {
-                return new Response(false, "The submission deadline has passed.", null);
+            if (task.getDeadline() != null &&
+                    LocalDateTime.now().isAfter(task.getDeadline())) {
+
+                return new Response(false, "The submission deadline has passed", null);
             }
+
             // Kiểm tra phân công
             boolean isAssigned = taskAssignmentRepository.existsActiveAssignment(taskId, studentId);
 
@@ -124,7 +126,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                 return new Response(false, "Unauthorized to update this submission", null);
             }
             ActivityTask task = submission.getTask();
-            if (task.getDeadline() != null && LocalDate.now().isAfter(task.getDeadline())) {
+            if (task.getDeadline() != null && LocalDateTime.now().isAfter(task.getDeadline())) {
                 return new Response(false, "Cannot update: deadline has passed.", null);
             }
             submission.setContent(content);
@@ -245,7 +247,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                 return new Response(false, "Unauthorized to delete this submission", null);
             }
             ActivityTask task = submission.getTask();
-            if (task.getDeadline() != null && LocalDate.now().isAfter(task.getDeadline())) {
+            if (task.getDeadline() != null && LocalDateTime.now().isAfter(task.getDeadline())) {
                 return new Response(false, "Cannot delete: submission deadline has passed.", null);
             }
             submission.setDeleted(true);

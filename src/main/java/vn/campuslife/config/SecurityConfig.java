@@ -79,13 +79,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/activities/my").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/debug/user-info").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
-                        .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
+
                         // MiniGames
                         .requestMatchers(HttpMethod.PUT, "/api/minigames/by-activity/**").hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN","STUDENT")
                         .requestMatchers(HttpMethod.DELETE, "/api/minigames/**").hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/minigames/**").permitAll()
-
+                        //reminder
+                        .requestMatchers(HttpMethod.GET, "/api/reminder/**").permitAll()
                         // series
                         .requestMatchers(HttpMethod.GET,  "/api/activity-series/**").hasAnyRole("MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/activity-series/**").hasAnyRole("MANAGER")

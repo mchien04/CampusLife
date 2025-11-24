@@ -10,11 +10,12 @@ import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ScoreType;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ActivityRepository extends JpaRepository<Activity, Long> {
+public interface ActivityRepository extends JpaRepository<Activity, Long > ,JpaSpecificationExecutor<Activity>{
 
     List<Activity> findByIsDeletedFalse();
     Optional<Activity> findByIdAndIsDeletedFalse(Long id);
@@ -32,13 +33,13 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
     @Query("""
        select a from Activity a
        where a.isDeleted = false
-         and a.endDate >= :start
-         and a.endDate <  :end
-         and a.endDate >= CURRENT_DATE  
+         and a.startDate >= :start
+         and a.startDate <  :end
        order by a.startDate desc
-       """)
-    List<Activity> findInMonth(@Param("start") LocalDate start,
-                               @Param("end") LocalDate end);
+""")
+
+    List<Activity> findInMonth(@Param("start") LocalDateTime start,
+                               @Param("end") LocalDateTime end);
 
 
     @Query("""
@@ -47,10 +48,12 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
         join a.organizers d
         where a.isDeleted = false
           and d.id = :deptId
-          and a.endDate >= CURRENT_DATE 
+          and a.startDate > CURRENT_TIMESTAMP
         order by a.startDate asc
-        """)
+""")
     List<Activity> findForDepartment(@Param("deptId") Long deptId);
+
+
 
     @Query("SELECT a FROM ActivitySeries s JOIN s.activities a WHERE s.id = :seriesId AND a.isDeleted = false")
     List<Activity> findAllBySeries_IdAndIsDeletedFalse(@Param("seriesId") Long seriesId);
