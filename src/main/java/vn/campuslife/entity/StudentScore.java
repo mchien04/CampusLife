@@ -40,9 +40,7 @@ public class StudentScore {
     @Column(columnDefinition = "TEXT")
     private String activityIds; // JSON array: "[1,5,10]" - list of activity IDs that contributed to this score
 
-    @ManyToOne
-    @JoinColumn(name = "criterion_id")
-    private Criterion criterion; // Nullable, used for detailed training score by criteria
+    // Criterion removed; scoring aggregates only from activities
 
     @Column(columnDefinition = "TEXT")
     private String notes;

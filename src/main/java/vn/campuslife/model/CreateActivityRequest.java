@@ -6,7 +6,9 @@ import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ScoreType;
 
 import java.math.BigDecimal;
+
 import java.time.LocalDate;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -23,12 +25,9 @@ public class CreateActivityRequest {
     private ScoreType scoreType;
 
     private String description;
-
-    @NotNull(message = "Ngày bắt đầu bắt buộc")
     private LocalDateTime startDate;
-
-    @NotNull(message = "Ngày kết thúc bắt buộc")
     private LocalDateTime endDate;
+
 
     private Boolean requiresSubmission = false;
 
@@ -39,9 +38,12 @@ public class CreateActivityRequest {
 
     private LocalDateTime registrationStartDate;
     private LocalDateTime registrationDeadline;
-
     private String shareLink;
+
+    private Boolean isDraft;
+
     private Boolean isImportant = false;
+
     private String bannerUrl;
     private String location;
 
@@ -50,7 +52,10 @@ public class CreateActivityRequest {
     private String benefits;
     private String requirements;
     private String contactInfo;
+
+    private Boolean requiresApproval;
     private Boolean mandatoryForFacultyStudents = false;
+
 
     private List<Long> organizerIds;
 

@@ -114,4 +114,15 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
 
 
 
+    /**
+     * Tìm tất cả registration đã APPROVED nhưng chưa có participation
+     */
+    @Query("SELECT ar FROM ActivityRegistration ar " +
+            "WHERE ar.status = 'APPROVED' " +
+            "AND ar.activity.isDeleted = false " +
+            "AND NOT EXISTS (" +
+            "   SELECT 1 FROM ActivityParticipation ap WHERE ap.registration.id = ar.id" +
+            ")")
+    List<ActivityRegistration> findApprovedRegistrationsWithoutParticipation();
+
 }

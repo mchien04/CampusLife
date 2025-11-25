@@ -22,5 +22,7 @@ public class ActivityParticipationResponse {
     private ParticipationType participationType;
     private BigDecimal pointsEarned;
     private LocalDateTime date;
-    private String notes;
+    private Boolean isCompleted; // null = chưa chấm, true = đạt, false = không đạt
+    private LocalDateTime checkInTime;
+    private LocalDateTime checkOutTime;
 }

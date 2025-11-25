@@ -6,7 +6,6 @@ import lombok.AllArgsConstructor;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data

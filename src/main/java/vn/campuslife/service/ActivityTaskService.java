@@ -70,6 +70,12 @@ public interface ActivityTaskService {
      * Phân công nhiệm vụ cho tất cả sinh viên đăng ký activity
      */
     Response assignTaskToRegisteredStudents(Long activityId, Long taskId);
+
+    /**
+     * Kiểm tra và cập nhật status OVERDUE cho các assignment quá hạn chưa nộp
+     */
+    Response checkAndUpdateOverdueAssignments();
+
     /**
      * Lấy danh sách phân công theo Activity ID và Student ID
      */

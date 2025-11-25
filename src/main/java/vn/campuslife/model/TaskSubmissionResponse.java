@@ -25,6 +25,7 @@ public class TaskSubmissionResponse {
 
     // Grading
     private Double score;
+    private Boolean isCompleted;
     private String feedback;
     private Long graderId;
     private String graderUsername;

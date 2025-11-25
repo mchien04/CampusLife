@@ -105,4 +105,14 @@ public class ActivityTaskController {
         Response response = activityTaskService.assignTaskToRegisteredStudents(activityId, taskId);
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * Kiểm tra và cập nhật OVERDUE cho các task assignment quá hạn
+     * Endpoint để test thủ công hoặc trigger ngay lập tức
+     */
+    @PostMapping("/check-overdue")
+    public ResponseEntity<Response> checkOverdueAssignments() {
+        Response response = activityTaskService.checkAndUpdateOverdueAssignments();
+        return ResponseEntity.ok(response);
+    }
 }

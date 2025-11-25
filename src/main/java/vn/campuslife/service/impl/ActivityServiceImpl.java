@@ -26,13 +26,21 @@ import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityParticipationRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.UserRepository;
+import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.Role;
 import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.enumeration.ParticipationType;
 import java.math.BigDecimal;
 
 import vn.campuslife.service.ActivityService;
+
+import vn.campuslife.service.NotificationService;
+
 import vn.campuslife.service.MiniGameService;
+
 import vn.campuslife.util.TicketCodeUtils;
+import vn.campuslife.enumeration.NotificationType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -55,15 +63,17 @@ public class ActivityServiceImpl implements ActivityService {
     private final ActivityParticipationRepository activityParticipationRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     private final ActivitySeriesRepository activitySeriesRepository;
     private final MiniGameService miniGameService;
 
     @Override
     @Transactional
-
     public Response createActivity(CreateActivityRequest request) {
         try {
+            // Validate request cơ bản
             String err = validateRequest(request);
             if (err != null) {
                 return new Response(false, err, null);
@@ -72,6 +82,7 @@ public class ActivityServiceImpl implements ActivityService {
             if (request.getName() == null || request.getName().isBlank()) {
                 return new Response(false, "Tên hoạt động không được để trống", null);
             }
+
             if (request.getOrganizerIds() == null || request.getOrganizerIds().isEmpty()) {
                 return new Response(false, "Organizer IDs không được bỏ trống", null);
             }
@@ -86,53 +97,58 @@ public class ActivityServiceImpl implements ActivityService {
                 return new Response(false, "Thời gian đăng ký không hợp lệ", null);
             }
 
-
             if (request.getType() == ActivityType.MINIGAME && request.getMiniGameConfig() == null) {
                 return new Response(false, "MiniGameConfig bắt buộc khi type = MINIGAME", null);
             }
 
+            // Lấy danh sách tổ chức
             Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
             if (organizers == null || organizers.isEmpty()) {
                 return new Response(false, "Organizer ids không hợp lệ", null);
             }
 
+            // Tạo Activity và gán dữ liệu
             Activity activity = new Activity();
             applyRequestToEntity(request, activity);
             activity.setOrganizers(organizers);
 
+            // Nếu activity thuộc series
             if (request.getSeriesId() != null) {
                 ActivitySeries series = activitySeriesRepository.findById(request.getSeriesId())
                         .orElseThrow(() -> new RuntimeException("Chuỗi sự kiện không tồn tại với ID: " + request.getSeriesId()));
                 series.getActivities().add(activity);
-
             }
-
 
             Activity saved;
 
+            // Xử lý theo loại hoạt động
             switch (request.getType()) {
                 case SUKIEN -> {
-                    logger.info(" Tạo sự kiện SUKIEN: {}", activity.getName());
+                    logger.info("Tạo sự kiện SUKIEN: {}", activity.getName());
                     saved = activityRepository.save(activity);
                 }
-
                 case MINIGAME -> {
                     logger.info("Tạo hoạt động MINIGAME: {}", activity.getName());
                     saved = activityRepository.save(activity);
 
+                    // Tạo MiniGame
                     miniGameService.createMiniGameForActivity(saved, request.getMiniGameConfig());
                     logger.info("MiniGame cho hoạt động {} đã được khởi tạo", saved.getName());
 
+                    // Auto-register sinh viên
+                    autoRegisterStudents(saved);
 
                     return new Response(true, "Tạo mini game thành công", toResponse(saved));
                 }
                 case CONG_TAC_XA_HOI, CHUYEN_DE -> {
-                    logger.info(" Tạo hoạt động: {}", activity.getName());
+                    logger.info("Tạo hoạt động: {}", activity.getName());
                     saved = activityRepository.save(activity);
                 }
-
                 default -> throw new IllegalArgumentException("Loại hoạt động không hợp lệ: " + request.getType());
             }
+
+            // Auto-register sinh viên (nếu chưa đăng ký)
+            autoRegisterStudents(saved);
 
             logger.info("Hoàn tất tạo hoạt động: ID={}, Type={}, Series={}",
                     saved.getId(),
@@ -141,12 +157,12 @@ public class ActivityServiceImpl implements ActivityService {
 
             return new Response(true, "Tạo hoạt động thành công", toResponse(saved));
 
-
         } catch (Exception e) {
-            logger.error(" Lỗi khi tạo hoạt động: {}", e.getMessage(), e);
+            logger.error("Lỗi khi tạo hoạt động: {}", e.getMessage(), e);
             return new Response(false, "Không thể tạo hoạt động do lỗi hệ thống", null);
         }
     }
+
 
     private ActivitySeries createSeriesFromActivity(Activity activity, CreateActivityRequest request) {
         ActivitySeries series = new ActivitySeries();
@@ -167,10 +183,109 @@ public class ActivityServiceImpl implements ActivityService {
     }
 
     @Override
+    @Transactional
+    public Response publishActivity(Long id) {
+        var opt = activityRepository.findByIdAndIsDeletedFalse(id);
+        if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+        Activity a = opt.get();
+        
+        // Kiểm tra xem activity có đang là draft không
+        boolean wasDraft = a.isDraft();
+        
+        a.setDraft(false);
+        Activity saved = activityRepository.save(a);
+        
+        // Nếu activity vừa được publish (chuyển từ draft sang published) và có flag auto-register,
+        // thì tự động đăng ký cho sinh viên
+        if (wasDraft && (saved.isImportant() || saved.isMandatoryForFacultyStudents())) {
+            try {
+                autoRegisterStudents(saved);
+                logger.info("Auto-registered students after publishing activity: {}", saved.getName());
+            } catch (Exception e) {
+                logger.error("Failed to auto-register students after publishing activity {}: {}", 
+                    saved.getId(), e.getMessage(), e);
+                // Không fail publish nếu auto-register lỗi, chỉ log
+            }
+        }
+        
+        return new Response(true, "Activity published", toResponse(saved));
+    }
+
+    @Override
+    @Transactional
+    public Response unpublishActivity(Long id) {
+        var opt = activityRepository.findByIdAndIsDeletedFalse(id);
+        if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+        Activity a = opt.get();
+        a.setDraft(true);
+        Activity saved = activityRepository.save(a);
+        return new Response(true, "Activity unpublished", toResponse(saved));
+    }
+
+    @Override
+    @Transactional
+    public Response copyActivity(Long id, Integer offsetDays) {
+        var opt = activityRepository.findByIdAndIsDeletedFalse(id);
+        if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+        Activity src = opt.get();
+        int days = (offsetDays == null) ? 0 : offsetDays.intValue();
+
+        Activity copy = new Activity();
+        copy.setName(src.getName() + " (Copy)");
+        copy.setType(src.getType());
+        copy.setScoreType(src.getScoreType());
+        copy.setDescription(src.getDescription());
+        copy.setStartDate(src.getStartDate() == null ? null : src.getStartDate().plusDays(days));
+        copy.setEndDate(src.getEndDate() == null ? null : src.getEndDate().plusDays(days));
+        copy.setRequiresSubmission(src.isRequiresSubmission());
+        copy.setMaxPoints(src.getMaxPoints());
+        copy.setRegistrationStartDate(src.getRegistrationStartDate() == null ? null : src.getRegistrationStartDate().plusDays(days));
+        copy.setRegistrationDeadline(src.getRegistrationDeadline() == null ? null : src.getRegistrationDeadline().plusDays(days));
+        copy.setShareLink(src.getShareLink());
+        copy.setImportant(src.isImportant());
+        copy.setBannerUrl(src.getBannerUrl());
+        copy.setLocation(src.getLocation());
+        copy.setTicketQuantity(src.getTicketQuantity());
+        copy.setBenefits(src.getBenefits());
+        copy.setRequirements(src.getRequirements());
+        copy.setContactInfo(src.getContactInfo());
+        copy.setMandatoryForFacultyStudents(src.isMandatoryForFacultyStudents());
+        copy.setPenaltyPointsIncomplete(src.getPenaltyPointsIncomplete());
+        copy.setRequiresApproval(src.isRequiresApproval());
+        copy.setDraft(true); // new copy starts as draft
+
+        if (src.getOrganizers() != null && !src.getOrganizers().isEmpty()) {
+            copy.setOrganizers(new java.util.LinkedHashSet<>(src.getOrganizers()));
+        }
+
+        Activity saved = activityRepository.save(copy);
+        return new Response(true, "Activity copied", toResponse(saved));
+    }
     public Response getAllActivities() {
+        return getAllActivities(null);
+    }
+
+    @Override
+    public Response getAllActivities(String username) {
         try {
             var list = activityRepository.findByIsDeletedFalseOrderByStartDateAsc();
-            var data = list.stream().map(this::toResponse).toList();
+            
+            // Filter drafts for students (non-admin/manager users)
+            boolean isAdminOrManager = false;
+            if (username != null) {
+                Optional<User> userOpt = userRepository.findByUsername(username);
+                isAdminOrManager = userOpt.map(user -> 
+                    user.getRole() == Role.ADMIN || 
+                    user.getRole() == Role.MANAGER)
+                    .orElse(false);
+            }
+            
+            final boolean filterDrafts = !isAdminOrManager;
+            var filteredList = list.stream()
+                    .filter(activity -> !filterDrafts || !activity.isDraft())
+                    .collect(Collectors.toList());
+            
+            var data = filteredList.stream().map(this::toResponse).toList();
             return new Response(true, "Activities retrieved successfully", data);
         } catch (Exception e) {
             logger.error("Failed to retrieve activities: {}", e.getMessage(), e);
@@ -180,11 +295,33 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public Response getActivityById(Long id) {
+        return getActivityById(id, null);
+    }
+
+    @Override
+    public Response getActivityById(Long id, String username) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
-            return new Response(true, "Activity retrieved successfully", toResponse(opt.get()));
+            
+            Activity activity = opt.get();
+            
+            // Block students from viewing drafts
+            boolean isAdminOrManager = false;
+            if (username != null) {
+                Optional<User> userOpt = userRepository.findByUsername(username);
+                isAdminOrManager = userOpt.map(user -> 
+                    user.getRole() == Role.ADMIN || 
+                    user.getRole() == Role.MANAGER)
+                    .orElse(false);
+            }
+            
+            if (activity.isDraft() && !isAdminOrManager) {
+                return new Response(false, "Activity not found", null);
+            }
+            
+            return new Response(true, "Activity retrieved successfully", toResponse(activity));
         } catch (Exception e) {
             logger.error("Failed to retrieve activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to retrieve activity due to server error", null);
@@ -222,6 +359,9 @@ public class ActivityServiceImpl implements ActivityService {
             Activity saved = activityRepository.save(a);
 
             // Auto-register students if flags changed
+            // Note: autoRegisterStudents will skip if activity is draft
+            logger.debug("Activity updated (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})", 
+                saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(), saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
 
             return new Response(true, "Activity updated successfully", toResponse(saved));
@@ -372,6 +512,13 @@ public class ActivityServiceImpl implements ActivityService {
 
         a.setShareLink(req.getShareLink());
         a.setImportant(Boolean.TRUE.equals(req.getIsImportant()));
+        // Set isDraft: if explicitly provided, use it; otherwise default to true (draft)
+        if (req.getIsDraft() != null) {
+            a.setDraft(req.getIsDraft());
+        } else {
+            // Default to draft if not specified
+            a.setDraft(true);
+        }
         a.setBannerUrl(req.getBannerUrl());
         a.setLocation(req.getLocation());
 
@@ -379,6 +526,7 @@ public class ActivityServiceImpl implements ActivityService {
         a.setBenefits(req.getBenefits());
         a.setRequirements(req.getRequirements());
         a.setContactInfo(req.getContactInfo());
+        if (req.getRequiresApproval() != null) a.setRequiresApproval(req.getRequiresApproval());
         a.setMandatoryForFacultyStudents(Boolean.TRUE.equals(req.getMandatoryForFacultyStudents()));
         a.setPenaltyPointsIncomplete(req.getPenaltyPointsIncomplete());
 
@@ -414,6 +562,7 @@ public class ActivityServiceImpl implements ActivityService {
 
         dto.setShareLink(a.getShareLink());
         dto.setImportant(a.isImportant());
+        dto.setDraft(a.isDraft());
         dto.setBannerUrl(a.getBannerUrl());
         dto.setLocation(a.getLocation());
 
@@ -421,6 +570,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setBenefits(a.getBenefits());
         dto.setRequirements(a.getRequirements());
         dto.setContactInfo(a.getContactInfo());
+        dto.setRequiresApproval(a.isRequiresApproval());
         dto.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
         dto.setPenaltyPointsIncomplete(a.getPenaltyPointsIncomplete());
         dto.setOrganizers(
@@ -463,6 +613,16 @@ public class ActivityServiceImpl implements ActivityService {
      */
     private void autoRegisterStudents(Activity activity) {
         try {
+            // Không tự động đăng ký nếu activity là draft (chưa công bố)
+            if (activity.isDraft()) {
+                logger.info("Skipping auto-registration for draft activity (id={}, name={}, isDraft={})", 
+                    activity.getId(), activity.getName(), activity.isDraft());
+                return;
+            }
+            
+            logger.debug("Checking auto-registration for published activity (id={}, name={}, isImportant={}, mandatoryForFacultyStudents={})", 
+                activity.getId(), activity.getName(), activity.isImportant(), activity.isMandatoryForFacultyStudents());
+
             List<Student> studentsToRegister = new ArrayList<>();
 
             // Nếu isImportant = true: đăng ký cho tất cả sinh viên
@@ -525,6 +685,54 @@ public class ActivityServiceImpl implements ActivityService {
                     activityParticipationRepository.saveAll(participations);
                     logger.info("Created {} initial participations for activity: {}", participations.size(),
                             activity.getName());
+
+                    // Send notifications to each auto-registered student
+                    // Wrap in try-catch to not fail auto-registration if notification fails
+                    try {
+                        String title;
+                        String content;
+                        if (activity.isImportant()) {
+                            title = "Đăng ký tự động - Sự kiện quan trọng";
+                            content = String.format("Bạn đã được tự động đăng ký sự kiện quan trọng: %s", activity.getName());
+                        } else if (activity.isMandatoryForFacultyStudents()) {
+                            title = "Đăng ký tự động - Sự kiện bắt buộc";
+                            content = String.format("Bạn đã được tự động đăng ký sự kiện bắt buộc: %s", activity.getName());
+                        } else {
+                            title = "Đăng ký tự động";
+                            content = String.format("Bạn đã được tự động đăng ký sự kiện: %s", activity.getName());
+                        }
+
+                        for (ActivityRegistration registration : registrations) {
+                            try {
+                                Long userId = registration.getStudent().getUser().getId();
+                                Map<String, Object> metadata = new HashMap<>();
+                                metadata.put("activityId", activity.getId());
+                                metadata.put("activityName", activity.getName());
+                                metadata.put("registrationId", registration.getId());
+                                metadata.put("ticketCode", registration.getTicketCode());
+                                metadata.put("isAutoRegistered", true);
+
+                                notificationService.sendNotification(
+                                        userId,
+                                        title,
+                                        content,
+                                        NotificationType.ACTIVITY_REGISTRATION,
+                                        "/activities/" + activity.getId(),
+                                        metadata
+                                );
+                            } catch (Exception e) {
+                                logger.error("Failed to send auto-registration notification to user {} for activity {}: {}", 
+                                        registration.getStudent().getUser().getId(), activity.getId(), e.getMessage());
+                                // Continue with next registration
+                            }
+                        }
+                        logger.info("Sent auto-registration notifications to {} students for activity: {}", 
+                                registrations.size(), activity.getName());
+                    } catch (Exception e) {
+                        logger.error("Failed to send auto-registration notifications for activity {}: {}", 
+                                activity.getId(), e.getMessage(), e);
+                        // Don't fail auto-registration if notification fails
+                    }
                 } else {
                     logger.info("All students already registered for activity: {}", activity.getName());
                 }
@@ -539,29 +747,51 @@ public class ActivityServiceImpl implements ActivityService {
         Activity activity = activityRepository.findById(activityId)
                 .orElseThrow(() -> new RuntimeException("Activity not found"));
 
-        List<Student> allStudents = studentRepository.findAll();
+        List<Student> allStudents = studentRepository.findAll().stream()
+                .filter(student -> !student.isDeleted())
+                .collect(Collectors.toList());
 
-        List<ActivityRegistration> registrations = allStudents.stream()
-                .map(student -> {
-                    ActivityRegistration reg = new ActivityRegistration();
-                    reg.setActivity(activity);
-                    reg.setStudent(student);
-                    reg.setRegisteredDate(LocalDateTime.now());
-                    reg.setStatus(RegistrationStatus.PENDING);
+        List<ActivityRegistration> registrationsToCreate = new ArrayList<>();
+        List<ActivityRegistration> registrationsToUpdate = new ArrayList<>();
 
-                    String code;
-                    int attempts = 0;
-                    do {
-                        code = TicketCodeUtils.newTicketCode();
-                        attempts++;
-                    } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
-                    reg.setTicketCode(code);
+        for (Student student : allStudents) {
+            Optional<ActivityRegistration> existingOpt = activityRegistrationRepository
+                    .findByActivityIdAndStudentId(activityId, student.getId());
 
-                    return reg;
-                })
-                .toList();
+            if (existingOpt.isPresent()) {
+                // Update existing registration to APPROVED if not already
+                ActivityRegistration existing = existingOpt.get();
+                if (existing.getStatus() != RegistrationStatus.APPROVED) {
+                    existing.setStatus(RegistrationStatus.APPROVED);
+                    existing.setRegisteredDate(LocalDateTime.now());
+                    registrationsToUpdate.add(existing);
+                }
+            } else {
+                // Create new APPROVED registration
+                ActivityRegistration reg = new ActivityRegistration();
+                reg.setActivity(activity);
+                reg.setStudent(student);
+                reg.setRegisteredDate(LocalDateTime.now());
+                reg.setStatus(RegistrationStatus.APPROVED);
 
-        activityRegistrationRepository.saveAll(registrations);
+                String code;
+                int attempts = 0;
+                do {
+                    code = TicketCodeUtils.newTicketCode();
+                    attempts++;
+                } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
+                reg.setTicketCode(code);
+
+                registrationsToCreate.add(reg);
+            }
+        }
+
+        if (!registrationsToCreate.isEmpty()) {
+            activityRegistrationRepository.saveAll(registrationsToCreate);
+        }
+        if (!registrationsToUpdate.isEmpty()) {
+            activityRegistrationRepository.saveAll(registrationsToUpdate);
+        }
     }
     //tim kiêm sự kiện
     @Override
@@ -606,31 +836,54 @@ public class ActivityServiceImpl implements ActivityService {
         Activity activity = activityRepository.findById(activityId)
                 .orElseThrow(() -> new RuntimeException("Activity not found"));
 
-        List<Student> students = studentRepository.findByDepartment_IdIn(departmentIds);
+        List<Student> students = studentRepository.findByDepartment_IdIn(departmentIds).stream()
+                .filter(student -> !student.isDeleted())
+                .collect(Collectors.toList());
 
-        List<ActivityRegistration> registrations = students.stream()
-                .map(student -> {
-                    ActivityRegistration reg = new ActivityRegistration();
-                    reg.setActivity(activity);
-                    reg.setStudent(student);
-                    reg.setRegisteredDate(LocalDateTime.now());
-                    reg.setStatus(RegistrationStatus.PENDING);
+        List<ActivityRegistration> registrationsToCreate = new ArrayList<>();
+        List<ActivityRegistration> registrationsToUpdate = new ArrayList<>();
 
-                    String code;
-                    int attempts = 0;
-                    do {
-                        code = TicketCodeUtils.newTicketCode();
-                        attempts++;
-                    } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
-                    reg.setTicketCode(code);
+        for (Student student : students) {
+            Optional<ActivityRegistration> existingOpt = activityRegistrationRepository
+                    .findByActivityIdAndStudentId(activityId, student.getId());
 
-                    return reg;
-                })
-                .toList();
+            if (existingOpt.isPresent()) {
+                // Update existing registration to APPROVED if not already
+                ActivityRegistration existing = existingOpt.get();
+                if (existing.getStatus() != RegistrationStatus.APPROVED) {
+                    existing.setStatus(RegistrationStatus.APPROVED);
+                    existing.setRegisteredDate(LocalDateTime.now());
+                    registrationsToUpdate.add(existing);
+                }
+            } else {
+                // Create new APPROVED registration
+                ActivityRegistration reg = new ActivityRegistration();
+                reg.setActivity(activity);
+                reg.setStudent(student);
+                reg.setRegisteredDate(LocalDateTime.now());
+                reg.setStatus(RegistrationStatus.APPROVED);
 
-        activityRegistrationRepository.saveAll(registrations);
+                String code;
+                int attempts = 0;
+                do {
+                    code = TicketCodeUtils.newTicketCode();
+                    attempts++;
+                } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
+                reg.setTicketCode(code);
+
+                registrationsToCreate.add(reg);
+            }
+        }
+
+        if (!registrationsToCreate.isEmpty()) {
+            activityRegistrationRepository.saveAll(registrationsToCreate);
+        }
+        if (!registrationsToUpdate.isEmpty()) {
+            activityRegistrationRepository.saveAll(registrationsToUpdate);
+        }
+
         logger.info("Auto registered {} students of departments {} for mandatory activity {}",
-                registrations.size(), departmentIds, activityId);
+                registrationsToCreate.size() + registrationsToUpdate.size(), departmentIds, activityId);
     }
 
 }

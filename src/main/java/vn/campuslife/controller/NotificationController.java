@@ -1,6 +1,5 @@
 package vn.campuslife.controller;
 
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -8,9 +7,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
 import vn.campuslife.service.NotificationService;
+import vn.campuslife.repository.UserRepository;
+import vn.campuslife.entity.User;
 
-import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -18,6 +18,7 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     /**
      * Lấy danh sách thông báo của user hiện tại
@@ -166,10 +167,12 @@ public class NotificationController {
      */
     private Long getUserIdFromAuth(Authentication authentication) {
         try {
+            if (authentication == null) {
+                return null;
+            }
             String username = authentication.getName();
-            // You might need to implement a method to get user ID by username
-            // For now, returning a placeholder
-            return 1L; // This should be replaced with actual user ID lookup
+            Optional<User> userOpt = userRepository.findByUsername(username);
+            return userOpt.map(User::getId).orElse(null);
         } catch (Exception e) {
             return null;
         }

@@ -57,7 +57,6 @@ public class StudentScoreInitService {
                 score.setScoreType(scoreType);
                 score.setScore(BigDecimal.ZERO);
                 score.setActivityIds("[]"); // Empty JSON array
-                score.setCriterion(null);
                 score.setNotes(null);
 
                 studentScoreRepository.save(score);
