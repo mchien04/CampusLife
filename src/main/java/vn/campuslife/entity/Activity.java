@@ -107,6 +107,16 @@ public class Activity {
     @Comment("Cờ xóa mềm")
     private boolean isDeleted = false;
 
+    /** ID chuỗi sự kiện (null = sự kiện đơn lẻ). */
+    @Column
+    @Comment("ID chuỗi sự kiện")
+    private Long seriesId;
+
+    /** Thứ tự trong chuỗi (1, 2, 3...). */
+    @Column
+    @Comment("Thứ tự trong chuỗi")
+    private Integer seriesOrder;
+
     /** Số lượng vé/slot có thể đăng ký (null = không giới hạn). */
     @Comment("Số lượng vé (null = không giới hạn)")
     private Integer ticketQuantity;

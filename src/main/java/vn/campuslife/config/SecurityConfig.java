@@ -91,6 +91,23 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/activities/*/photos/*/order")
                         .hasAnyRole("ADMIN", "MANAGER")
+                        
+                        // Activity Series - All operations require MANAGER/ADMIN
+                        .requestMatchers("/api/series/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        
+                        // MiniGame - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require MANAGER/ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/minigames/activity/*")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/minigames/*/attempts/my")
+                        .hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/minigames/*/start")
+                        .hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/minigames/attempts/*/submit")
+                        .hasRole("STUDENT")
+                        .requestMatchers("/api/minigames/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
 
