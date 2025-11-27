@@ -16,28 +16,36 @@ import java.util.Optional;
 @Repository
 public interface ActivityRepository extends JpaRepository<Activity, Long> {
 
-    List<Activity> findByIsDeletedFalse();
-    Optional<Activity> findByIdAndIsDeletedFalse(Long id);
-    List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(ScoreType scoreType);
-    List<Activity> findByIsDeletedFalseOrderByStartDateAsc();
+  List<Activity> findByIsDeletedFalse();
 
-    @Query("""
-       select a from Activity a
-       where a.isDeleted = false
-         and a.startDate >= :start
-         and a.startDate <  :end
-       order by a.startDate desc
-       """)
-    List<Activity> findInMonth(@Param("start") LocalDate start,
-                               @Param("end")   LocalDate end);
+  Optional<Activity> findByIdAndIsDeletedFalse(Long id);
 
-    @Query("""
-        select distinct a
-        from Activity a
-        join a.organizers d
-        where a.isDeleted = false
-          and d.id = :deptId
-        order by a.startDate asc
-        """)
-    List<Activity> findForDepartment(@Param("deptId") Long deptId);
+  List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(ScoreType scoreType);
+
+  List<Activity> findByIsDeletedFalseOrderByStartDateAsc();
+
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.startDate >= :start
+        and a.startDate <  :end
+      order by a.startDate desc
+      """)
+  List<Activity> findInMonth(@Param("start") LocalDate start,
+      @Param("end") LocalDate end);
+
+  @Query("""
+      select distinct a
+      from Activity a
+      join a.organizers d
+      where a.isDeleted = false
+        and d.id = :deptId
+      order by a.startDate asc
+      """)
+  List<Activity> findForDepartment(@Param("deptId") Long deptId);
+
+  /**
+   * Lấy danh sách activities trong series
+   */
+  List<Activity> findBySeriesIdAndIsDeletedFalse(Long seriesId);
 }

@@ -1,0 +1,517 @@
+package vn.campuslife.service.impl;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.model.Response;
+import vn.campuslife.repository.*;
+import vn.campuslife.service.ActivitySeriesService;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+public class ActivitySeriesServiceImpl implements ActivitySeriesService {
+
+    private static final Logger logger = LoggerFactory.getLogger(ActivitySeriesServiceImpl.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final ActivitySeriesRepository seriesRepository;
+    private final StudentSeriesProgressRepository progressRepository;
+    private final ActivityRepository activityRepository;
+    private final StudentRepository studentRepository;
+    private final StudentScoreRepository studentScoreRepository;
+    private final ScoreHistoryRepository scoreHistoryRepository;
+    private final SemesterRepository semesterRepository;
+    private final UserRepository userRepository;
+    private final ActivityParticipationRepository participationRepository;
+    private final ActivityRegistrationRepository registrationRepository;
+
+    @Override
+    @Transactional
+    public Response createSeries(String name, String description, String milestonePointsJson,
+            vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
+            LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
+            Boolean requiresApproval, Integer ticketQuantity) {
+        // Validate required fields
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Series name is required");
+        }
+        if (scoreType == null) {
+            throw new IllegalArgumentException("ScoreType is required");
+        }
+
+        ActivitySeries series = new ActivitySeries();
+        series.setName(name);
+        series.setDescription(description);
+        series.setMilestonePoints(milestonePointsJson);
+        series.setScoreType(scoreType);
+        series.setRegistrationStartDate(registrationStartDate);
+        series.setRegistrationDeadline(registrationDeadline);
+        series.setRequiresApproval(requiresApproval != null ? requiresApproval : true);
+        series.setTicketQuantity(ticketQuantity);
+        series.setCreatedAt(LocalDateTime.now());
+        series.setDeleted(false); // Set default value for isDeleted
+
+        if (mainActivityId != null) {
+            Optional<Activity> mainActivityOpt = activityRepository.findById(mainActivityId);
+            if (mainActivityOpt.isPresent()) {
+                series.setMainActivity(mainActivityOpt.get());
+            } else {
+                logger.warn("Main activity not found: {}", mainActivityId);
+            }
+        }
+
+        ActivitySeries saved = seriesRepository.save(series);
+        logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
+        return Response.success("Activity series created successfully", saved);
+    }
+
+    @Override
+    @Transactional
+    public Response createActivityInSeries(Long seriesId, String name, String description,
+            LocalDateTime startDate, LocalDateTime endDate,
+            String location, Integer order) {
+        // Validate required fields
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Activity name is required");
+        }
+        if (seriesId == null) {
+            throw new IllegalArgumentException("Series ID is required");
+        }
+
+        Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+        if (seriesOpt.isEmpty()) {
+            throw new IllegalArgumentException("Series not found: " + seriesId);
+        }
+
+        ActivitySeries series = seriesOpt.get();
+
+        // Tạo activity với các thuộc tính tối giản
+        Activity activity = new Activity();
+        activity.setName(name);
+        activity.setDescription(description);
+        activity.setStartDate(startDate);
+        activity.setEndDate(endDate);
+        activity.setLocation(location);
+        activity.setSeriesId(seriesId);
+        activity.setSeriesOrder(order);
+
+        // Các thuộc tính không cần (cho phép null)
+        activity.setType(null); // Không cần
+        activity.setScoreType(null); // Lấy từ series
+        activity.setMaxPoints(null); // Không dùng để tính điểm
+        activity.setRegistrationStartDate(series.getRegistrationStartDate()); // Lấy từ series
+        activity.setRegistrationDeadline(series.getRegistrationDeadline()); // Lấy từ series
+        activity.setRequiresApproval(series.isRequiresApproval()); // Lấy từ series
+        activity.setTicketQuantity(series.getTicketQuantity()); // Lấy từ series
+        activity.setImportant(false); // Không cần
+        activity.setMandatoryForFacultyStudents(false); // Không cần
+        activity.setPenaltyPointsIncomplete(null); // Không cần
+        activity.setRequiresSubmission(false);
+        activity.setDraft(false); // Mặc định published
+        activity.setDeleted(false);
+
+        Activity saved = activityRepository.save(activity);
+        logger.info("Created activity {} in series {} with order {}", saved.getId(), seriesId, order);
+        return Response.success("Activity created in series successfully", saved);
+    }
+
+    @Override
+    @Transactional
+    public Response registerForSeries(Long seriesId, Long studentId) {
+        try {
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+            Student student = studentOpt.get();
+
+            // Kiểm tra thời gian đăng ký
+            if (series.getRegistrationDeadline() != null &&
+                    LocalDateTime.now().isAfter(series.getRegistrationDeadline())) {
+                return Response.error("Registration deadline has passed");
+            }
+            if (series.getRegistrationStartDate() != null &&
+                    LocalDateTime.now().isBefore(series.getRegistrationStartDate())) {
+                return Response.error("Registration has not started yet");
+            }
+
+            // Kiểm tra ticketQuantity (đếm số student đã đăng ký ít nhất 1 activity trong
+            // series)
+            if (series.getTicketQuantity() != null) {
+                List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+                Set<Long> registeredStudentIds = new HashSet<>();
+                for (Activity activity : activities) {
+                    List<ActivityRegistration> regs = registrationRepository
+                            .findByActivityIdAndActivityIsDeletedFalse(activity.getId());
+                    for (ActivityRegistration reg : regs) {
+                        registeredStudentIds.add(reg.getStudent().getId());
+                    }
+                }
+                if (registeredStudentIds.size() >= series.getTicketQuantity()) {
+                    return Response.error("Series is full");
+                }
+            }
+
+            // Lấy tất cả activities trong series
+            List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            if (activities.isEmpty()) {
+                return Response.error("No activities found in series");
+            }
+
+            // Tạo registrations cho tất cả activities
+            List<ActivityRegistration> registrations = new ArrayList<>();
+            for (Activity activity : activities) {
+                // Kiểm tra đã đăng ký chưa
+                if (registrationRepository.existsByActivityIdAndStudentId(activity.getId(), studentId)) {
+                    continue; // Bỏ qua nếu đã đăng ký
+                }
+
+                ActivityRegistration registration = new ActivityRegistration();
+                registration.setActivity(activity);
+                registration.setStudent(student);
+                registration.setRegisteredDate(LocalDateTime.now());
+                registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+
+                // Set status dựa trên requiresApproval của series
+                if (series.isRequiresApproval()) {
+                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.PENDING);
+                } else {
+                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
+                }
+
+                registrations.add(registration);
+            }
+
+            if (registrations.isEmpty()) {
+                return Response.error("Already registered for all activities in series");
+            }
+
+            registrationRepository.saveAll(registrations);
+            logger.info("Registered student {} for {} activities in series {}",
+                    studentId, registrations.size(), seriesId);
+
+            return Response.success("Registered for series successfully. " +
+                    registrations.size() + " activities registered.", registrations);
+        } catch (Exception e) {
+            logger.error("Failed to register for series: {}", e.getMessage(), e);
+            return Response.error("Failed to register for series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response addActivityToSeries(Long activityId, Long seriesId, Integer order) {
+        try {
+            Optional<Activity> activityOpt = activityRepository.findById(activityId);
+            if (activityOpt.isEmpty()) {
+                return Response.error("Activity not found");
+            }
+
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            Activity activity = activityOpt.get();
+            activity.setSeriesId(seriesId);
+            activity.setSeriesOrder(order);
+            activityRepository.save(activity);
+
+            logger.info("Added activity {} to series {} with order {}", activityId, seriesId, order);
+            return Response.success("Activity added to series successfully", activity);
+        } catch (Exception e) {
+            logger.error("Failed to add activity to series: {}", e.getMessage(), e);
+            return Response.error("Failed to add activity to series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response updateStudentProgress(Long studentId, Long activityId) {
+        try {
+            Optional<Activity> activityOpt = activityRepository.findById(activityId);
+            if (activityOpt.isEmpty()) {
+                return Response.error("Activity not found");
+            }
+
+            Activity activity = activityOpt.get();
+            if (activity.getSeriesId() == null) {
+                return Response.success("Activity is not part of a series", null);
+            }
+
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(activity.getSeriesId());
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            Student student = studentOpt.get();
+            ActivitySeries series = seriesOpt.get();
+
+            // Tìm hoặc tạo progress record
+            Optional<StudentSeriesProgress> progressOpt = progressRepository
+                    .findByStudentIdAndSeriesId(studentId, activity.getSeriesId());
+
+            StudentSeriesProgress progress;
+            if (progressOpt.isPresent()) {
+                progress = progressOpt.get();
+            } else {
+                progress = new StudentSeriesProgress();
+                progress.setStudent(student);
+                progress.setSeries(series);
+                progress.setCompletedActivityIds("[]");
+                progress.setCompletedCount(0);
+                progress.setPointsEarned(BigDecimal.ZERO);
+            }
+
+            // Parse completed activity IDs
+            String completedIdsJson = progress.getCompletedActivityIds() != null
+                    ? progress.getCompletedActivityIds()
+                    : "[]";
+            List<Long> completedIds;
+            try {
+                completedIds = objectMapper.readValue(completedIdsJson, new TypeReference<List<Long>>() {
+                });
+            } catch (Exception e) {
+                completedIds = new ArrayList<>();
+            }
+
+            // Kiểm tra xem activity đã được thêm chưa
+            if (!completedIds.contains(activityId)) {
+                completedIds.add(activityId);
+                progress.setCompletedCount(completedIds.size());
+                progress.setCompletedActivityIds(objectMapper.writeValueAsString(completedIds));
+                progress.setLastUpdated(LocalDateTime.now());
+                progressRepository.save(progress);
+
+                // Tính lại milestone points
+                calculateMilestonePoints(studentId, activity.getSeriesId());
+            }
+
+            logger.info("Updated progress for student {} in series {}", studentId, activity.getSeriesId());
+            return Response.success("Student progress updated", progress);
+        } catch (Exception e) {
+            logger.error("Failed to update student progress: {}", e.getMessage(), e);
+            return Response.error("Failed to update student progress: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response calculateMilestonePoints(Long studentId, Long seriesId) {
+        try {
+            Optional<StudentSeriesProgress> progressOpt = progressRepository
+                    .findByStudentIdAndSeriesId(studentId, seriesId);
+            if (progressOpt.isEmpty()) {
+                return Response.error("Progress not found");
+            }
+
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            StudentSeriesProgress progress = progressOpt.get();
+            ActivitySeries series = seriesOpt.get();
+
+            if (series.getMilestonePoints() == null || series.getMilestonePoints().isEmpty()) {
+                return Response.success("No milestone points configured", null);
+            }
+
+            // Parse milestone points JSON
+            Map<String, Integer> milestonePoints;
+            try {
+                milestonePoints = objectMapper.readValue(series.getMilestonePoints(),
+                        new TypeReference<Map<String, Integer>>() {
+                        });
+            } catch (Exception e) {
+                logger.error("Failed to parse milestone points: {}", e.getMessage());
+                return Response.error("Invalid milestone points format");
+            }
+
+            // Tìm điểm milestone phù hợp với số sự kiện đã tham gia
+            Integer completedCount = progress.getCompletedCount();
+            BigDecimal pointsToAward = BigDecimal.ZERO;
+
+            // Tìm milestone cao nhất mà student đã đạt được
+            for (Map.Entry<String, Integer> entry : milestonePoints.entrySet()) {
+                try {
+                    Integer milestoneCount = Integer.parseInt(entry.getKey());
+                    if (completedCount >= milestoneCount) {
+                        Integer milestonePointsValue = entry.getValue();
+                        if (milestonePointsValue > pointsToAward.intValue()) {
+                            pointsToAward = BigDecimal.valueOf(milestonePointsValue);
+                        }
+                    }
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid milestone key: {}", entry.getKey());
+                }
+            }
+
+            // Cập nhật pointsEarned nếu có thay đổi
+            if (pointsToAward.compareTo(progress.getPointsEarned()) > 0) {
+                BigDecimal oldPoints = progress.getPointsEarned();
+                progress.setPointsEarned(pointsToAward);
+                progressRepository.save(progress);
+
+                // Cập nhật StudentScore REN_LUYEN
+                updateRenLuyenScoreFromMilestone(studentId, seriesId, oldPoints, pointsToAward);
+
+                logger.info("Awarded milestone points {} to student {} for series {}",
+                        pointsToAward, studentId, seriesId);
+            }
+
+            return Response.success("Milestone points calculated", progress);
+        } catch (Exception e) {
+            logger.error("Failed to calculate milestone points: {}", e.getMessage(), e);
+            return Response.error("Failed to calculate milestone points: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response checkMinimumRequirement(Long studentId, Long seriesId) {
+        // TODO: Implement penalty logic if student doesn't meet minimum requirement
+        // This would need additional fields in ActivitySeries: minimumRequired,
+        // penaltyPoints
+        return Response.success("Minimum requirement check not yet implemented", null);
+    }
+
+    /**
+     * Cập nhật điểm từ milestone (dùng scoreType từ series)
+     */
+    private void updateRenLuyenScoreFromMilestone(Long studentId, Long seriesId, BigDecimal oldPoints,
+            BigDecimal newPoints) {
+        try {
+            // Lấy series để lấy scoreType
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                logger.warn("Series not found: {}", seriesId);
+                return;
+            }
+            ActivitySeries series = seriesOpt.get();
+            ScoreType scoreType = series.getScoreType();
+
+            // Lấy semester hiện tại
+            Semester currentSemester = semesterRepository.findAll().stream()
+                    .filter(Semester::isOpen)
+                    .findFirst()
+                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+
+            if (currentSemester == null) {
+                logger.warn("No semester found for milestone score update");
+                return;
+            }
+
+            Optional<StudentScore> scoreOpt = studentScoreRepository
+                    .findByStudentIdAndSemesterIdAndScoreType(studentId, currentSemester.getId(), scoreType);
+
+            if (scoreOpt.isEmpty()) {
+                logger.warn("No {} score record found for student {}", scoreType, studentId);
+                return;
+            }
+
+            StudentScore score = scoreOpt.get();
+            BigDecimal currentScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
+
+            // Trừ điểm cũ, cộng điểm mới
+            BigDecimal updatedScore = currentScore.subtract(oldPoints).add(newPoints);
+            BigDecimal oldTotalScore = score.getScore();
+            score.setScore(updatedScore);
+            studentScoreRepository.save(score);
+
+            // Tạo history
+            User systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
+                            || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(oldTotalScore);
+            history.setNewScore(updatedScore);
+            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+            history.setChangeDate(LocalDateTime.now());
+            history.setReason("Milestone points from series: " + seriesId);
+            scoreHistoryRepository.save(history);
+
+            logger.info("Updated {} score from milestone: {} -> {} for student {}",
+                    scoreType, oldTotalScore, updatedScore, studentId);
+        } catch (Exception e) {
+            logger.error("Failed to update REN_LUYEN score from milestone: {}", e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getAllSeries() {
+        try {
+            List<ActivitySeries> seriesList = seriesRepository.findAll();
+            return Response.success("Series retrieved successfully", seriesList);
+        } catch (Exception e) {
+            logger.error("Failed to get all series: {}", e.getMessage(), e);
+            return Response.error("Failed to get all series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesById(Long seriesId) {
+        try {
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+            return Response.success("Series retrieved successfully", seriesOpt.get());
+        } catch (Exception e) {
+            logger.error("Failed to get series: {}", e.getMessage(), e);
+            return Response.error("Failed to get series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getActivitiesInSeries(Long seriesId) {
+        try {
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            // Sắp xếp theo seriesOrder
+            activities.sort((a1, a2) -> {
+                Integer order1 = a1.getSeriesOrder() != null ? a1.getSeriesOrder() : Integer.MAX_VALUE;
+                Integer order2 = a2.getSeriesOrder() != null ? a2.getSeriesOrder() : Integer.MAX_VALUE;
+                return order1.compareTo(order2);
+            });
+
+            return Response.success("Activities in series retrieved successfully", activities);
+        } catch (Exception e) {
+            logger.error("Failed to get activities in series: {}", e.getMessage(), e);
+            return Response.error("Failed to get activities in series: " + e.getMessage());
+        }
+    }
+}

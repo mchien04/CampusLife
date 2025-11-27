@@ -6,9 +6,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.Role;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
@@ -36,6 +38,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final SemesterRepository semesterRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
 
     @Override
     @Transactional
@@ -384,21 +387,63 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             // Nếu activity không yêu cầu nộp bài, tự động cập nhật điểm và isCompleted
             Activity activity = registration.getActivity();
             if (!activity.isRequiresSubmission()) {
-                // Tự động set isCompleted = true và tính điểm
                 participation.setIsCompleted(true);
-                BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
-                participation.setPointsEarned(points);
                 participation.setParticipationType(ParticipationType.COMPLETED);
-                participationRepository.save(participation);
+                
+                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và CHUYEN_DE_DOANH_NGHIEP
+                if (activity.getSeriesId() != null) {
+                    // Activity trong series → KHÔNG tính điểm từ maxPoints
+                    participation.setPointsEarned(BigDecimal.ZERO);
+                    participationRepository.save(participation);
+                    
+                    // Chỉ update series progress (điểm milestone sẽ được tính tự động)
+                    try {
+                        activitySeriesService.updateStudentProgress(
+                                registration.getStudent().getId(), 
+                                activity.getId());
+                        logger.info("Updated series progress for activity {} in series {}", 
+                                activity.getName(), activity.getSeriesId());
+                    } catch (Exception e) {
+                        logger.warn("Failed to update series progress: {}", e.getMessage());
+                        // Không fail check-out nếu update series progress lỗi
+                    }
+                } else if (activity.getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP) {
+                    // CHUYEN_DE_DOANH_NGHIEP: Dual Score Calculation
+                    // Lưu maxPoints vào pointsEarned để dùng cho REN_LUYEN
+                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+                    participation.setPointsEarned(points);
+                    participationRepository.save(participation);
+                    
+                    try {
+                        // CHUYEN_DE: Đếm số buổi (không dùng pointsEarned, chỉ đếm số participation)
+                        updateChuyenDeScoreCount(participation);
+                        
+                        // REN_LUYEN: Cộng điểm từ maxPoints (nếu có)
+                        if (activity.getMaxPoints() != null) {
+                            updateRenLuyenScoreFromParticipation(participation);
+                        }
+                        
+                        logger.info("Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {}. Count: +1, RL Points: {}",
+                                activity.getName(), activity.getMaxPoints());
+                    } catch (Exception e) {
+                        logger.error("Failed to update dual score after auto-completion: {}", e.getMessage(), e);
+                        // Không fail check-out nếu update score lỗi, chỉ log
+                    }
+                } else {
+                    // Activity đơn lẻ khác → tính điểm bình thường từ maxPoints
+                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+                    participation.setPointsEarned(points);
+                    participationRepository.save(participation);
 
-                // Cập nhật StudentScore (tổng hợp)
-                try {
-                    updateStudentScoreFromParticipation(participation);
-                    logger.info("Auto-completed participation for activity {} (no submission required). Points: {}",
-                            activity.getName(), points);
-                } catch (Exception e) {
-                    logger.error("Failed to update student score after auto-completion: {}", e.getMessage(), e);
-                    // Không fail check-out nếu update score lỗi, chỉ log
+                    // Cập nhật StudentScore (tổng hợp)
+                    try {
+                        updateStudentScoreFromParticipation(participation);
+                        logger.info("Auto-completed participation for activity {} (no submission required). Points: {}",
+                                activity.getName(), points);
+                    } catch (Exception e) {
+                        logger.error("Failed to update student score after auto-completion: {}", e.getMessage(), e);
+                        // Không fail check-out nếu update score lỗi, chỉ log
+                    }
                 }
             }
 
@@ -780,5 +825,160 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.getIsCompleted(),
                 participation.getCheckInTime(),
                 participation.getCheckOutTime());
+    }
+
+    /**
+     * Cập nhật điểm REN_LUYEN từ ActivityParticipation (cho dual score calculation)
+     * Dùng cho CHUYEN_DE_DOANH_NGHIEP activities
+     */
+    private void updateRenLuyenScoreFromParticipation(ActivityParticipation participation) {
+        try {
+            Student student = participation.getRegistration().getStudent();
+            Activity activity = participation.getRegistration().getActivity();
+
+            // Lấy semester hiện tại
+            Semester currentSemester = semesterRepository.findAll().stream()
+                    .filter(Semester::isOpen)
+                    .findFirst()
+                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+
+            if (currentSemester == null) {
+                logger.warn("No semester found for RL score aggregation");
+                return;
+            }
+
+            // Tìm bản ghi StudentScore REN_LUYEN
+            Optional<StudentScore> scoreOpt = studentScoreRepository
+                    .findByStudentIdAndSemesterIdAndScoreType(
+                            student.getId(),
+                            currentSemester.getId(),
+                            ScoreType.REN_LUYEN);
+
+            if (scoreOpt.isEmpty()) {
+                logger.warn("No REN_LUYEN score record found for student {} in semester {}",
+                        student.getId(), currentSemester.getId());
+                return;
+            }
+
+            StudentScore score = scoreOpt.get();
+
+            // Tính lại tổng điểm RL từ tất cả ActivityParticipation CHUYEN_DE_DOANH_NGHIEP có maxPoints
+            List<ActivityParticipation> allParticipations = participationRepository
+                    .findAll()
+                    .stream()
+                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
+                            && p.getRegistration().getActivity().getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
+                            && p.getRegistration().getActivity().getMaxPoints() != null
+                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .collect(Collectors.toList());
+
+            BigDecimal total = allParticipations.stream()
+                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Cập nhật
+            BigDecimal oldScore = score.getScore();
+            score.setScore(total);
+            studentScoreRepository.save(score);
+
+            // Tạo history
+            User systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(oldScore);
+            history.setNewScore(total);
+            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+            history.setChangeDate(LocalDateTime.now());
+            history.setReason("Dual score calculation - RL points from CHUYEN_DE_DOANH_NGHIEP: " + activity.getName());
+            history.setActivityId(activity.getId());
+            scoreHistoryRepository.save(history);
+
+            logger.info("Updated REN_LUYEN score from CHUYEN_DE_DOANH_NGHIEP participation: {} -> {} for student {}",
+                    oldScore, total, student.getId());
+
+        } catch (Exception e) {
+            logger.error("Failed to update REN_LUYEN score from participation: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Cập nhật điểm CHUYEN_DE bằng cách đếm số buổi tham gia
+     * Mỗi lần check-out CHUYEN_DE_DOANH_NGHIEP → tăng count lên 1
+     */
+    private void updateChuyenDeScoreCount(ActivityParticipation participation) {
+        try {
+            Student student = participation.getRegistration().getStudent();
+            Activity activity = participation.getRegistration().getActivity();
+
+            // Lấy semester hiện tại
+            Semester currentSemester = semesterRepository.findAll().stream()
+                    .filter(Semester::isOpen)
+                    .findFirst()
+                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+
+            if (currentSemester == null) {
+                logger.warn("No semester found for CHUYEN_DE score count");
+                return;
+            }
+
+            // Tìm bản ghi StudentScore CHUYEN_DE
+            Optional<StudentScore> scoreOpt = studentScoreRepository
+                    .findByStudentIdAndSemesterIdAndScoreType(
+                            student.getId(),
+                            currentSemester.getId(),
+                            ScoreType.CHUYEN_DE);
+
+            if (scoreOpt.isEmpty()) {
+                logger.warn("No CHUYEN_DE score record found for student {} in semester {}",
+                        student.getId(), currentSemester.getId());
+                return;
+            }
+
+            StudentScore score = scoreOpt.get();
+
+            // Đếm số buổi tham gia CHUYEN_DE_DOANH_NGHIEP đã COMPLETED
+            // Mỗi participation COMPLETED = 1 buổi tham gia
+            List<ActivityParticipation> allParticipations = participationRepository
+                    .findAll()
+                    .stream()
+                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
+                            && p.getRegistration().getActivity().getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
+                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .collect(Collectors.toList());
+
+            // Số buổi = số participation đã COMPLETED (mỗi activity = 1 participation = 1 buổi)
+            BigDecimal count = BigDecimal.valueOf(allParticipations.size());
+
+            // Cập nhật
+            BigDecimal oldScore = score.getScore();
+            score.setScore(count);
+            studentScoreRepository.save(score);
+
+            // Tạo history
+            User systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(oldScore);
+            history.setNewScore(count);
+            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+            history.setChangeDate(LocalDateTime.now());
+            history.setReason("Counted CHUYEN_DE sessions from activity: " + activity.getName());
+            history.setActivityId(activity.getId());
+            scoreHistoryRepository.save(history);
+
+            logger.info("Updated CHUYEN_DE score count: {} -> {} ({} sessions) for student {}",
+                    oldScore, count, allParticipations.size(), student.getId());
+
+        } catch (Exception e) {
+            logger.error("Failed to update CHUYEN_DE score count: {}", e.getMessage(), e);
+        }
     }
 }

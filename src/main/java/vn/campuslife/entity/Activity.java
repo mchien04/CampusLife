@@ -35,14 +35,14 @@ public class Activity {
 
     /** Loại hoạt động (TRAINING, BUSINESS, SOCIAL, ...). */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Comment("Loại hoạt động (enum)")
+    @Column(nullable = true)
+    @Comment("Loại hoạt động (enum) - null nếu thuộc series")
     private ActivityType type;
 
     /** Kiểu tính điểm cho hoạt động (tham gia, nộp minh chứng, sản phẩm, ...). */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Comment("Kiểu tính điểm")
+    @Column(nullable = true)
+    @Comment("Kiểu tính điểm - null nếu thuộc series (lấy từ series)")
     private ScoreType scoreType;
 
     /** Tên hoạt động hiển thị cho sinh viên. */
@@ -106,6 +106,16 @@ public class Activity {
     @Column(nullable = false)
     @Comment("Cờ xóa mềm")
     private boolean isDeleted = false;
+
+    /** ID chuỗi sự kiện (null = sự kiện đơn lẻ). */
+    @Column
+    @Comment("ID chuỗi sự kiện")
+    private Long seriesId;
+
+    /** Thứ tự trong chuỗi (1, 2, 3...). */
+    @Column
+    @Comment("Thứ tự trong chuỗi")
+    private Integer seriesOrder;
 
     /** Số lượng vé/slot có thể đăng ký (null = không giới hạn). */
     @Comment("Số lượng vé (null = không giới hạn)")

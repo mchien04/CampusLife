@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -18,7 +18,7 @@ public class CreateActivityTaskRequest {
 
     private String description;
 
-    private LocalDate deadline;
+    private LocalDateTime deadline;
 
     @NotNull(message = "Activity ID is required")
     private Long activityId;

@@ -20,7 +20,7 @@ import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
 import vn.campuslife.service.ActivityTaskService;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -54,7 +54,8 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             Activity activity = activityOpt.get();
 
             // Validate deadline if provided
-            if (request.getDeadline() != null && request.getDeadline().isBefore(activity.getEndDate().toLocalDate())) {
+            if (request.getDeadline() != null && activity.getEndDate() != null
+                    && request.getDeadline().isBefore(activity.getEndDate())) {
                 return new Response(false, "Task deadline must be after activity end date", null);
             }
 
@@ -133,8 +134,8 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             // Validate deadline if provided
-            if (request.getDeadline() != null
-                    && request.getDeadline().isBefore(task.getActivity().getEndDate().toLocalDate())) {
+            if (request.getDeadline() != null && task.getActivity().getEndDate() != null
+                    && request.getDeadline().isBefore(task.getActivity().getEndDate())) {
                 return new Response(false, "Task deadline must be after activity end date", null);
             }
 
@@ -496,7 +497,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Transactional
     public Response checkAndUpdateOverdueAssignments() {
         try {
-            LocalDate today = LocalDate.now();
+            LocalDateTime now = LocalDateTime.now();
             int updatedCount = 0;
 
             // Lấy tất cả assignments có status PENDING hoặc ASSIGNED
@@ -505,25 +506,25 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                         TaskStatus status = assignment.getStatus();
                         return (status == TaskStatus.PENDING || status == TaskStatus.ASSIGNED)
                                 && assignment.getTask().getDeadline() != null
-                                && assignment.getTask().getDeadline().isBefore(today);
+                                && assignment.getTask().getDeadline().isBefore(now);
                     })
                     .collect(Collectors.toList());
 
             // Kiểm tra xem đã có submission chưa
             for (TaskAssignment assignment : assignments) {
                 // Chỉ set OVERDUE nếu:
-                // 1. Đã quá hạn (deadline < today)
+                // 1. Đã quá hạn (deadline < now)
                 // 2. Chưa có submission (chưa nộp bài)
                 // 3. Status chưa phải COMPLETED
                 boolean hasSubmission = taskSubmissionRepository
                         .findByTaskIdAndStudentIdAndIsDeletedFalse(
-                                assignment.getTask().getId(), 
+                                assignment.getTask().getId(),
                                 assignment.getStudent().getId())
                         .isPresent();
 
-                if (!hasSubmission 
+                if (!hasSubmission
                         && assignment.getTask().getDeadline() != null
-                        && assignment.getTask().getDeadline().isBefore(today)
+                        && assignment.getTask().getDeadline().isBefore(now)
                         && assignment.getStatus() != TaskStatus.COMPLETED) {
                     assignment.setStatus(TaskStatus.OVERDUE);
                     taskAssignmentRepository.save(assignment);
@@ -532,9 +533,9 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             logger.info("Updated {} assignments to OVERDUE status", updatedCount);
-            return new Response(true, 
-                String.format("Updated %d assignments to OVERDUE status", updatedCount), 
-                Map.of("updatedCount", updatedCount));
+            return new Response(true,
+                    String.format("Updated %d assignments to OVERDUE status", updatedCount),
+                    Map.of("updatedCount", updatedCount));
         } catch (Exception e) {
             logger.error("Failed to check and update overdue assignments: {}", e.getMessage(), e);
             return new Response(false, "Failed to check overdue assignments: " + e.getMessage(), null);

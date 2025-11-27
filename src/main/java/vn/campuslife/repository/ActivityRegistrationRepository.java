@@ -108,4 +108,30 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
             ")")
     List<ActivityRegistration> findApprovedRegistrationsWithoutParticipation();
 
+    /**
+     * Lấy danh sách đăng ký cần nhắc nhở 1 ngày trước
+     */
+    @Query("SELECT ar FROM ActivityRegistration ar " +
+            "WHERE ar.status = :status " +
+            "AND ar.activity.startDate BETWEEN :now AND :oneDayLater " +
+            "AND ar.activity.isDeleted = false " +
+            "AND ar.activity.isDraft = false")
+    List<ActivityRegistration> findRegistrationsFor1DayReminder(
+            @Param("status") RegistrationStatus status,
+            @Param("now") LocalDateTime now,
+            @Param("oneDayLater") LocalDateTime oneDayLater);
+
+    /**
+     * Lấy danh sách đăng ký cần nhắc nhở 1 giờ trước
+     */
+    @Query("SELECT ar FROM ActivityRegistration ar " +
+            "WHERE ar.status = :status " +
+            "AND ar.activity.startDate BETWEEN :now AND :oneHourLater " +
+            "AND ar.activity.isDeleted = false " +
+            "AND ar.activity.isDraft = false")
+    List<ActivityRegistration> findRegistrationsFor1HourReminder(
+            @Param("status") RegistrationStatus status,
+            @Param("now") LocalDateTime now,
+            @Param("oneHourLater") LocalDateTime oneHourLater);
+
 }

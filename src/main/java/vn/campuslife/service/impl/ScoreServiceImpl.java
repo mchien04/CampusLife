@@ -285,8 +285,6 @@ public class ScoreServiceImpl implements ScoreService {
                 return "Điểm công tác xã hội";
             case CHUYEN_DE:
                 return "Điểm chuyên đề doanh nghiệp";
-            case KHAC:
-                return "Điểm khác";
             default:
                 return scoreType.name();
         }
