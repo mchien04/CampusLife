@@ -42,8 +42,27 @@ public class ActivitySeries {
     @Comment("Activity chính (có thể null)")
     private Activity mainActivity;
 
+    @Column
+    @Comment("Ngày mở đăng ký tham gia chuỗi")
+    private LocalDateTime registrationStartDate;
+
+    @Column
+    @Comment("Hạn chót đăng ký tham gia chuỗi")
+    private LocalDateTime registrationDeadline;
+
+    @Column(nullable = false)
+    @Comment("Đăng ký có cần duyệt hay không")
+    private boolean requiresApproval = true;
+
+    @Column
+    @Comment("Số lượng vé/slot có thể đăng ký (null = không giới hạn)")
+    private Integer ticketQuantity;
+
     @Column(nullable = false, updatable = false)
     @Comment("Ngày tạo")
     private LocalDateTime createdAt = LocalDateTime.now();
-}
 
+    @Column(nullable = false)
+    @Comment("Cờ xóa mềm")
+    private boolean isDeleted = false;
+}

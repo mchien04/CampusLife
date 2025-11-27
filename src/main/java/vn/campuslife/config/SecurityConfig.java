@@ -92,7 +92,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/activities/*/photos/*/order")
                         .hasAnyRole("ADMIN", "MANAGER")
                         
-                        // Activity Series - All operations require MANAGER/ADMIN
+                        // Activity Series - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require MANAGER/ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/series", "/api/series/*", "/api/series/*/activities")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers("/api/series/**")
                         .hasAnyRole("ADMIN", "MANAGER")
                         

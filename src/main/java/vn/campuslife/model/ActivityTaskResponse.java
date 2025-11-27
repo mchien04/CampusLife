@@ -4,7 +4,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -16,7 +15,7 @@ public class ActivityTaskResponse {
     private Long id;
     private String name;
     private String description;
-    private LocalDate deadline;
+    private LocalDateTime deadline;
     private Long activityId;
     private String activityName;
     private LocalDateTime createdAt;

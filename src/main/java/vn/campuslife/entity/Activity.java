@@ -35,14 +35,14 @@ public class Activity {
 
     /** Loại hoạt động (TRAINING, BUSINESS, SOCIAL, ...). */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Comment("Loại hoạt động (enum)")
+    @Column(nullable = true)
+    @Comment("Loại hoạt động (enum) - null nếu thuộc series")
     private ActivityType type;
 
     /** Kiểu tính điểm cho hoạt động (tham gia, nộp minh chứng, sản phẩm, ...). */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Comment("Kiểu tính điểm")
+    @Column(nullable = true)
+    @Comment("Kiểu tính điểm - null nếu thuộc series (lấy từ series)")
     private ScoreType scoreType;
 
     /** Tên hoạt động hiển thị cho sinh viên. */

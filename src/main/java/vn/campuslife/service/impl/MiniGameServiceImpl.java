@@ -42,8 +42,8 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional
     public Response createMiniGame(Long activityId, String title, String description, Integer questionCount,
-                                  Integer timeLimit, Integer requiredCorrectAnswers, BigDecimal rewardPoints,
-                                  List<Map<String, Object>> questions) {
+            Integer timeLimit, Integer requiredCorrectAnswers, BigDecimal rewardPoints,
+            List<Map<String, Object>> questions) {
         try {
             Optional<Activity> activityOpt = activityRepository.findById(activityId);
             if (activityOpt.isEmpty()) {
@@ -154,7 +154,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             attempt.setStartedAt(LocalDateTime.now());
             MiniGameAttempt savedAttempt = attemptRepository.save(attempt);
 
-            logger.info("Started attempt {} for student {} and minigame {}", savedAttempt.getId(), studentId, miniGameId);
+            logger.info("Started attempt {} for student {} and minigame {}", savedAttempt.getId(), studentId,
+                    miniGameId);
             return Response.success("Attempt started successfully", savedAttempt);
         } catch (Exception e) {
             logger.error("Failed to start attempt: {}", e.getMessage(), e);
@@ -227,8 +228,10 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             // Tính điểm và tạo ActivityParticipation nếu đạt
             if (attempt.getStatus() == AttemptStatus.PASSED) {
+                // Đạt: Cộng điểm từ rewardPoints
                 calculateScoreAndCreateParticipation(attemptId);
             }
+            // Không đạt (FAILED): Không làm gì (không trừ điểm)
 
             logger.info("Submitted attempt {} with {} correct answers", attemptId, correctCount);
             return Response.success("Attempt submitted successfully", attempt);
@@ -269,8 +272,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             Student student = attempt.getStudent();
 
             // Tính điểm
-            BigDecimal pointsEarned = miniGame.getRewardPoints() != null 
-                    ? miniGame.getRewardPoints() 
+            BigDecimal pointsEarned = miniGame.getRewardPoints() != null
+                    ? miniGame.getRewardPoints()
                     : BigDecimal.ZERO;
 
             if (pointsEarned.compareTo(BigDecimal.ZERO) <= 0) {
@@ -381,7 +384,7 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             // Tạo history
             User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN 
+                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
                             || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
                     .findFirst()
                     .orElse(null);
@@ -402,5 +405,5 @@ public class MiniGameServiceImpl implements MiniGameService {
             logger.error("Failed to update student score: {}", e.getMessage(), e);
         }
     }
-}
 
+}
