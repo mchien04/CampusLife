@@ -8,7 +8,6 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
-import java.time.LocalDate;
 
 @Entity
 @Table(name = "activity_tasks")
@@ -30,7 +29,7 @@ public class ActivityTask {
 
     private String description;
 
-    private LocalDate deadline;
+    private LocalDateTime deadline;
 
     @CreatedDate
     private LocalDateTime createdAt;
