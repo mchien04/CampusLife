@@ -134,4 +134,24 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
             @Param("now") LocalDateTime now,
             @Param("oneHourLater") LocalDateTime oneHourLater);
 
+    /**
+     * Đếm tổng số đăng ký trong khoảng thời gian
+     */
+    @Query("SELECT COUNT(ar) FROM ActivityRegistration ar WHERE ar.registeredDate >= :startDate AND ar.registeredDate <= :endDate")
+    Long countByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+
+    /**
+     * Top activities có nhiều đăng ký nhất
+     */
+    @Query("SELECT ar.activity.id, COUNT(ar) as regCount FROM ActivityRegistration ar " +
+            "WHERE ar.activity.isDeleted = false " +
+            "GROUP BY ar.activity.id " +
+            "ORDER BY regCount DESC")
+    List<Object[]> findTopActivitiesByRegistrations(org.springframework.data.domain.Pageable pageable);
+
+    /**
+     * Đếm số đăng ký theo student
+     */
+    @Query("SELECT COUNT(ar) FROM ActivityRegistration ar WHERE ar.student.id = :studentId")
+    Long countByStudentId(@Param("studentId") Long studentId);
 }

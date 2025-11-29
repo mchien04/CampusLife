@@ -1,14 +1,18 @@
 package vn.campuslife.service.impl;
 
 import vn.campuslife.entity.ActivationToken;
+import vn.campuslife.entity.PasswordResetToken;
 import vn.campuslife.entity.User;
 import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.AuthResponse;
 import vn.campuslife.model.LoginRequest;
 import vn.campuslife.model.RegisterRequest;
+import vn.campuslife.model.ForgotPasswordRequest;
+import vn.campuslife.model.ResetPasswordRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivationTokenRepository;
+import vn.campuslife.repository.PasswordResetTokenRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.StudentScoreInitService;
@@ -27,6 +31,7 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
 
     private final UserRepository userRepository;
     private final ActivationTokenRepository activationTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final StudentRepository studentRepository;
     private final StudentScoreInitService studentScoreInitService;
     private final PasswordEncoder passwordEncoder;
@@ -34,10 +39,12 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
     private final EmailUtil emailUtil;
 
     public AuthServiceImpl(UserRepository userRepository, ActivationTokenRepository activationTokenRepository,
+            PasswordResetTokenRepository passwordResetTokenRepository,
             StudentRepository studentRepository, StudentScoreInitService studentScoreInitService,
             PasswordEncoder passwordEncoder, JwtUtil jwtUtil, EmailUtil emailUtil) {
         this.userRepository = userRepository;
         this.activationTokenRepository = activationTokenRepository;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.studentRepository = studentRepository;
         this.studentScoreInitService = studentScoreInitService;
         this.passwordEncoder = passwordEncoder;
@@ -186,6 +193,95 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
             return new Response(true, "Account activated successfully", null);
         } catch (Exception e) {
             return new Response(false, "Account activation failed: " + e.getMessage(), null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response forgotPassword(ForgotPasswordRequest request) {
+        try {
+            // Validate request
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+                return new Response(false, "Email is required", null);
+            }
+
+            // Find user by email
+            User user = userRepository.findByEmail(request.getEmail())
+                    .orElse(null);
+
+            // Always return success message to prevent email enumeration attacks
+            // If user exists, send reset email; if not, just return success
+            if (user != null && !user.isDeleted()) {
+                // Invalidate any existing unused reset tokens for this user
+                passwordResetTokenRepository.findByUserIdAndUsedFalse(user.getId())
+                        .ifPresent(existingToken -> {
+                            existingToken.setUsed(true);
+                            passwordResetTokenRepository.save(existingToken);
+                        });
+
+                // Generate and save reset token
+                String token = UUID.randomUUID().toString();
+                PasswordResetToken resetToken = new PasswordResetToken();
+                resetToken.setUser(user);
+                resetToken.setToken(token);
+                resetToken.setExpiryDate(LocalDateTime.now().plusHours(1)); // Token valid for 1 hour
+                resetToken.setUsed(false);
+                resetToken.setCreatedAt(LocalDateTime.now());
+                passwordResetTokenRepository.save(resetToken);
+
+                // Send reset email
+                boolean emailSent = emailUtil.sendPasswordResetEmail(user.getEmail(), token);
+                if (!emailSent) {
+                    System.err.println("Failed to send password reset email to: " + user.getEmail());
+                }
+            }
+
+            // Always return success to prevent email enumeration
+            return new Response(true, 
+                    "If an account with that email exists, a password reset link has been sent.", null);
+        } catch (Exception e) {
+            return new Response(false, "Failed to process password reset request: " + e.getMessage(), null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response resetPassword(ResetPasswordRequest request) {
+        try {
+            // Validate request
+            if (request.getToken() == null || request.getToken().trim().isEmpty()) {
+                return new Response(false, "Token is required", null);
+            }
+            if (request.getNewPassword() == null || request.getNewPassword().trim().isEmpty()) {
+                return new Response(false, "New password is required", null);
+            }
+            if (request.getNewPassword().length() < 6) {
+                return new Response(false, "Password must be at least 6 characters long", null);
+            }
+
+            // Find reset token
+            PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenAndUsedFalse(request.getToken())
+                    .orElseThrow(() -> new RuntimeException("Invalid or used token"));
+
+            // Check if token is expired
+            if (resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+                return new Response(false, "Token has expired. Please request a new password reset.", null);
+            }
+
+            // Update user password
+            User user = resetToken.getUser();
+            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            userRepository.save(user);
+
+            // Mark token as used
+            resetToken.setUsed(true);
+            passwordResetTokenRepository.save(resetToken);
+
+            return new Response(true, "Password reset successfully. You can now login with your new password.", null);
+        } catch (RuntimeException e) {
+            return new Response(false, e.getMessage(), null);
+        } catch (Exception e) {
+            return new Response(false, "Failed to reset password: " + e.getMessage(), null);
         }
     }
 }

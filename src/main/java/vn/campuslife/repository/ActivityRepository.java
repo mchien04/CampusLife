@@ -1,8 +1,7 @@
 package vn.campuslife.repository;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.*;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.Activity;
@@ -48,4 +47,47 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
    * Lấy danh sách activities trong series
    */
   List<Activity> findBySeriesIdAndIsDeletedFalse(Long seriesId);
+
+  /**
+   * Đếm số activities theo type
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.type = :type AND a.isDeleted = false")
+  Long countByType(@Param("type") ActivityType type);
+
+  /**
+   * Đếm số activities theo scoreType
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.scoreType = :scoreType AND a.isDeleted = false")
+  Long countByScoreType(@Param("scoreType") ScoreType scoreType);
+
+  /**
+   * Đếm số activities theo trạng thái draft
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.isDraft = :isDraft AND a.isDeleted = false")
+  Long countByIsDraft(@Param("isDraft") boolean isDraft);
+
+  /**
+   * Đếm số activities trong series
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.seriesId IS NOT NULL AND a.isDeleted = false")
+  Long countActivitiesInSeries();
+
+  /**
+   * Đếm số activities đơn lẻ (không thuộc series)
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.seriesId IS NULL AND a.isDeleted = false")
+  Long countStandaloneActivities();
+
+  /**
+   * Đếm số activities theo khoa tổ chức
+   */
+  @Query("SELECT COUNT(DISTINCT a) FROM Activity a JOIN a.organizers d WHERE d.id = :departmentId AND a.isDeleted = false")
+  Long countByDepartmentId(@Param("departmentId") Long departmentId);
+
+  /**
+   * Đếm số activities trong khoảng thời gian
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.startDate >= :startDate AND a.startDate <= :endDate AND a.isDeleted = false")
+  Long countByDateRange(@Param("startDate") java.time.LocalDateTime startDate,
+      @Param("endDate") java.time.LocalDateTime endDate);
 }

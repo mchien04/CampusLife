@@ -34,6 +34,61 @@ public interface StudentScoreRepository extends JpaRepository<StudentScore, Long
                         @Param("semesterId") Long semesterId,
                         @Param("scoreType") ScoreType scoreType);
 
+        /**
+         * Tính điểm trung bình theo scoreType và semester
+         */
+        @Query("SELECT AVG(ss.score) FROM StudentScore ss " +
+                "WHERE ss.semester.id = :semesterId " +
+                "AND ss.scoreType = :scoreType " +
+                "AND ss.student.isDeleted = false")
+        java.math.BigDecimal calculateAverageBySemesterAndScoreType(
+                @Param("semesterId") Long semesterId,
+                @Param("scoreType") ScoreType scoreType);
+
+        /**
+         * Tính điểm trung bình theo scoreType và department
+         */
+        @Query("SELECT AVG(ss.score) FROM StudentScore ss " +
+                "WHERE ss.scoreType = :scoreType " +
+                "AND ss.student.department.id = :departmentId " +
+                "AND ss.student.isDeleted = false")
+        java.math.BigDecimal calculateAverageByDepartmentAndScoreType(
+                @Param("departmentId") Long departmentId,
+                @Param("scoreType") ScoreType scoreType);
+
+        /**
+         * Tính điểm trung bình theo scoreType và class
+         */
+        @Query("SELECT AVG(ss.score) FROM StudentScore ss " +
+                "WHERE ss.scoreType = :scoreType " +
+                "AND ss.student.studentClass.id = :classId " +
+                "AND ss.student.isDeleted = false")
+        java.math.BigDecimal calculateAverageByClassAndScoreType(
+                @Param("classId") Long classId,
+                @Param("scoreType") ScoreType scoreType);
+
+        /**
+         * Tính điểm trung bình theo scoreType và semester
+         */
+        @Query("SELECT AVG(ss.score) FROM StudentScore ss " +
+                "WHERE ss.scoreType = :scoreType " +
+                "AND ss.semester.id = :semesterId " +
+                "AND ss.student.isDeleted = false")
+        java.math.BigDecimal calculateAverageByScoreTypeAndSemester(
+                @Param("scoreType") ScoreType scoreType,
+                @Param("semesterId") Long semesterId);
+
+        /**
+         * Lấy điểm max, min theo scoreType và semester
+         */
+        @Query("SELECT MAX(ss.score), MIN(ss.score) FROM StudentScore ss " +
+                "WHERE ss.scoreType = :scoreType " +
+                "AND ss.semester.id = :semesterId " +
+                "AND ss.student.isDeleted = false")
+        Object[] findMaxMinByScoreTypeAndSemester(
+                @Param("scoreType") ScoreType scoreType,
+                @Param("semesterId") Long semesterId);
+
         // Lấy tất cả scores theo semester, sắp xếp theo điểm
         @Query("SELECT ss FROM StudentScore ss " +
                         "WHERE ss.semester.id = :semesterId " +
