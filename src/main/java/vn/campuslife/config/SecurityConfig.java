@@ -65,7 +65,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // Public
-                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify", 
+                                "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/api/upload/**").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
@@ -202,6 +203,29 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/students/department/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/students/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/students/username/*").hasAnyRole("ADMIN", "MANAGER")
+
+                        // Statistics endpoints
+                        // Dashboard - all authenticated users (role-based filtering in controller)
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/dashboard")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Activity statistics - ADMIN, MANAGER only
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/activities")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        // Student statistics - ADMIN, MANAGER only
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/students")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        // Score statistics - all authenticated (role-based filtering in controller)
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/scores")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Series statistics - all authenticated
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/series")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // MiniGame statistics - all authenticated
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/minigames")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Time-based statistics - ADMIN, MANAGER only
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/timeline")
+                        .hasAnyRole("ADMIN", "MANAGER")
 
                         // Default
                         .anyRequest().authenticated())

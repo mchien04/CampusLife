@@ -83,5 +83,30 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     //tìm danh sách tất cả sinh viên cùng 1 khoa
     List<Student> findByDepartment_IdIn(Collection<Long> departmentIds);
 
+    /**
+     * Đếm số sinh viên theo khoa
+     */
+    @Query("SELECT COUNT(s) FROM Student s WHERE s.department.id = :departmentId AND s.isDeleted = false")
+    Long countByDepartmentId(@Param("departmentId") Long departmentId);
+
+    /**
+     * Đếm số sinh viên theo lớp
+     */
+    @Query("SELECT COUNT(s) FROM Student s WHERE s.studentClass.id = :classId AND s.isDeleted = false")
+    Long countByClassId(@Param("classId") Long classId);
+
+    /**
+     * Đếm tổng số sinh viên
+     */
+    @Query("SELECT COUNT(s) FROM Student s WHERE s.isDeleted = false")
+    Long countAllActive();
+
+    /**
+     * Tìm sinh viên chưa tham gia activity nào
+     */
+    @Query("SELECT s FROM Student s WHERE s.isDeleted = false " +
+            "AND NOT EXISTS (SELECT 1 FROM ActivityParticipation ap WHERE ap.registration.student.id = s.id)")
+    List<Student> findInactiveStudents();
+
 }
 

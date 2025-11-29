@@ -44,4 +44,47 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
                         "AND ap.registration.activity.isDeleted = false")
         List<ActivityParticipation> findByActivityId(@Param("activityId") Long activityId);
 
+        /**
+         * Đếm số participation theo activity
+         */
+        @Query("SELECT COUNT(ap) FROM ActivityParticipation ap " +
+                "WHERE ap.registration.activity.id = :activityId " +
+                "AND ap.registration.activity.isDeleted = false")
+        Long countByActivityId(@Param("activityId") Long activityId);
+
+        /**
+         * Đếm số participation theo activity và participation type
+         */
+        @Query("SELECT COUNT(ap) FROM ActivityParticipation ap " +
+                "WHERE ap.registration.activity.id = :activityId " +
+                "AND ap.participationType = :type " +
+                "AND ap.registration.activity.isDeleted = false")
+        Long countByActivityIdAndParticipationType(@Param("activityId") Long activityId, @Param("type") ParticipationType type);
+
+        /**
+         * Đếm số participation theo student
+         */
+        @Query("SELECT COUNT(ap) FROM ActivityParticipation ap " +
+                "WHERE ap.registration.student.id = :studentId " +
+                "AND ap.registration.activity.isDeleted = false")
+        Long countByStudentId(@Param("studentId") Long studentId);
+
+        /**
+         * Đếm tổng số participation trong khoảng thời gian
+         */
+        @Query("SELECT COUNT(ap) FROM ActivityParticipation ap " +
+                "WHERE ap.date >= :startDate AND ap.date <= :endDate " +
+                "AND ap.registration.activity.isDeleted = false")
+        Long countByDateRange(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
+
+        /**
+         * Top students có nhiều participation nhất
+         */
+        @Query("SELECT ap.registration.student.id, COUNT(ap) as partCount FROM ActivityParticipation ap " +
+                "WHERE ap.registration.activity.isDeleted = false " +
+                "AND ap.registration.student.isDeleted = false " +
+                "GROUP BY ap.registration.student.id " +
+                "ORDER BY partCount DESC")
+        List<Object[]> findTopStudentsByParticipations(org.springframework.data.domain.Pageable pageable);
+
 }
