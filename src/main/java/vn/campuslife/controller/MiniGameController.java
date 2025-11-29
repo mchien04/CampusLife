@@ -148,6 +148,106 @@ public class MiniGameController {
         }
     }
 
+    /**
+     * Lấy danh sách câu hỏi và options của minigame (không có đáp án đúng)
+     */
+    @GetMapping("/{miniGameId}/questions")
+    public ResponseEntity<Response> getQuestions(@PathVariable Long miniGameId) {
+        try {
+            Response response = miniGameService.getQuestions(miniGameId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get questions: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get questions: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Lấy chi tiết attempt (bao gồm kết quả và đáp án đúng nếu đã submit)
+     */
+    @GetMapping("/attempts/{attemptId}")
+    public ResponseEntity<Response> getAttemptDetail(
+            @PathVariable Long attemptId,
+            Authentication authentication) {
+        try {
+            Long studentId = getStudentIdFromAuth(authentication);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+
+            Response response = miniGameService.getAttemptDetail(attemptId, studentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get attempt detail: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get attempt detail: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Cập nhật minigame
+     */
+    @PutMapping("/{miniGameId}")
+    public ResponseEntity<Response> updateMiniGame(
+            @PathVariable Long miniGameId,
+            @RequestBody Map<String, Object> request) {
+        try {
+            String title = (String) request.get("title");
+            String description = (String) request.get("description");
+            Integer questionCount = request.get("questionCount") != null
+                    ? Integer.valueOf(request.get("questionCount").toString()) : null;
+            Integer timeLimit = request.get("timeLimit") != null
+                    ? Integer.valueOf(request.get("timeLimit").toString()) : null;
+            Integer requiredCorrectAnswers = request.get("requiredCorrectAnswers") != null
+                    ? Integer.valueOf(request.get("requiredCorrectAnswers").toString()) : null;
+            BigDecimal rewardPoints = request.get("rewardPoints") != null
+                    ? new BigDecimal(request.get("rewardPoints").toString()) : null;
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> questions = (List<Map<String, Object>>) request.get("questions");
+
+            Response response = miniGameService.updateMiniGame(miniGameId, title, description, questionCount,
+                    timeLimit, requiredCorrectAnswers, rewardPoints, questions);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to update minigame: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to update minigame: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Xóa minigame (soft delete - deactivate)
+     */
+    @DeleteMapping("/{miniGameId}")
+    public ResponseEntity<Response> deleteMiniGame(@PathVariable Long miniGameId) {
+        try {
+            Response response = miniGameService.deleteMiniGame(miniGameId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to delete minigame: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to delete minigame: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Lấy tất cả minigames (Admin/Manager)
+     */
+    @GetMapping
+    public ResponseEntity<Response> getAllMiniGames() {
+        try {
+            Response response = miniGameService.getAllMiniGames();
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get all minigames: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get all minigames: " + e.getMessage(), null));
+        }
+    }
+
     private final vn.campuslife.service.StudentService studentService;
 
     /**

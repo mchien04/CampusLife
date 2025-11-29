@@ -10,6 +10,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import vn.campuslife.entity.Address;
 import vn.campuslife.entity.Student;
+import vn.campuslife.model.AddressResponse;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.AddressRepository;
 import vn.campuslife.repository.StudentRepository;
@@ -111,18 +112,8 @@ public class AddressServiceImpl implements AddressService {
             }
 
             Address address = addressOpt.get();
-            Map<String, Object> addressInfo = new HashMap<>();
-            addressInfo.put("id", address.getId());
-            addressInfo.put("provinceCode", address.getProvinceCode());
-            addressInfo.put("provinceName", address.getProvinceName());
-            addressInfo.put("wardCode", address.getWardCode());
-            addressInfo.put("wardName", address.getWardName());
-            addressInfo.put("street", address.getStreet());
-            addressInfo.put("note", address.getNote());
-            addressInfo.put("createdAt", address.getCreatedAt());
-            addressInfo.put("updatedAt", address.getUpdatedAt());
-
-            return new Response(true, "Address retrieved successfully", addressInfo);
+            AddressResponse response = AddressResponse.fromEntity(address);
+            return new Response(true, "Address retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to get student address: {}", e.getMessage(), e);
             return new Response(false, "Failed to get address: " + e.getMessage(), null);
@@ -159,7 +150,8 @@ public class AddressServiceImpl implements AddressService {
                 studentRepository.save(student);
             }
             logger.info("Address updated successfully: provinceName={}", savedAddress.getProvinceName());
-            return new Response(true, "Address updated successfully", savedAddress);
+            AddressResponse response = AddressResponse.fromEntity(savedAddress);
+            return new Response(true, "Address updated successfully", response);
         } catch (Exception e) {
             logger.error("Failed to update student address: {}", e.getMessage(), e);
             return new Response(false, "Failed to update address: " + e.getMessage(), null);
@@ -203,7 +195,8 @@ public class AddressServiceImpl implements AddressService {
             student.setAddress(savedAddress);
             studentRepository.save(student);
             logger.info("Address created successfully: provinceName={}", savedAddress.getProvinceName());
-            return new Response(true, "Address created successfully", savedAddress);
+            AddressResponse response = AddressResponse.fromEntity(savedAddress);
+            return new Response(true, "Address created successfully", response);
         } catch (Exception e) {
             logger.error("Failed to create student address: {}", e.getMessage(), e);
             return new Response(false, "Failed to create address: " + e.getMessage(), null);

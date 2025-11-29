@@ -10,13 +10,14 @@ import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.enumeration.MiniGameType;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
-import vn.campuslife.model.Response;
+import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.MiniGameService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -112,7 +113,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             if (miniGameOpt.isEmpty()) {
                 return Response.error("MiniGame not found for this activity");
             }
-            return Response.success("MiniGame retrieved successfully", miniGameOpt.get());
+            MiniGameResponse response = MiniGameResponse.fromEntity(miniGameOpt.get());
+            return Response.success("MiniGame retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to get minigame: {}", e.getMessage(), e);
             return Response.error("Failed to get minigame: " + e.getMessage());
@@ -142,7 +144,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             Optional<MiniGameAttempt> inProgressOpt = attemptRepository.findInProgressAttempt(
                     studentId, miniGameId, AttemptStatus.IN_PROGRESS);
             if (inProgressOpt.isPresent()) {
-                return Response.success("Resuming existing attempt", inProgressOpt.get());
+                StartAttemptResponse response = StartAttemptResponse.fromEntity(inProgressOpt.get());
+                return Response.success("Resuming existing attempt", response);
             }
 
             // Tạo attempt mới
@@ -156,7 +159,8 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             logger.info("Started attempt {} for student {} and minigame {}", savedAttempt.getId(), studentId,
                     miniGameId);
-            return Response.success("Attempt started successfully", savedAttempt);
+            StartAttemptResponse response = StartAttemptResponse.fromEntity(savedAttempt);
+            return Response.success("Attempt started successfully", response);
         } catch (Exception e) {
             logger.error("Failed to start attempt: {}", e.getMessage(), e);
             return Response.error("Failed to start attempt: " + e.getMessage());
@@ -227,14 +231,27 @@ public class MiniGameServiceImpl implements MiniGameService {
             attemptRepository.save(attempt);
 
             // Tính điểm và tạo ActivityParticipation nếu đạt
+            Object participation = null;
             if (attempt.getStatus() == AttemptStatus.PASSED) {
                 // Đạt: Cộng điểm từ rewardPoints
                 calculateScoreAndCreateParticipation(attemptId);
+                // Tìm participation vừa tạo
+                Activity activity = miniGame.getActivity();
+                Optional<ActivityRegistration> registrationOpt = registrationRepository
+                        .findByActivityIdAndStudentId(activity.getId(), studentId);
+                if (registrationOpt.isPresent()) {
+                    Optional<ActivityParticipation> participationOpt = participationRepository
+                            .findByRegistration(registrationOpt.get());
+                    if (participationOpt.isPresent()) {
+                        participation = participationOpt.get();
+                    }
+                }
             }
             // Không đạt (FAILED): Không làm gì (không trừ điểm)
 
             logger.info("Submitted attempt {} with {} correct answers", attemptId, correctCount);
-            return Response.success("Attempt submitted successfully", attempt);
+            SubmitAttemptResponse response = SubmitAttemptResponse.fromEntity(attempt, participation);
+            return Response.success("Attempt submitted successfully", response);
         } catch (Exception e) {
             logger.error("Failed to submit attempt: {}", e.getMessage(), e);
             return Response.error("Failed to submit attempt: " + e.getMessage());
@@ -246,7 +263,17 @@ public class MiniGameServiceImpl implements MiniGameService {
     public Response getStudentAttempts(Long studentId, Long miniGameId) {
         try {
             List<MiniGameAttempt> attempts = attemptRepository.findByStudentIdAndMiniGameId(studentId, miniGameId);
-            return Response.success("Attempts retrieved successfully", attempts);
+            List<MiniGameAttemptResponse> responses = attempts.stream()
+                    .map(attempt -> {
+                        BigDecimal pointsEarned = BigDecimal.ZERO;
+                        if (attempt.getStatus() == AttemptStatus.PASSED && 
+                            attempt.getMiniGame().getRewardPoints() != null) {
+                            pointsEarned = attempt.getMiniGame().getRewardPoints();
+                        }
+                        return MiniGameAttemptResponse.fromEntity(attempt, pointsEarned);
+                    })
+                    .collect(Collectors.toList());
+            return Response.success("Attempts retrieved successfully", responses);
         } catch (Exception e) {
             logger.error("Failed to get attempts: {}", e.getMessage(), e);
             return Response.error("Failed to get attempts: " + e.getMessage());
@@ -403,6 +430,197 @@ public class MiniGameServiceImpl implements MiniGameService {
                     oldScore, total, student.getId());
         } catch (Exception e) {
             logger.error("Failed to update student score: {}", e.getMessage(), e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getQuestions(Long miniGameId) {
+        try {
+            Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
+            if (miniGameOpt.isEmpty()) {
+                return Response.error("MiniGame not found");
+            }
+
+            MiniGame miniGame = miniGameOpt.get();
+            if (!miniGame.isActive()) {
+                return Response.error("MiniGame is not active");
+            }
+
+            // Lấy quiz
+            Optional<MiniGameQuiz> quizOpt = quizRepository.findByMiniGameId(miniGame.getId());
+            if (quizOpt.isEmpty()) {
+                return Response.error("Quiz not found for this minigame");
+            }
+
+            MiniGameQuiz quiz = quizOpt.get();
+            
+            // Lấy tất cả questions và sắp xếp theo displayOrder
+            List<MiniGameQuizQuestion> questions = new ArrayList<>(quiz.getQuestions());
+            questions.sort((q1, q2) -> {
+                Integer order1 = q1.getDisplayOrder() != null ? q1.getDisplayOrder() : 0;
+                Integer order2 = q2.getDisplayOrder() != null ? q2.getDisplayOrder() : 0;
+                return order1.compareTo(order2);
+            });
+
+            // Build response using DTO (KHÔNG có isCorrect để student không biết đáp án)
+            QuizQuestionsResponse response = QuizQuestionsResponse.fromEntities(miniGame, quiz);
+            return Response.success("Questions retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to get questions: {}", e.getMessage(), e);
+            return Response.error("Failed to get questions: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getAttemptDetail(Long attemptId, Long studentId) {
+        try {
+            Optional<MiniGameAttempt> attemptOpt = attemptRepository.findById(attemptId);
+            if (attemptOpt.isEmpty()) {
+                return Response.error("Attempt not found");
+            }
+
+            MiniGameAttempt attempt = attemptOpt.get();
+            
+            // Kiểm tra quyền: student chỉ xem được attempt của chính mình
+            if (!attempt.getStudent().getId().equals(studentId)) {
+                return Response.error("You can only view your own attempts");
+            }
+
+            MiniGame miniGame = attempt.getMiniGame();
+            MiniGameQuiz quiz = quizRepository.findByMiniGameId(miniGame.getId())
+                    .orElse(null);
+
+            // Tính điểm đã nhận (chỉ khi PASSED)
+            BigDecimal pointsEarned = BigDecimal.ZERO;
+            if (attempt.getStatus() == AttemptStatus.PASSED && miniGame.getRewardPoints() != null) {
+                pointsEarned = miniGame.getRewardPoints();
+            }
+
+            // Lấy student answers nếu đã submit
+            Map<Long, Long> studentAnswers = null;
+            if (attempt.getStatus() != AttemptStatus.IN_PROGRESS && quiz != null) {
+                List<MiniGameAnswer> answers = answerRepository.findByAttemptId(attemptId);
+                studentAnswers = new HashMap<>();
+                for (MiniGameAnswer answer : answers) {
+                    studentAnswers.put(answer.getQuestion().getId(), answer.getSelectedOption().getId());
+                }
+            }
+
+            // Build response using DTO
+            AttemptDetailResponse response = AttemptDetailResponse.fromEntities(
+                    attempt, quiz, studentAnswers, pointsEarned);
+            return Response.success("Attempt detail retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to get attempt detail: {}", e.getMessage(), e);
+            return Response.error("Failed to get attempt detail: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response updateMiniGame(Long miniGameId, String title, String description, Integer questionCount,
+                                  Integer timeLimit, Integer requiredCorrectAnswers, BigDecimal rewardPoints,
+                                  List<Map<String, Object>> questions) {
+        try {
+            Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
+            if (miniGameOpt.isEmpty()) {
+                return Response.error("MiniGame not found");
+            }
+
+            MiniGame miniGame = miniGameOpt.get();
+            
+            // Cập nhật thông tin cơ bản
+            if (title != null) miniGame.setTitle(title);
+            if (description != null) miniGame.setDescription(description);
+            if (questionCount != null) miniGame.setQuestionCount(questionCount);
+            if (timeLimit != null) miniGame.setTimeLimit(timeLimit);
+            if (requiredCorrectAnswers != null) miniGame.setRequiredCorrectAnswers(requiredCorrectAnswers);
+            if (rewardPoints != null) miniGame.setRewardPoints(rewardPoints);
+
+            // Nếu có questions mới, xóa cũ và tạo mới
+            if (questions != null && !questions.isEmpty()) {
+                // Lấy quiz hiện tại
+                Optional<MiniGameQuiz> quizOpt = quizRepository.findByMiniGameId(miniGameId);
+                if (quizOpt.isPresent()) {
+                    MiniGameQuiz quiz = quizOpt.get();
+                    // Xóa tất cả questions và options cũ (cascade sẽ xóa options)
+                    questionRepository.deleteAll(quiz.getQuestions());
+                    quiz.getQuestions().clear();
+                }
+
+                // Tạo lại questions và options
+                MiniGameQuiz quiz = quizOpt.orElseGet(() -> {
+                    MiniGameQuiz newQuiz = new MiniGameQuiz();
+                    newQuiz.setMiniGame(miniGame);
+                    return quizRepository.save(newQuiz);
+                });
+
+                int order = 0;
+                for (Map<String, Object> questionData : questions) {
+                    MiniGameQuizQuestion question = new MiniGameQuizQuestion();
+                    question.setQuestionText((String) questionData.get("questionText"));
+                    question.setMiniGameQuiz(quiz);
+                    question.setDisplayOrder(order++);
+                    MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
+
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> options = (List<Map<String, Object>>) questionData.get("options");
+                    if (options != null) {
+                        for (Map<String, Object> optionData : options) {
+                            MiniGameQuizOption option = new MiniGameQuizOption();
+                            option.setText((String) optionData.get("text"));
+                            option.setCorrect((Boolean) optionData.getOrDefault("isCorrect", false));
+                            option.setQuestion(savedQuestion);
+                            optionRepository.save(option);
+                        }
+                    }
+                }
+            }
+
+            MiniGame updated = miniGameRepository.save(miniGame);
+            logger.info("Updated minigame {}", miniGameId);
+            return Response.success("MiniGame updated successfully", updated);
+        } catch (Exception e) {
+            logger.error("Failed to update minigame: {}", e.getMessage(), e);
+            return Response.error("Failed to update minigame: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response deleteMiniGame(Long miniGameId) {
+        try {
+            Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
+            if (miniGameOpt.isEmpty()) {
+                return Response.error("MiniGame not found");
+            }
+
+            MiniGame miniGame = miniGameOpt.get();
+            miniGame.setActive(false);
+            miniGameRepository.save(miniGame);
+
+            logger.info("Deleted (deactivated) minigame {}", miniGameId);
+            return Response.success("MiniGame deleted successfully", null);
+        } catch (Exception e) {
+            logger.error("Failed to delete minigame: {}", e.getMessage(), e);
+            return Response.error("Failed to delete minigame: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getAllMiniGames() {
+        try {
+            List<MiniGame> miniGames = miniGameRepository.findAll();
+            List<MiniGameResponse> responses = miniGames.stream()
+                    .map(MiniGameResponse::fromEntity)
+                    .collect(Collectors.toList());
+            return Response.success("MiniGames retrieved successfully", responses);
+        } catch (Exception e) {
+            logger.error("Failed to get all minigames: {}", e.getMessage(), e);
+            return Response.error("Failed to get all minigames: " + e.getMessage());
         }
     }
 

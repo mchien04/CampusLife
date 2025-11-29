@@ -73,23 +73,52 @@ curl --location 'http://localhost:8080/api/series/{seriesId}/activities/create' 
   "startDate": "2025-02-01T08:00:00",
   "endDate": "2025-02-01T17:00:00",
   "location": "Phòng A101",
-  "order": 1
+  "order": 1,
+  "shareLink": "https://example.com/event1",
+  "bannerUrl": "https://example.com/banner1.jpg",
+  "benefits": "Lợi ích khi tham gia",
+  "requirements": "Yêu cầu tham gia",
+  "contactInfo": "Email: contact@example.com, Phone: 0123456789",
+  "organizerIds": [1, 2, 3]
 }'
 ```
 
 **Lưu ý:**
-- Chỉ cần các thuộc tính cơ bản: `name`, `description`, `startDate`, `endDate`, `location`, `order`
-- Các thuộc tính khác sẽ được lấy từ series:
-  - `registrationStartDate`, `registrationDeadline` → từ series
-  - `requiresApproval` → từ series
-  - `ticketQuantity` → từ series
-  - `scoreType` → từ series
-- Các thuộc tính không cần (tự động null):
-  - `type` → null
-  - `maxPoints` → null (không dùng để tính điểm)
-  - `isImportant` → false
-  - `mandatoryForFacultyStudents` → false
-  - `penaltyPointsIncomplete` → null
+
+#### ✅ Các thuộc tính CẦN NHẬP:
+- `name` (bắt buộc) - Tên sự kiện
+- `description` (tùy chọn) - Mô tả
+- `startDate` (tùy chọn) - Thời gian bắt đầu
+- `endDate` (tùy chọn) - Thời gian kết thúc
+- `location` (tùy chọn) - Địa điểm
+- `order` (tùy chọn) - Thứ tự trong series
+- `shareLink` (tùy chọn) - Link chia sẻ
+- `bannerUrl` (tùy chọn) - URL banner
+- `benefits` (tùy chọn) - Lợi ích khi tham gia
+- `requirements` (tùy chọn) - Yêu cầu tham gia
+- `contactInfo` (tùy chọn) - Thông tin liên hệ
+- `organizerIds` (tùy chọn) - Danh sách ID các khoa/ban tổ chức (mảng số)
+
+#### ❌ Các thuộc tính KHÔNG CẦN NHẬP (tự động được set):
+
+**1. Lấy từ Series:**
+- `registrationStartDate` → lấy từ `ActivitySeries.registrationStartDate`
+- `registrationDeadline` → lấy từ `ActivitySeries.registrationDeadline`
+- `requiresApproval` → lấy từ `ActivitySeries.requiresApproval`
+- `ticketQuantity` → lấy từ `ActivitySeries.ticketQuantity`
+- `scoreType` → lấy từ `ActivitySeries.scoreType` (để tính milestone points)
+
+**2. Tự động set giá trị mặc định:**
+- `type` → `null` (không cần loại activity)
+- `maxPoints` → `null` (không dùng để tính điểm, dùng milestone thay thế)
+- `isImportant` → `false`
+- `mandatoryForFacultyStudents` → `false`
+- `penaltyPointsIncomplete` → `null` (không trừ điểm)
+- `requiresSubmission` → `false`
+- `isDraft` → `false` (tự động published)
+- `isDeleted` → `false`
+- `seriesId` → tự động set từ path variable `{seriesId}`
+- `seriesOrder` → từ tham số `order` (nếu có)
 
 ### 1.3. Thêm Activity đã tồn tại vào Series (Nếu cần)
 
@@ -273,15 +302,91 @@ curl --location 'http://localhost:8080/api/series/{seriesId}/activities' \
 
 ### 1.12. Kiểm tra Student Progress trong Series
 
-**Lưu ý:** Hiện tại chưa có endpoint GET để lấy progress, nhưng có thể kiểm tra qua:
-- StudentScore (điểm milestone đã được cộng)
-- ActivityParticipation (các activity đã tham gia)
+#### 1.12.1. Student xem progress của chính mình
+
+```bash
+curl --location 'http://localhost:8080/api/series/{seriesId}/progress/my' \
+--header 'Authorization: Bearer {STUDENT_TOKEN}'
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Student progress retrieved successfully",
+  "data": {
+    "studentId": 1,
+    "seriesId": 1,
+    "seriesName": "Chuỗi sự kiện mùa hè",
+    "completedCount": 3,
+    "totalActivities": 5,
+    "completedActivityIds": [1, 2, 3],
+    "pointsEarned": 5.0,
+    "lastUpdated": "2025-02-05T10:30:00",
+    "currentMilestone": "3",
+    "nextMilestoneCount": 4,
+    "nextMilestonePoints": 7,
+    "milestonePoints": {
+      "3": 5,
+      "4": 7,
+      "5": 10
+    },
+    "scoreType": "REN_LUYEN"
+  }
+}
+```
+
+#### 1.12.2. Admin/Manager xem progress của student khác
+
+```bash
+curl --location 'http://localhost:8080/api/series/{seriesId}/students/{studentId}/progress' \
+--header 'Authorization: Bearer {ADMIN_TOKEN}'
+```
+
+**Response:** Tương tự như trên
+
+**Giải thích các trường:**
+- `completedCount`: Số sự kiện đã hoàn thành
+- `totalActivities`: Tổng số sự kiện trong series
+- `completedActivityIds`: Danh sách ID các sự kiện đã hoàn thành
+- `pointsEarned`: Tổng điểm milestone đã nhận
+- `currentMilestone`: Mốc hiện tại đã đạt (ví dụ: "3" nghĩa là đã đạt mốc 3 sự kiện)
+- `nextMilestoneCount`: Số sự kiện cần hoàn thành để đạt mốc tiếp theo
+- `nextMilestonePoints`: Điểm sẽ nhận khi đạt mốc tiếp theo
+- `milestonePoints`: Map các mốc điểm (key: số sự kiện, value: điểm thưởng)
 
 ---
 
 ## PHẦN 2: MINIGAME QUIZ
 
-**Lưu ý quan trọng:** Phải tạo Activity với `type = MINIGAME` trước, sau đó mới tạo minigame với quiz.
+### 📋 TỔNG QUAN LUỒNG TẠO MINIGAME
+
+**Luồng tạo minigame gồm 2 bước chính:**
+
+1. **Bước 1:** Tạo Activity với `type = MINIGAME` (bắt buộc)
+2. **Bước 2:** Tạo Minigame với Quiz (sau khi có Activity)
+
+**Các entity được tạo tự động:**
+- `MiniGame` (1 entity)
+- `MiniGameQuiz` (1 entity)
+- `MiniGameQuizQuestion` (nhiều câu hỏi)
+- `MiniGameQuizOption` (nhiều lựa chọn cho mỗi câu hỏi)
+
+---
+
+### 🔄 CÁC API LIÊN QUAN ĐẾN MINIGAME
+
+#### **API Tạo và Quản lý:**
+1. `POST /api/activities` - Tạo Activity (type = MINIGAME) - **Bước 1**
+2. `POST /api/minigames` - Tạo Minigame với Quiz - **Bước 2**
+3. `GET /api/minigames/activity/{activityId}` - Lấy Minigame theo Activity ID
+
+#### **API Student sử dụng:**
+4. `POST /api/minigames/{miniGameId}/start` - Bắt đầu làm quiz (tạo attempt)
+5. `POST /api/minigames/attempts/{attemptId}/submit` - Nộp bài quiz
+6. `GET /api/minigames/{miniGameId}/attempts/my` - Xem lịch sử attempts của mình
+
+---
 
 ### 2.1. Tạo Activity cho Minigame (Bước 1: Tạo Activity)
 
@@ -316,6 +421,13 @@ curl --location 'http://localhost:8080/api/activities' \
 
 ### 2.2. Tạo Minigame với Quiz (Bước 2: Tạo Quiz sau khi có Activity)
 
+**API:** `POST /api/minigames`
+
+**Yêu cầu:**
+- Role: `ADMIN` hoặc `MANAGER`
+- `activityId`: ID của Activity đã tạo ở bước 1 (type = MINIGAME)
+
+**Request Body:**
 ```bash
 curl --location 'http://localhost:8080/api/minigames' \
 --header 'Authorization: Bearer {ADMIN_TOKEN}' \
@@ -378,23 +490,138 @@ curl --location 'http://localhost:8080/api/minigames' \
 }'
 ```
 
+**Giải thích các trường:**
+- `activityId` (bắt buộc): ID của Activity đã tạo ở bước 1 (phải có `type = MINIGAME`)
+- `title` (bắt buộc): Tiêu đề minigame
+- `description` (tùy chọn): Mô tả minigame
+- `questionCount` (bắt buộc): Số lượng câu hỏi (phải khớp với số câu hỏi trong mảng `questions`)
+- `timeLimit` (tùy chọn): Thời gian giới hạn làm bài (giây), null = không giới hạn
+- `requiredCorrectAnswers` (tùy chọn): Số câu đúng tối thiểu để đạt (PASSED), null = phải đúng tất cả
+- `rewardPoints` (tùy chọn): Điểm thưởng khi đạt quiz (số dương), null = 0 điểm
+- `questions` (bắt buộc): Mảng các câu hỏi, mỗi câu hỏi có:
+  - `questionText` (bắt buộc): Nội dung câu hỏi
+  - `options` (bắt buộc): Mảng các lựa chọn, mỗi option có:
+    - `text` (bắt buộc): Nội dung lựa chọn
+    - `isCorrect` (bắt buộc): `true` nếu là đáp án đúng, `false` nếu sai
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "MiniGame created successfully",
+  "data": {
+    "id": 1,
+    "title": "Quiz kiến thức IT",
+    "description": "Bài quiz về kiến thức IT cơ bản",
+    "questionCount": 5,
+    "timeLimit": 300,
+    "requiredCorrectAnswers": 3,
+    "rewardPoints": 10.0,
+    "isActive": true,
+    "type": "QUIZ",
+    "activity": {
+      "id": 2,
+      "name": "Quiz kiến thức IT",
+      ...
+    }
+  }
+}
+```
+
+**Lưu ý:**
+- Sau khi tạo thành công, hệ thống tự động tạo:
+  - 1 `MiniGame` entity
+  - 1 `MiniGameQuiz` entity
+  - N `MiniGameQuizQuestion` entities (N = số câu hỏi)
+  - M `MiniGameQuizOption` entities (M = tổng số options của tất cả câu hỏi)
+- Lưu lại `miniGameId` từ response để dùng cho các API tiếp theo
+
+---
+
 ### 2.3. Lấy Minigame theo Activity ID
+
+**API:** `GET /api/minigames/activity/{activityId}`
+
+**Yêu cầu:**
+- Role: `STUDENT`, `ADMIN`, hoặc `MANAGER`
+- `activityId`: ID của Activity (type = MINIGAME)
 
 ```bash
 curl --location 'http://localhost:8080/api/minigames/activity/{activityId}' \
 --header 'Authorization: Bearer {STUDENT_TOKEN}'
 ```
 
+**Response:**
+```json
+{
+  "status": true,
+  "message": "MiniGame retrieved successfully",
+  "data": {
+    "id": 1,
+    "title": "Quiz kiến thức IT",
+    "description": "Bài quiz về kiến thức IT cơ bản",
+    "questionCount": 5,
+    "timeLimit": 300,
+    "requiredCorrectAnswers": 3,
+    "rewardPoints": 10.0,
+    "isActive": true,
+    "type": "QUIZ",
+    "activity": {
+      "id": 2,
+      "name": "Quiz kiến thức IT",
+      ...
+    }
+  }
+}
+```
+
+**Lưu ý:** API này dùng để lấy thông tin minigame trước khi student bắt đầu làm quiz.
+
+---
+
 ### 2.4. Student bắt đầu làm Quiz
+
+**API:** `POST /api/minigames/{miniGameId}/start`
+
+**Yêu cầu:**
+- Role: `STUDENT`
+- `miniGameId`: ID của MiniGame (lấy từ bước 2.2 hoặc 2.3)
 
 ```bash
 curl --location --request POST 'http://localhost:8080/api/minigames/{miniGameId}/start' \
 --header 'Authorization: Bearer {STUDENT_TOKEN}'
 ```
 
-**Response:** Trả về `attemptId` và thời gian bắt đầu
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Attempt started successfully",
+  "data": {
+    "id": 1,
+    "miniGameId": 1,
+    "studentId": 123,
+    "status": "IN_PROGRESS",
+    "startedAt": "2025-02-05T10:00:00",
+    "timeLimit": 300
+  }
+}
+```
+
+**Lưu ý:**
+- Tạo một `MiniGameAttempt` với status = `IN_PROGRESS`
+- Lưu lại `attemptId` từ response để dùng ở bước 2.5
+- Nếu đã có attempt `IN_PROGRESS`, sẽ trả về lỗi (phải submit attempt cũ trước)
+
+---
 
 ### 2.5. Student nộp bài Quiz
+
+**API:** `POST /api/minigames/attempts/{attemptId}/submit`
+
+**Yêu cầu:**
+- Role: `STUDENT`
+- `attemptId`: ID của attempt đã tạo ở bước 2.4
 
 ```bash
 curl --location 'http://localhost:8080/api/minigames/attempts/{attemptId}/submit' \
@@ -411,26 +638,439 @@ curl --location 'http://localhost:8080/api/minigames/attempts/{attemptId}/submit
 }'
 ```
 
-**Lưu ý:**
-- Key trong `answers` là `questionId` (Long) - ID của câu hỏi
-- Value là `optionId` (Long) - ID của option đã chọn
-- Sau khi submit, hệ thống sẽ:
-  - Tính điểm (số câu đúng)
-  - Kiểm tra `requiredCorrectAnswers`
-  - **Nếu đạt (PASSED):**
-    - Tạo ActivityParticipation với `pointsEarned = rewardPoints` (số dương)
-    - `isCompleted = true`
-    - Cộng điểm vào StudentScore
-  - **Nếu không đạt (FAILED):**
-    - Không làm gì (không trừ điểm, không tạo participation)
-    - Chỉ lưu attempt với status = FAILED
+**Request Body:**
+- `answers`: Map với:
+  - **Key**: `questionId` (String, nhưng sẽ được parse thành Long) - ID của câu hỏi
+  - **Value**: `optionId` (Number) - ID của option đã chọn
+
+**Response khi đạt (PASSED):**
+```json
+{
+  "status": true,
+  "message": "Attempt submitted successfully",
+  "data": {
+    "id": 1,
+    "status": "PASSED",
+    "correctCount": 4,
+    "totalQuestions": 5,
+    "pointsEarned": 10.0,
+    "participation": {
+      "id": 100,
+      "pointsEarned": 10.0,
+      "isCompleted": true,
+      "participationType": "COMPLETED"
+    }
+  }
+}
+```
+
+**Response khi không đạt (FAILED):**
+```json
+{
+  "status": true,
+  "message": "Attempt submitted successfully",
+  "data": {
+    "id": 1,
+    "status": "FAILED",
+    "correctCount": 2,
+    "totalQuestions": 5,
+    "requiredCorrectAnswers": 3,
+    "pointsEarned": 0.0
+  }
+}
+```
+
+**Logic xử lý sau khi submit:**
+1. Tính số câu đúng (`correctCount`)
+2. So sánh với `requiredCorrectAnswers`:
+   - **Nếu đạt (PASSED):**
+     - Cập nhật attempt: `status = PASSED`, `correctCount = X`
+     - Tạo `ActivityParticipation` với:
+       - `pointsEarned = rewardPoints` (từ MiniGame)
+       - `isCompleted = true`
+       - `participationType = COMPLETED`
+     - Cộng điểm vào `StudentScore` (scoreType từ Activity)
+   - **Nếu không đạt (FAILED):**
+     - Cập nhật attempt: `status = FAILED`, `correctCount = X`
+     - **KHÔNG** tạo ActivityParticipation
+     - **KHÔNG** trừ điểm
+     - Chỉ lưu attempt để theo dõi lịch sử
+
+---
 
 ### 2.6. Lấy lịch sử Attempts của Student
+
+**API:** `GET /api/minigames/{miniGameId}/attempts/my`
+
+**Yêu cầu:**
+- Role: `STUDENT`
+- `miniGameId`: ID của MiniGame
 
 ```bash
 curl --location 'http://localhost:8080/api/minigames/{miniGameId}/attempts/my' \
 --header 'Authorization: Bearer {STUDENT_TOKEN}'
 ```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Attempts retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "status": "PASSED",
+      "correctCount": 4,
+      "totalQuestions": 5,
+      "pointsEarned": 10.0,
+      "startedAt": "2025-02-05T10:00:00",
+      "submittedAt": "2025-02-05T10:05:00"
+    },
+    {
+      "id": 2,
+      "status": "FAILED",
+      "correctCount": 2,
+      "totalQuestions": 5,
+      "pointsEarned": 0.0,
+      "startedAt": "2025-02-05T11:00:00",
+      "submittedAt": "2025-02-05T11:03:00"
+    }
+  ]
+}
+```
+
+**Lưu ý:** API này trả về tất cả attempts của student cho minigame này, bao gồm cả PASSED và FAILED.
+
+---
+
+### 2.7. Lấy danh sách câu hỏi và options (KHÔNG có đáp án đúng)
+
+**API:** `GET /api/minigames/{miniGameId}/questions`
+
+**Yêu cầu:**
+- Role: `STUDENT`, `ADMIN`, hoặc `MANAGER`
+- `miniGameId`: ID của MiniGame
+
+**Mục đích:** Student lấy danh sách câu hỏi để làm quiz (không có đáp án đúng để tránh gian lận)
+
+```bash
+curl --location 'http://localhost:8080/api/minigames/{miniGameId}/questions' \
+--header 'Authorization: Bearer {STUDENT_TOKEN}'
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Questions retrieved successfully",
+  "data": {
+    "miniGameId": 1,
+    "title": "Quiz kiến thức IT",
+    "description": "Bài quiz về kiến thức IT cơ bản",
+    "questionCount": 5,
+    "timeLimit": 300,
+    "questions": [
+      {
+        "id": 1,
+        "questionText": "HTML là viết tắt của gì?",
+        "displayOrder": 0,
+        "options": [
+          {
+            "id": 1,
+            "text": "HyperText Markup Language"
+          },
+          {
+            "id": 2,
+            "text": "High Tech Modern Language"
+          },
+          {
+            "id": 3,
+            "text": "Home Tool Markup Language"
+          },
+          {
+            "id": 4,
+            "text": "Hyperlink and Text Markup Language"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "questionText": "CSS được dùng để làm gì?",
+        "displayOrder": 1,
+        "options": [
+          {
+            "id": 5,
+            "text": "Tạo cấu trúc trang web"
+          },
+          {
+            "id": 6,
+            "text": "Tạo style cho trang web"
+          },
+          {
+            "id": 7,
+            "text": "Xử lý logic"
+          },
+          {
+            "id": 8,
+            "text": "Lưu trữ dữ liệu"
+          }
+        ]
+      }
+      // ... các câu hỏi khác
+    ]
+  }
+}
+```
+
+**Lưu ý:**
+- ✅ **KHÔNG có** field `isCorrect` trong options (để student không biết đáp án đúng)
+- ✅ Questions được sắp xếp theo `displayOrder`
+- ✅ Options được trả về đầy đủ để student chọn
+
+---
+
+### 2.8. Xem chi tiết Attempt (sau khi submit)
+
+**API:** `GET /api/minigames/attempts/{attemptId}`
+
+**Yêu cầu:**
+- Role: `STUDENT` (chỉ xem được attempt của chính mình)
+- `attemptId`: ID của attempt
+
+**Mục đích:** Student xem kết quả chi tiết sau khi submit, bao gồm đáp án đúng và câu trả lời của mình
+
+```bash
+curl --location 'http://localhost:8080/api/minigames/attempts/{attemptId}' \
+--header 'Authorization: Bearer {STUDENT_TOKEN}'
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "Attempt detail retrieved successfully",
+  "data": {
+    "id": 1,
+    "status": "PASSED",
+    "correctCount": 4,
+    "totalQuestions": 5,
+    "pointsEarned": 10.0,
+    "startedAt": "2025-02-05T10:00:00",
+    "submittedAt": "2025-02-05T10:05:00",
+    "requiredCorrectAnswers": 3,
+    "questions": [
+      {
+        "id": 1,
+        "questionText": "HTML là viết tắt của gì?",
+        "displayOrder": 0,
+        "options": [
+          {
+            "id": 1,
+            "text": "HyperText Markup Language",
+            "isCorrect": true,
+            "isSelected": true
+          },
+          {
+            "id": 2,
+            "text": "High Tech Modern Language",
+            "isCorrect": false,
+            "isSelected": false
+          },
+          {
+            "id": 3,
+            "text": "Home Tool Markup Language",
+            "isCorrect": false,
+            "isSelected": false
+          },
+          {
+            "id": 4,
+            "text": "Hyperlink and Text Markup Language",
+            "isCorrect": false,
+            "isSelected": false
+          }
+        ],
+        "correctOptionId": 1,
+        "selectedOptionId": 1,
+        "isCorrect": true
+      },
+      {
+        "id": 2,
+        "questionText": "CSS được dùng để làm gì?",
+        "displayOrder": 1,
+        "options": [
+          {
+            "id": 5,
+            "text": "Tạo cấu trúc trang web",
+            "isCorrect": false,
+            "isSelected": true
+          },
+          {
+            "id": 6,
+            "text": "Tạo style cho trang web",
+            "isCorrect": true,
+            "isSelected": false
+          },
+          {
+            "id": 7,
+            "text": "Xử lý logic",
+            "isCorrect": false,
+            "isSelected": false
+          },
+          {
+            "id": 8,
+            "text": "Lưu trữ dữ liệu",
+            "isCorrect": false,
+            "isSelected": false
+          }
+        ],
+        "correctOptionId": 6,
+        "selectedOptionId": 5,
+        "isCorrect": false
+      }
+      // ... các câu hỏi khác
+    ]
+  }
+}
+```
+
+**Giải thích các trường:**
+- `status`: PASSED hoặc FAILED
+- `correctCount`: Số câu đúng
+- `pointsEarned`: Điểm đã nhận (chỉ khi PASSED)
+- `questions`: Danh sách câu hỏi với:
+  - `isCorrect`: true/false cho mỗi option
+  - `isSelected`: true nếu student đã chọn option này
+  - `correctOptionId`: ID của đáp án đúng
+  - `selectedOptionId`: ID của option student đã chọn
+  - `isCorrect`: true nếu student chọn đúng
+
+**Lưu ý:**
+- ✅ Chỉ trả về đáp án đúng sau khi đã submit (status != IN_PROGRESS)
+- ✅ Student chỉ xem được attempt của chính mình
+
+---
+
+### 2.9. Cập nhật Minigame (Admin/Manager)
+
+**API:** `PUT /api/minigames/{miniGameId}`
+
+**Yêu cầu:**
+- Role: `ADMIN` hoặc `MANAGER`
+- `miniGameId`: ID của MiniGame cần cập nhật
+
+```bash
+curl --location --request PUT 'http://localhost:8080/api/minigames/{miniGameId}' \
+--header 'Authorization: Bearer {ADMIN_TOKEN}' \
+--header 'Content-Type: application/json' \
+--data '{
+  "title": "Quiz kiến thức IT (Cập nhật)",
+  "description": "Mô tả mới",
+  "questionCount": 6,
+  "timeLimit": 360,
+  "requiredCorrectAnswers": 4,
+  "rewardPoints": 15.0,
+  "questions": [
+    {
+      "questionText": "Câu hỏi mới?",
+      "options": [
+        {"text": "Đáp án A", "isCorrect": true},
+        {"text": "Đáp án B", "isCorrect": false}
+      ]
+    }
+    // ... các câu hỏi khác
+  ]
+}'
+```
+
+**Lưu ý:**
+- Nếu có `questions` mới, hệ thống sẽ xóa tất cả questions và options cũ, tạo lại từ đầu
+- Các trường khác có thể cập nhật riêng lẻ (không bắt buộc phải có tất cả)
+
+---
+
+### 2.10. Xóa Minigame (Admin/Manager)
+
+**API:** `DELETE /api/minigames/{miniGameId}`
+
+**Yêu cầu:**
+- Role: `ADMIN` hoặc `MANAGER`
+- `miniGameId`: ID của MiniGame cần xóa
+
+```bash
+curl --location --request DELETE 'http://localhost:8080/api/minigames/{miniGameId}' \
+--header 'Authorization: Bearer {ADMIN_TOKEN}'
+```
+
+**Lưu ý:**
+- Xóa mềm (soft delete): Chỉ set `isActive = false`
+- Minigame vẫn tồn tại trong database nhưng không còn active
+
+---
+
+### 2.11. Lấy tất cả Minigames (Admin/Manager)
+
+**API:** `GET /api/minigames`
+
+**Yêu cầu:**
+- Role: `ADMIN` hoặc `MANAGER`
+
+```bash
+curl --location 'http://localhost:8080/api/minigames' \
+--header 'Authorization: Bearer {ADMIN_TOKEN}'
+```
+
+**Response:**
+```json
+{
+  "status": true,
+  "message": "MiniGames retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "title": "Quiz kiến thức IT",
+      "description": "Bài quiz về kiến thức IT cơ bản",
+      "questionCount": 5,
+      "timeLimit": 300,
+      "requiredCorrectAnswers": 3,
+      "rewardPoints": 10.0,
+      "isActive": true,
+      "type": "QUIZ",
+      "activity": {
+        "id": 2,
+        "name": "Quiz kiến thức IT",
+        ...
+      }
+    },
+    ...
+  ]
+}
+```
+
+---
+
+### 📝 TÓM TẮT LUỒNG TẠO VÀ SỬ DỤNG MINIGAME
+
+#### **Luồng Admin/Manager tạo Minigame:**
+1. ✅ Tạo Activity với `type = "MINIGAME"` → Lưu `activityId`
+2. ✅ Tạo Minigame với Quiz → Lưu `miniGameId`
+
+#### **Luồng Student làm Quiz:**
+1. ✅ Đăng ký Activity (nếu cần)
+2. ✅ Lấy thông tin Minigame (`GET /api/minigames/activity/{activityId}`)
+3. ✅ Lấy danh sách câu hỏi (`GET /api/minigames/{miniGameId}/questions`) - KHÔNG có đáp án đúng
+4. ✅ Bắt đầu attempt (`POST /api/minigames/{miniGameId}/start`) → Lưu `attemptId`
+5. ✅ Nộp bài (`POST /api/minigames/attempts/{attemptId}/submit`)
+6. ✅ Xem chi tiết attempt (`GET /api/minigames/attempts/{attemptId}`) - Có đáp án đúng
+7. ✅ Xem lịch sử attempts (`GET /api/minigames/{miniGameId}/attempts/my`)
+
+#### **Logic tính điểm:**
+- ✅ **PASSED:** Tạo ActivityParticipation, cộng điểm vào StudentScore
+- ✅ **FAILED:** Không tạo participation, không trừ điểm, chỉ lưu attempt
+
+#### **Các API quản lý (Admin/Manager):**
+- ✅ `PUT /api/minigames/{miniGameId}` - Cập nhật minigame
+- ✅ `DELETE /api/minigames/{miniGameId}` - Xóa minigame (soft delete)
+- ✅ `GET /api/minigames` - Lấy tất cả minigames
 
 ---
 

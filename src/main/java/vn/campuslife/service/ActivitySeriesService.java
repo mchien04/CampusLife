@@ -17,7 +17,8 @@ public interface ActivitySeriesService {
      */
     Response createActivityInSeries(Long seriesId, String name, String description,
             java.time.LocalDateTime startDate, java.time.LocalDateTime endDate,
-            String location, Integer order);
+            String location, Integer order, String shareLink, String bannerUrl,
+            String benefits, String requirements, String contactInfo, java.util.List<Long> organizerIds);
 
     /**
      * Thêm activity vào chuỗi
@@ -58,4 +59,9 @@ public interface ActivitySeriesService {
      * Lấy danh sách activities trong series
      */
     Response getActivitiesInSeries(Long seriesId);
+
+    /**
+     * Lấy thông tin progress của student trong series
+     */
+    Response getStudentProgress(Long seriesId, Long studentId);
 }

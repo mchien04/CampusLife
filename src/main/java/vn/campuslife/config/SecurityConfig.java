@@ -93,16 +93,17 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER")
                         
                         // Activity Series - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require MANAGER/ADMIN
-                        .requestMatchers(HttpMethod.GET, "/api/series", "/api/series/*", "/api/series/*/activities")
+                        .requestMatchers(HttpMethod.GET, "/api/series", "/api/series/*", "/api/series/*/activities", "/api/series/*/progress/my")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers("/api/series/**")
                         .hasAnyRole("ADMIN", "MANAGER")
                         
                         // MiniGame - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require MANAGER/ADMIN
-                        .requestMatchers(HttpMethod.GET, "/api/minigames/activity/*")
+                        .requestMatchers(HttpMethod.GET, "/api/minigames/activity/*", "/api/minigames/*/questions", 
+                                "/api/minigames/*/attempts/my", "/api/minigames/attempts/*")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
-                        .requestMatchers(HttpMethod.GET, "/api/minigames/*/attempts/my")
-                        .hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/minigames")
+                        .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/minigames/*/start")
                         .hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/minigames/attempts/*/submit")

@@ -16,6 +16,7 @@ import vn.campuslife.service.ActivitySeriesService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +35,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final UserRepository userRepository;
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRegistrationRepository registrationRepository;
+    private final DepartmentRepository departmentRepository;
 
     @Override
     @Transactional
@@ -79,7 +81,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     @Transactional
     public Response createActivityInSeries(Long seriesId, String name, String description,
             LocalDateTime startDate, LocalDateTime endDate,
-            String location, Integer order) {
+            String location, Integer order, String shareLink, String bannerUrl,
+            String benefits, String requirements, String contactInfo, List<Long> organizerIds) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Activity name is required");
@@ -105,6 +108,17 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         activity.setSeriesId(seriesId);
         activity.setSeriesOrder(order);
 
+        // Các thuộc tính từ request
+        activity.setShareLink(shareLink);
+        activity.setBannerUrl(bannerUrl);
+        activity.setBenefits(benefits);
+        activity.setRequirements(requirements);
+        activity.setContactInfo(contactInfo);
+
+        // Xử lý organizers
+        Set<Department> organizers = resolveOrganizers(organizerIds);
+        activity.setOrganizers(organizers);
+
         // Các thuộc tính không cần (cho phép null)
         activity.setType(null); // Không cần
         activity.setScoreType(null); // Lấy từ series
@@ -123,6 +137,18 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         Activity saved = activityRepository.save(activity);
         logger.info("Created activity {} in series {} with order {}", saved.getId(), seriesId, order);
         return Response.success("Activity created in series successfully", saved);
+    }
+
+    private Set<Department> resolveOrganizers(List<Long> organizerIds) {
+        if (organizerIds == null || organizerIds.isEmpty())
+            return new LinkedHashSet<>();
+        var deps = departmentRepository.findAllById(organizerIds);
+        var found = deps.stream().map(Department::getId).collect(Collectors.toSet());
+        var missing = organizerIds.stream().filter(id -> !found.contains(id)).toList();
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException("Department ids not found: " + missing);
+        }
+        return new LinkedHashSet<>(deps);
     }
 
     @Override
@@ -512,6 +538,117 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         } catch (Exception e) {
             logger.error("Failed to get activities in series: {}", e.getMessage(), e);
             return Response.error("Failed to get activities in series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getStudentProgress(Long seriesId, Long studentId) {
+        try {
+            // Validate series exists
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            // Validate student exists
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+
+            // Get or create progress (if student hasn't registered, return empty progress)
+            Optional<StudentSeriesProgress> progressOpt = progressRepository
+                    .findByStudentIdAndSeriesId(studentId, seriesId);
+
+            // Parse completed activity IDs
+            List<Long> completedActivityIds = new ArrayList<>();
+            Integer completedCount = 0;
+            BigDecimal pointsEarned = BigDecimal.ZERO;
+            LocalDateTime lastUpdated = null;
+
+            if (progressOpt.isPresent()) {
+                StudentSeriesProgress progress = progressOpt.get();
+                completedCount = progress.getCompletedCount();
+                pointsEarned = progress.getPointsEarned();
+                lastUpdated = progress.getLastUpdated();
+
+                // Parse completed activity IDs JSON
+                String completedIdsJson = progress.getCompletedActivityIds();
+                if (completedIdsJson != null && !completedIdsJson.isEmpty()) {
+                    try {
+                        completedActivityIds = objectMapper.readValue(completedIdsJson,
+                                new TypeReference<List<Long>>() {
+                                });
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse completedActivityIds: {}", completedIdsJson, e);
+                        completedActivityIds = new ArrayList<>();
+                    }
+                }
+            }
+
+            // Parse milestone points to determine current milestone
+            Map<String, Integer> milestonePoints = null;
+            String currentMilestone = null;
+            Integer nextMilestoneCount = null;
+            Integer nextMilestonePoints = null;
+
+            if (series.getMilestonePoints() != null && !series.getMilestonePoints().isEmpty()) {
+                try {
+                    milestonePoints = objectMapper.readValue(series.getMilestonePoints(),
+                            new TypeReference<Map<String, Integer>>() {
+                            });
+
+                    // Find current milestone
+                    int maxMilestone = 0;
+                    for (Map.Entry<String, Integer> entry : milestonePoints.entrySet()) {
+                        int milestoneCount = Integer.parseInt(entry.getKey());
+                        if (completedCount >= milestoneCount && milestoneCount > maxMilestone) {
+                            maxMilestone = milestoneCount;
+                            currentMilestone = entry.getKey();
+                        }
+                    }
+
+                    // Find next milestone
+                    for (Map.Entry<String, Integer> entry : milestonePoints.entrySet()) {
+                        int milestoneCount = Integer.parseInt(entry.getKey());
+                        if (milestoneCount > completedCount) {
+                            nextMilestoneCount = milestoneCount;
+                            nextMilestonePoints = entry.getValue();
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to parse milestonePoints: {}", series.getMilestonePoints(), e);
+                }
+            }
+
+            // Get total activities in series
+            List<Activity> allActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            Integer totalActivities = allActivities.size();
+
+            // Build response map
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("studentId", studentId);
+            responseData.put("seriesId", seriesId);
+            responseData.put("seriesName", series.getName());
+            responseData.put("completedCount", completedCount);
+            responseData.put("totalActivities", totalActivities);
+            responseData.put("completedActivityIds", completedActivityIds);
+            responseData.put("pointsEarned", pointsEarned);
+            responseData.put("lastUpdated", lastUpdated);
+            responseData.put("currentMilestone", currentMilestone);
+            responseData.put("nextMilestoneCount", nextMilestoneCount);
+            responseData.put("nextMilestonePoints", nextMilestonePoints);
+            responseData.put("milestonePoints", milestonePoints);
+            responseData.put("scoreType", series.getScoreType());
+
+            return Response.success("Student progress retrieved successfully", responseData);
+        } catch (Exception e) {
+            logger.error("Failed to get student progress: {}", e.getMessage(), e);
+            return Response.error("Failed to get student progress: " + e.getMessage());
         }
     }
 }
