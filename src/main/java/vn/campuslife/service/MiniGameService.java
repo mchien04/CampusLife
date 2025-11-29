@@ -37,5 +37,32 @@ public interface MiniGameService {
      * Tính điểm và tạo ActivityParticipation nếu đạt
      */
     Response calculateScoreAndCreateParticipation(Long attemptId);
+
+    /**
+     * Lấy danh sách câu hỏi và options của minigame (không có đáp án đúng)
+     */
+    Response getQuestions(Long miniGameId);
+
+    /**
+     * Lấy chi tiết attempt (bao gồm kết quả và đáp án đúng nếu đã submit)
+     */
+    Response getAttemptDetail(Long attemptId, Long studentId);
+
+    /**
+     * Cập nhật minigame
+     */
+    Response updateMiniGame(Long miniGameId, String title, String description, Integer questionCount,
+                           Integer timeLimit, Integer requiredCorrectAnswers, java.math.BigDecimal rewardPoints,
+                           List<Map<String, Object>> questions);
+
+    /**
+     * Xóa minigame (soft delete)
+     */
+    Response deleteMiniGame(Long miniGameId);
+
+    /**
+     * Lấy tất cả minigames (Admin/Manager)
+     */
+    Response getAllMiniGames();
 }
 

@@ -3,6 +3,8 @@ package vn.campuslife.controller;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.LoginRequest;
 import vn.campuslife.model.RegisterRequest;
+import vn.campuslife.model.ForgotPasswordRequest;
+import vn.campuslife.model.ResetPasswordRequest;
 import vn.campuslife.service.AuthService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -42,6 +44,26 @@ public class AuthController {
     @GetMapping("/verify")
     public ResponseEntity<Response> verifyAccount(@RequestParam("token") String token) {
         return ResponseEntity.ok(authService.verifyAccount(token));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Response> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        Response response = authService.forgotPassword(request);
+        if (response.isStatus()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Response> resetPassword(@RequestBody ResetPasswordRequest request) {
+        Response response = authService.resetPassword(request);
+        if (response.isStatus()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
     }
 
 }

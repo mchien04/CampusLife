@@ -1,12 +1,12 @@
 package vn.campuslife.controller;
 
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
 import vn.campuslife.service.AddressService;
+import vn.campuslife.service.StudentService;
 
 @RestController
 @RequestMapping("/api/addresses")
@@ -14,6 +14,7 @@ import vn.campuslife.service.AddressService;
 public class AddressController {
 
     private final AddressService addressService;
+    private final StudentService studentService;
 
     /**
      * Lấy danh sách tỉnh/thành phố
@@ -170,10 +171,11 @@ public class AddressController {
      */
     private Long getStudentIdFromAuth(Authentication authentication) {
         try {
+            if (authentication == null) {
+                return null;
+            }
             String username = authentication.getName();
-            // You might need to implement a method to get student ID by username
-            // For now, returning a placeholder
-            return 1L; // This should be replaced with actual student ID lookup
+            return studentService.getStudentIdByUsername(username);
         } catch (Exception e) {
             return null;
         }

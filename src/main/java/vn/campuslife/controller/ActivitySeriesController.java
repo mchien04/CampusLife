@@ -155,8 +155,28 @@ public class ActivitySeriesController {
                 }
             }
 
+            String shareLink = (String) request.get("shareLink");
+            String bannerUrl = (String) request.get("bannerUrl");
+            String benefits = (String) request.get("benefits");
+            String requirements = (String) request.get("requirements");
+            String contactInfo = (String) request.get("contactInfo");
+            
+            java.util.List<Long> organizerIds = null;
+            if (request.get("organizerIds") != null) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    java.util.List<Object> ids = (java.util.List<Object>) request.get("organizerIds");
+                    organizerIds = ids.stream()
+                            .map(id -> Long.valueOf(id.toString()))
+                            .collect(java.util.stream.Collectors.toList());
+                } catch (Exception e) {
+                    logger.warn("Invalid organizerIds: {}", request.get("organizerIds"), e);
+                }
+            }
+
             Response response = seriesService.createActivityInSeries(seriesId, name, description,
-                    startDate, endDate, location, order);
+                    startDate, endDate, location, order, shareLink, bannerUrl,
+                    benefits, requirements, contactInfo, organizerIds);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating activity in series: {}", e.getMessage(), e);
@@ -278,6 +298,49 @@ public class ActivitySeriesController {
             logger.error("Failed to get activities in series: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to get activities in series: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Student xem progress của chính mình trong series
+     */
+    @GetMapping("/{seriesId}/progress/my")
+    public ResponseEntity<Response> getMyProgress(
+            @PathVariable Long seriesId,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            // Get student ID from authentication
+            String username = authentication.getName();
+            Long studentId = studentService.getStudentIdByUsername(username);
+
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+
+            Response response = seriesService.getStudentProgress(seriesId, studentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get my progress: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get my progress: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Admin/Manager xem progress của student trong series
+     */
+    @GetMapping("/{seriesId}/students/{studentId}/progress")
+    public ResponseEntity<Response> getStudentProgress(
+            @PathVariable Long seriesId,
+            @PathVariable Long studentId) {
+        try {
+            Response response = seriesService.getStudentProgress(seriesId, studentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get student progress: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get student progress: " + e.getMessage(), null));
         }
     }
 }
