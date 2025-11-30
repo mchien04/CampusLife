@@ -80,6 +80,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // Activities
+                        .requestMatchers(HttpMethod.GET, "/api/activities/upcoming")
+                        .hasAnyRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/activities/my").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/activities/debug/user-info").authenticated()
                         // Activity Photos - GET allows all authenticated users (STUDENT/MANAGER/ADMIN)
@@ -114,7 +116,8 @@ public class SecurityConfig {
                         
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
-
+                        //Hien thi participations
+                        .requestMatchers(HttpMethod.GET,"/api/participations").permitAll()
                         // Tasks and Assignments
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()

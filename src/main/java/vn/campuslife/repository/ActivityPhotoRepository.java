@@ -27,5 +27,8 @@ public interface ActivityPhotoRepository extends JpaRepository<ActivityPhoto, Lo
             "WHERE ap.activity.id = :activityId " +
             "AND ap.isDeleted = false")
     Long countByActivityIdAndIsDeletedFalse(@Param("activityId") Long activityId);
+    //hien tat ca anh
+    List<ActivityPhoto> findByIsDeletedFalseOrderByCreatedAtDesc();
+
 }
 

@@ -981,4 +981,25 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             logger.error("Failed to update CHUYEN_DE score count: {}", e.getMessage(), e);
         }
     }
+    /**
+     * Lấy danh sách Đăng ký của sinh theo status
+     */
+
+    @Override
+    public Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status) {
+        try {
+            List<ActivityRegistration> registrations =
+                    registrationRepository.findListByStudentIdAndStatus(studentId, status);
+
+            List<ActivityRegistrationResponse> responses = registrations.stream()
+                    .map(this::toRegistrationResponse)
+                    .toList();
+
+            return new Response(true, "Student registrations retrieved successfully", responses);
+
+        } catch (Exception e) {
+            logger.error("Failed to retrieve student registrations: {}", e.getMessage(), e);
+            return new Response(false, "Failed to retrieve registrations due to server error", null);
+        }
+    }
 }

@@ -6,6 +6,7 @@ import vn.campuslife.model.CreateActivityRequest;
 import vn.campuslife.model.Response;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ActivityService {
@@ -49,5 +50,10 @@ public interface ActivityService {
 
     // Copy activity with optional offset days
     Response copyActivity(Long id, Integer offsetDays);
+    //tìm kiếm sự kiện
+    List<Activity>searchUpcomingEvents(String keyword);
+    //Sự kiện trong tháng
+    List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end);
+
 
 }

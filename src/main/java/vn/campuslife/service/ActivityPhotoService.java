@@ -39,5 +39,7 @@ public interface ActivityPhotoService {
      * @return Response
      */
     Response updatePhotoOrder(Long photoId, Integer newOrder, String username);
+    //Hien tat ca hinh anh
+    Response getAllPhotos();
 }
 
