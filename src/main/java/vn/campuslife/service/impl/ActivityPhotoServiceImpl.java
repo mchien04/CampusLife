@@ -220,4 +220,23 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
                 photo.getUploadedBy(),
                 photo.getCreatedAt());
     }
+    //hien tat ca hinh anh
+    @Override
+    @Transactional(readOnly = true)
+    public Response getAllPhotos() {
+        try {
+            List<ActivityPhoto> photos = photoRepository
+                    .findByIsDeletedFalseOrderByCreatedAtDesc();
+
+            List<ActivityPhotoResponse> responses = photos.stream()
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+
+            return Response.success("All photos retrieved", responses);
+
+        } catch (Exception e) {
+            logger.error("Failed to get all photos: {}", e.getMessage(), e);
+            return Response.error("Failed to get all photos: " + e.getMessage());
+        }
+    }
 }

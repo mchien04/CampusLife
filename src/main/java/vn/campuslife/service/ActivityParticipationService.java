@@ -1,9 +1,10 @@
 package vn.campuslife.service;
 
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Service;
 import vn.campuslife.entity.ActivityParticipation;
-import vn.campuslife.entity.ActivityRegistration;
+@Service
+public interface ActivityParticipationService {
+    ActivityParticipation getParticipation(Long studentId, Long activityId);
 
-public interface ActivityParticipationService extends JpaRepository<ActivityParticipation, Long> {
 
 }

@@ -2,9 +2,13 @@ package vn.campuslife.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
@@ -651,4 +655,5 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             return Response.error("Failed to get student progress: " + e.getMessage());
         }
     }
+
 }

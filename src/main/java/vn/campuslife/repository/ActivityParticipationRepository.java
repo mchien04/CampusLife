@@ -24,24 +24,24 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
 
         // Lấy tất cả participation theo activityId và trạng thái
         @Query("SELECT ap FROM ActivityParticipation ap " +
-                        "WHERE ap.registration.activity.id = :activityId " +
-                        "AND ap.participationType = :type")
+                "WHERE ap.registration.activity.id = :activityId " +
+                "AND ap.participationType = :type")
         List<ActivityParticipation> findByActivityIdAndParticipationType(
-                        @Param("activityId") Long activityId,
-                        @Param("type") ParticipationType type);
+                @Param("activityId") Long activityId,
+                @Param("type") ParticipationType type);
 
         // Lấy tất cả participation theo studentId, semesterId và scoreType
         @Query("SELECT ap FROM ActivityParticipation ap " +
-                        "WHERE ap.registration.student.id = :studentId " +
-                        "AND ap.registration.activity.scoreType = :scoreType")
+                "WHERE ap.registration.student.id = :studentId " +
+                "AND ap.registration.activity.scoreType = :scoreType")
         List<ActivityParticipation> findByStudentIdAndScoreType(
-                        @Param("studentId") Long studentId,
-                        @Param("scoreType") ScoreType scoreType);
+                @Param("studentId") Long studentId,
+                @Param("scoreType") ScoreType scoreType);
 
         // Lấy tất cả participation theo activityId
         @Query("SELECT ap FROM ActivityParticipation ap " +
-                        "WHERE ap.registration.activity.id = :activityId " +
-                        "AND ap.registration.activity.isDeleted = false")
+                "WHERE ap.registration.activity.id = :activityId " +
+                "AND ap.registration.activity.isDeleted = false")
         List<ActivityParticipation> findByActivityId(@Param("activityId") Long activityId);
 
         /**
@@ -86,5 +86,18 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
                 "GROUP BY ap.registration.student.id " +
                 "ORDER BY partCount DESC")
         List<Object[]> findTopStudentsByParticipations(org.springframework.data.domain.Pageable pageable);
+        //Lấy participation theo studentId activityId
+        @Query("""
+            SELECT p FROM ActivityParticipation p
+            JOIN p.registration r
+            JOIN r.student s
+            JOIN r.activity a
+            WHERE s.id = :studentId
+              AND a.id = :activityId
+        """)
+        ActivityParticipation  findStudentParticipationByActivity(
+                Long studentId,
+                Long activityId
+        );
 
 }

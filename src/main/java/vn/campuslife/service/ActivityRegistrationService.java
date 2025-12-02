@@ -1,5 +1,6 @@
 package vn.campuslife.service;
 
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
 
 public interface ActivityRegistrationService {
@@ -68,4 +69,8 @@ public interface ActivityRegistrationService {
      * Lấy danh sách participations theo activityId
      */
     Response getActivityParticipations(Long activityId);
+    /**
+     * Lấy danh sách Đăng ký của sinh theo status
+     */
+    Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status);
 }

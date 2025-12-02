@@ -4,6 +4,7 @@ import vn.campuslife.entity.Activity;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.CreateActivityRequest;
 import vn.campuslife.model.Response;
+import vn.campuslife.service.ActivityPhotoService;
 import vn.campuslife.service.ActivityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 
@@ -21,11 +23,11 @@ public class ActivityController {
     private static final Logger logger = LoggerFactory.getLogger(ActivityController.class);
 
     private final ActivityService activityService;
-
-    public ActivityController(ActivityService activityService) {
+    private final ActivityPhotoService photoService;
+    public ActivityController(ActivityService activityService, ActivityPhotoService photoService) {
         this.activityService = activityService;
+        this.photoService = photoService;
     }
-
     @PostMapping
     public ResponseEntity<Response> createActivity(@RequestBody CreateActivityRequest request) {
         try {
@@ -130,14 +132,6 @@ public class ActivityController {
         return ResponseEntity.ok(activityService.getActivitiesByScoreType(scoreType));
     }
 
-    @GetMapping("/month")
-    public List<Activity> getByMonth(@RequestParam(required = false) Integer year,
-            @RequestParam(required = false) Integer month) {
-        YearMonth ym = (year == null || month == null) ? YearMonth.now() : YearMonth.of(year, month);
-        LocalDate start = ym.atDay(1);
-        LocalDate end = ym.plusMonths(1).atDay(1);
-        return activityService.getActivitiesByMonth(start, end);
-    }
 
     @GetMapping("/department/{deptId}")
     public List<Activity> byDepartment(@PathVariable Long deptId) {
@@ -214,5 +208,35 @@ public class ActivityController {
             return ResponseEntity.internalServerError()
                     .body(new Response(false, "Server error occurred", null));
         }
+    }
+    //Tìm kiếm sự kiện
+    @GetMapping("/upcoming")
+    public ResponseEntity<List<Activity>> search(
+            @RequestParam(name = "keyword", required = false) String keyword
+    ) {
+        List<Activity> list = activityService.searchUpcomingEvents(keyword);
+        return ResponseEntity.ok(list);
+    }
+    //Tìm sự kiện trong tháng
+    @GetMapping("/month")
+    public List<Activity> getByMonth(@RequestParam(required = false) Integer year,
+                                     @RequestParam(required = false) Integer month) {
+
+        YearMonth ym = (year == null || month == null)
+                ? YearMonth.now()
+                : YearMonth.of(year, month);
+
+        LocalDate startDate = ym.atDay(1);
+        LocalDate endDate = ym.plusMonths(1).atDay(1);
+
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atStartOfDay();
+
+        return activityService.getActivitiesByMonth(start, end);
+    }
+    //Hien tat ca hinh anh
+    @GetMapping("/photos/all")
+    public ResponseEntity<Response> getAllPhotos() {
+        return ResponseEntity.ok(photoService.getAllPhotos());
     }
 }

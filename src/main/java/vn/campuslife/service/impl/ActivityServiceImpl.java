@@ -1,8 +1,12 @@
 package vn.campuslife.service.impl;
 
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -710,5 +714,42 @@ public class ActivityServiceImpl implements ActivityService {
         logger.info("Auto registered {} students of departments {} for mandatory activity {}",
                 registrationsToCreate.size() + registrationsToUpdate.size(), departmentIds, activityId);
     }
+    //Tìm kiếm sự kiện
+    @Override
+    public List<Activity> searchUpcomingEvents(String keyword) {
+        Specification<Activity> spec = (root, query, cb) -> {
+            query.distinct(true);
+            List<Predicate> predicates = new ArrayList<>();
 
+            // chỉ lấy sự kiện chưa diễn ra
+            predicates.add(cb.greaterThanOrEqualTo(
+                    root.get("startDate"),
+                    LocalDateTime.now()
+            ));
+
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String k = "%" + keyword.toLowerCase() + "%";
+
+                Join<Activity, Department> deptJoin =
+                        root.join("organizers", JoinType.LEFT);
+
+                Predicate keywordPredicate = cb.or(
+                        cb.like(cb.lower(root.get("name")), k),
+                        cb.like(cb.lower(root.get("description")), k),
+                        cb.like(cb.lower(deptJoin.get("name")), k)
+                );
+
+                predicates.add(keywordPredicate);
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return activityRepository.findAll(spec);
+    }
+    //sự kiện trong tháng
+    @Override
+    public List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
+        return activityRepository.findInMonth(start, end);
+    }
 }
