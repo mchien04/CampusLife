@@ -154,4 +154,18 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
      */
     @Query("SELECT COUNT(ar) FROM ActivityRegistration ar WHERE ar.student.id = :studentId")
     Long countByStudentId(@Param("studentId") Long studentId);
+    /**
+     * Lấy danh sách đăng ký theo status của 1 sinh viên
+     */
+    @Query("""
+       SELECT ar 
+       FROM ActivityRegistration ar 
+       WHERE ar.student.id = :studentId 
+         AND ar.status = :status 
+         AND ar.activity.isDeleted = false
+       """)
+    List<ActivityRegistration> findListByStudentIdAndStatus(
+            @Param("studentId") Long studentId,
+            @Param("status") RegistrationStatus status
+    );
 }

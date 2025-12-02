@@ -1,6 +1,7 @@
 package vn.campuslife.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -9,11 +10,13 @@ import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ScoreType;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ActivityRepository extends JpaRepository<Activity, Long> {
+public interface ActivityRepository extends JpaRepository<Activity, Long>,
+        JpaSpecificationExecutor<Activity> {
 
   List<Activity> findByIsDeletedFalse();
 
@@ -90,4 +93,15 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
   @Query("SELECT COUNT(a) FROM Activity a WHERE a.startDate >= :startDate AND a.startDate <= :endDate AND a.isDeleted = false")
   Long countByDateRange(@Param("startDate") java.time.LocalDateTime startDate,
       @Param("endDate") java.time.LocalDateTime endDate);
+  //Tìm sự kiện trong tháng
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.startDate >= :start
+        and a.startDate <  :end
+      order by a.startDate desc
+      """)
+  List<Activity> findInMonth(@Param("start") LocalDateTime start,
+                             @Param("end") LocalDateTime end);
+
 }
