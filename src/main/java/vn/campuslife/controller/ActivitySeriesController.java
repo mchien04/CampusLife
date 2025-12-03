@@ -343,4 +343,117 @@ public class ActivitySeriesController {
                     .body(new Response(false, "Failed to get student progress: " + e.getMessage(), null));
         }
     }
+
+    /**
+     * Cập nhật thông tin chuỗi sự kiện
+     */
+    @PutMapping("/{seriesId}")
+    public ResponseEntity<Response> updateSeries(
+            @PathVariable Long seriesId,
+            @RequestBody Map<String, Object> request) {
+        try {
+            String name = (String) request.get("name");
+            String description = (String) request.get("description");
+            String milestonePoints = request.get("milestonePoints") != null
+                    ? request.get("milestonePoints").toString()
+                    : null;
+            
+            String scoreTypeStr = request.get("scoreType") != null
+                    ? request.get("scoreType").toString()
+                    : null;
+            vn.campuslife.enumeration.ScoreType scoreType = null;
+            if (scoreTypeStr != null) {
+                try {
+                    scoreType = vn.campuslife.enumeration.ScoreType.valueOf(scoreTypeStr);
+                } catch (IllegalArgumentException e) {
+                    logger.error("Invalid ScoreType: {}", scoreTypeStr);
+                    return ResponseEntity.badRequest()
+                            .body(new Response(false, "Invalid ScoreType: " + scoreTypeStr, null));
+                }
+            }
+
+            Long mainActivityId = null;
+            if (request.get("mainActivityId") != null) {
+                try {
+                    Object mainActivityIdObj = request.get("mainActivityId");
+                    if (mainActivityIdObj != null && !mainActivityIdObj.toString().equals("null")) {
+                        mainActivityId = Long.valueOf(mainActivityIdObj.toString());
+                    }
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid mainActivityId: {}", request.get("mainActivityId"));
+                }
+            }
+
+            java.time.LocalDateTime registrationStartDate = null;
+            if (request.get("registrationStartDate") != null) {
+                try {
+                    registrationStartDate = java.time.LocalDateTime.parse(request.get("registrationStartDate").toString());
+                } catch (Exception e) {
+                    logger.error("Invalid registrationStartDate format: {}", request.get("registrationStartDate"), e);
+                    return ResponseEntity.badRequest()
+                            .body(new Response(false, "Invalid registrationStartDate format", null));
+                }
+            }
+            
+            java.time.LocalDateTime registrationDeadline = null;
+            if (request.get("registrationDeadline") != null) {
+                try {
+                    registrationDeadline = java.time.LocalDateTime.parse(request.get("registrationDeadline").toString());
+                } catch (Exception e) {
+                    logger.error("Invalid registrationDeadline format: {}", request.get("registrationDeadline"), e);
+                    return ResponseEntity.badRequest()
+                            .body(new Response(false, "Invalid registrationDeadline format", null));
+                }
+            }
+            
+            Boolean requiresApproval = null;
+            if (request.get("requiresApproval") != null) {
+                requiresApproval = Boolean.valueOf(request.get("requiresApproval").toString());
+            }
+            
+            Integer ticketQuantity = null;
+            if (request.get("ticketQuantity") != null) {
+                try {
+                    ticketQuantity = Integer.valueOf(request.get("ticketQuantity").toString());
+                } catch (NumberFormatException e) {
+                    logger.warn("Invalid ticketQuantity: {}", request.get("ticketQuantity"));
+                }
+            }
+
+            Response response = seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
+                    mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity);
+            if (response.isStatus()) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.badRequest().body(response);
+            }
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid argument when updating series: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Invalid request: " + e.getMessage(), null));
+        } catch (Exception e) {
+            logger.error("Failed to update series: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to update series: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Xóa chuỗi sự kiện (soft delete)
+     */
+    @DeleteMapping("/{seriesId}")
+    public ResponseEntity<Response> deleteSeries(@PathVariable Long seriesId) {
+        try {
+            Response response = seriesService.deleteSeries(seriesId);
+            if (response.isStatus()) {
+                return ResponseEntity.ok(response);
+            } else {
+                return ResponseEntity.badRequest().body(response);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to delete series: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to delete series: " + e.getMessage(), null));
+        }
+    }
 }

@@ -656,4 +656,129 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         }
     }
 
+    @Override
+    @Transactional
+    public Response updateSeries(Long seriesId, String name, String description, String milestonePointsJson,
+            vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
+            LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
+            Boolean requiresApproval, Integer ticketQuantity) {
+        try {
+            // Find series
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+
+            // Check if series is deleted
+            if (series.isDeleted()) {
+                return Response.error("Series has been deleted");
+            }
+
+            // Validate required fields
+            if (name != null && name.trim().isEmpty()) {
+                return Response.error("Series name cannot be empty");
+            }
+            if (scoreType == null) {
+                return Response.error("ScoreType is required");
+            }
+
+            // Update fields (only if provided)
+            if (name != null) {
+                series.setName(name.trim());
+            }
+            if (description != null) {
+                series.setDescription(description);
+            }
+            if (milestonePointsJson != null) {
+                // Validate JSON format
+                try {
+                    objectMapper.readValue(milestonePointsJson, new TypeReference<Map<String, Integer>>() {});
+                    series.setMilestonePoints(milestonePointsJson);
+                } catch (Exception e) {
+                    logger.error("Invalid milestonePoints JSON format: {}", milestonePointsJson, e);
+                    return Response.error("Invalid milestonePoints JSON format");
+                }
+            }
+            if (scoreType != null) {
+                series.setScoreType(scoreType);
+            }
+            if (mainActivityId != null) {
+                Optional<Activity> mainActivityOpt = activityRepository.findById(mainActivityId);
+                if (mainActivityOpt.isPresent()) {
+                    series.setMainActivity(mainActivityOpt.get());
+                } else {
+                    logger.warn("Main activity not found: {}", mainActivityId);
+                    return Response.error("Main activity not found: " + mainActivityId);
+                }
+            }
+            // Note: If mainActivityId is null, we don't update it (keep existing value)
+            if (registrationStartDate != null) {
+                series.setRegistrationStartDate(registrationStartDate);
+            }
+            if (registrationDeadline != null) {
+                series.setRegistrationDeadline(registrationDeadline);
+            }
+            if (requiresApproval != null) {
+                series.setRequiresApproval(requiresApproval);
+            }
+            if (ticketQuantity != null) {
+                series.setTicketQuantity(ticketQuantity);
+            }
+
+            ActivitySeries saved = seriesRepository.save(series);
+            logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
+            return Response.success("Activity series updated successfully", saved);
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid argument when updating series: {}", e.getMessage(), e);
+            return Response.error("Invalid request: " + e.getMessage());
+        } catch (Exception e) {
+            logger.error("Failed to update series: {}", e.getMessage(), e);
+            return Response.error("Failed to update series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response deleteSeries(Long seriesId) {
+        try {
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+            if (series.isDeleted()) {
+                return Response.error("Series already deleted");
+            }
+
+            // Find all activities in this series (including already deleted ones)
+            List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            
+            // Soft delete all activities in the series
+            int deletedActivitiesCount = 0;
+            for (Activity activity : activities) {
+                if (!activity.isDeleted()) {
+                    activity.setDeleted(true);
+                    activityRepository.save(activity);
+                    deletedActivitiesCount++;
+                }
+            }
+
+            // Soft delete the series
+            series.setDeleted(true);
+            seriesRepository.save(series);
+
+            logger.info("Deleted activity series: {} and {} activities", seriesId, deletedActivitiesCount);
+            return Response.success(
+                String.format("Activity series deleted successfully. %d activities also deleted.", deletedActivitiesCount),
+                null
+            );
+        } catch (Exception e) {
+            logger.error("Failed to delete series: {}", e.getMessage(), e);
+            return Response.error("Failed to delete series: " + e.getMessage());
+        }
+    }
+
 }

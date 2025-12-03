@@ -10,6 +10,7 @@ import vn.campuslife.model.LoginRequest;
 import vn.campuslife.model.RegisterRequest;
 import vn.campuslife.model.ForgotPasswordRequest;
 import vn.campuslife.model.ResetPasswordRequest;
+import vn.campuslife.model.ChangePasswordRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivationTokenRepository;
 import vn.campuslife.repository.PasswordResetTokenRepository;
@@ -282,6 +283,57 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
             return new Response(false, e.getMessage(), null);
         } catch (Exception e) {
             return new Response(false, "Failed to reset password: " + e.getMessage(), null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response changePassword(String username, ChangePasswordRequest request) {
+        try {
+            // Validate request
+            if (request.getOldPassword() == null || request.getOldPassword().trim().isEmpty()) {
+                return new Response(false, "Old password is required", null);
+            }
+            if (request.getNewPassword() == null || request.getNewPassword().trim().isEmpty()) {
+                return new Response(false, "New password is required", null);
+            }
+            if (request.getConfirmPassword() == null || request.getConfirmPassword().trim().isEmpty()) {
+                return new Response(false, "Confirm password is required", null);
+            }
+
+            // Validate password length
+            if (request.getNewPassword().length() < 6) {
+                return new Response(false, "New password must be at least 6 characters long", null);
+            }
+
+            // Validate new password and confirm password match
+            if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+                return new Response(false, "New password and confirm password do not match", null);
+            }
+
+            // Validate new password is different from old password
+            if (request.getOldPassword().equals(request.getNewPassword())) {
+                return new Response(false, "New password must be different from old password", null);
+            }
+
+            // Find user
+            User user = userRepository.findByUsernameAndIsDeletedFalse(username)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            // Verify old password
+            if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+                return new Response(false, "Old password is incorrect", null);
+            }
+
+            // Update password
+            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            userRepository.save(user);
+
+            return new Response(true, "Password changed successfully", null);
+        } catch (RuntimeException e) {
+            return new Response(false, e.getMessage(), null);
+        } catch (Exception e) {
+            return new Response(false, "Failed to change password: " + e.getMessage(), null);
         }
     }
 }

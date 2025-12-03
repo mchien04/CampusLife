@@ -82,4 +82,44 @@ public class EmailUtil {
             return false;
         }
     }
+
+    public boolean sendStudentCredentialsEmail(String to, String username, String password) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject("Thông tin tài khoản CampusLife");
+            
+            String loginLink = frontendUrl + "/login";
+            String content = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">" +
+                    "<h2 style=\"color: #007bff;\">Chào mừng đến với CampusLife!</h2>" +
+                    "<p>Xin chào,</p>" +
+                    "<p>Bạn đã được tạo tài khoản trên hệ thống CampusLife. Dưới đây là thông tin đăng nhập của bạn:</p>" +
+                    "<div style=\"background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;\">" +
+                    "<p style=\"margin: 5px 0;\"><strong>Tên đăng nhập:</strong> " + username + "</p>" +
+                    "<p style=\"margin: 5px 0;\"><strong>Mật khẩu:</strong> " + password + "</p>" +
+                    "</div>" +
+                    "<p>Vui lòng đăng nhập tại: <a href=\"" + loginLink + "\" style=\"color: #007bff;\">" + loginLink + "</a></p>" +
+                    "<p style=\"color: #dc3545; font-weight: bold;\">⚠️ Lưu ý: Vui lòng đổi mật khẩu sau khi đăng nhập lần đầu để bảo mật tài khoản.</p>" +
+                    "<p>Nếu bạn có bất kỳ câu hỏi nào, vui lòng liên hệ với quản trị viên.</p>" +
+                    "<p>Trân trọng,<br>CampusLife Team</p>" +
+                    "</div>";
+            
+            helper.setText(content, true);
+
+            System.out.println("Attempting to send student credentials email to: " + to);
+            mailSender.send(message);
+            System.out.println("Student credentials email sent successfully to: " + to);
+            return true;
+        } catch (Exception e) {
+            System.err.println("Student credentials email sending failed to " + to + ": " + e.getMessage());
+            if (e.getMessage() != null && e.getMessage().contains("Daily user sending limit exceeded")) {
+                System.err.println(
+                        "Gmail daily sending limit exceeded. Please wait 24 hours or use a different email service.");
+            }
+            return false;
+        }
+    }
 }

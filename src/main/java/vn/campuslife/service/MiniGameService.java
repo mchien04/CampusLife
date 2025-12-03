@@ -64,5 +64,16 @@ public interface MiniGameService {
      * Lấy tất cả minigames (Admin/Manager)
      */
     Response getAllMiniGames();
+
+    /**
+     * Kiểm tra xem activity đã có minigame/quiz chưa
+     */
+    Response checkActivityHasQuiz(Long activityId);
+
+    /**
+     * Lấy danh sách câu hỏi và options với đáp án đúng (cho admin/manager để chỉnh sửa)
+     * Nếu chưa có quiz, trả về questions rỗng
+     */
+    Response getQuestionsForEdit(Long miniGameId);
 }
 

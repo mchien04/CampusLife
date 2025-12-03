@@ -248,6 +248,37 @@ public class MiniGameController {
         }
     }
 
+    /**
+     * Kiểm tra xem activity đã có minigame/quiz chưa
+     */
+    @GetMapping("/activity/{activityId}/check")
+    public ResponseEntity<Response> checkActivityHasQuiz(@PathVariable Long activityId) {
+        try {
+            Response response = miniGameService.checkActivityHasQuiz(activityId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to check activity quiz: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to check activity quiz: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Lấy danh sách câu hỏi và options với đáp án đúng (cho admin/manager để chỉnh sửa)
+     * Nếu chưa có quiz, trả về questions rỗng
+     */
+    @GetMapping("/{miniGameId}/questions/edit")
+    public ResponseEntity<Response> getQuestionsForEdit(@PathVariable Long miniGameId) {
+        try {
+            Response response = miniGameService.getQuestionsForEdit(miniGameId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get questions for edit: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get questions for edit: " + e.getMessage(), null));
+        }
+    }
+
     private final vn.campuslife.service.StudentService studentService;
 
     /**
