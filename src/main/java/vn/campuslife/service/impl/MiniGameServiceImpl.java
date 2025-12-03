@@ -56,6 +56,12 @@ public class MiniGameServiceImpl implements MiniGameService {
                 return Response.error("Activity type must be MINIGAME");
             }
 
+            // Kiểm tra xem activity đã có minigame chưa (đảm bảo 1 activity chỉ có 1 minigame)
+            Optional<MiniGame> existingMiniGameOpt = miniGameRepository.findByActivityId(activityId);
+            if (existingMiniGameOpt.isPresent()) {
+                return Response.error("Activity already has a minigame. Use update API to modify it.");
+            }
+
             // Tạo MiniGame
             MiniGame miniGame = new MiniGame();
             miniGame.setTitle(title);
@@ -621,6 +627,83 @@ public class MiniGameServiceImpl implements MiniGameService {
         } catch (Exception e) {
             logger.error("Failed to get all minigames: {}", e.getMessage(), e);
             return Response.error("Failed to get all minigames: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response checkActivityHasQuiz(Long activityId) {
+        try {
+            // Kiểm tra activity tồn tại
+            Optional<Activity> activityOpt = activityRepository.findById(activityId);
+            if (activityOpt.isEmpty()) {
+                return Response.error("Activity not found");
+            }
+
+            Activity activity = activityOpt.get();
+            if (activity.getType() != vn.campuslife.enumeration.ActivityType.MINIGAME) {
+                return Response.error("Activity type is not MINIGAME");
+            }
+
+            // Kiểm tra xem có minigame chưa
+            Optional<MiniGame> miniGameOpt = miniGameRepository.findByActivityId(activityId);
+            if (miniGameOpt.isEmpty()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("hasQuiz", false);
+                response.put("message", "Activity does not have a minigame/quiz yet");
+                return Response.success("Activity does not have quiz", response);
+            }
+
+            MiniGame miniGame = miniGameOpt.get();
+            
+            // Kiểm tra xem có quiz chưa
+            Optional<MiniGameQuiz> quizOpt = quizRepository.findByMiniGameId(miniGame.getId());
+            boolean hasQuiz = quizOpt.isPresent();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("hasQuiz", hasQuiz);
+            response.put("miniGameId", miniGame.getId());
+            response.put("miniGameTitle", miniGame.getTitle());
+            response.put("isActive", miniGame.isActive());
+            if (hasQuiz) {
+                MiniGameQuiz quiz = quizOpt.get();
+                response.put("quizId", quiz.getId());
+                response.put("questionCount", quiz.getQuestions() != null ? quiz.getQuestions().size() : 0);
+            }
+            response.put("message", hasQuiz ? "Activity already has a minigame/quiz" : "Activity has minigame but no quiz yet");
+
+            return Response.success("Check completed", response);
+        } catch (Exception e) {
+            logger.error("Failed to check activity quiz: {}", e.getMessage(), e);
+            return Response.error("Failed to check activity quiz: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getQuestionsForEdit(Long miniGameId) {
+        try {
+            Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
+            if (miniGameOpt.isEmpty()) {
+                return Response.error("MiniGame not found");
+            }
+
+            MiniGame miniGame = miniGameOpt.get();
+
+            // Lấy quiz (có thể không có nếu chưa tạo quiz)
+            Optional<MiniGameQuiz> quizOpt = quizRepository.findByMiniGameId(miniGame.getId());
+            
+            // Build response với đáp án đúng (cho admin/manager edit)
+            // Nếu chưa có quiz, trả về questions rỗng
+            QuizQuestionsEditResponse response = QuizQuestionsEditResponse.fromEntities(
+                    miniGame, 
+                    quizOpt.orElse(null)
+            );
+            
+            return Response.success("Questions retrieved successfully for edit", response);
+        } catch (Exception e) {
+            logger.error("Failed to get questions for edit: {}", e.getMessage(), e);
+            return Response.error("Failed to get questions for edit: " + e.getMessage());
         }
     }
 

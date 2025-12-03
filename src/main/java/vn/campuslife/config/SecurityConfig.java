@@ -78,6 +78,8 @@ public class SecurityConfig {
 
                         // Admin-only endpoints
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Student Account Management - Admin only
+                        .requestMatchers("/api/admin/students/**").hasRole("ADMIN")
 
                         // Activities
                         .requestMatchers(HttpMethod.GET, "/api/activities/upcoming")
