@@ -55,5 +55,10 @@ public interface ActivityService {
     //Sự kiện trong tháng
     List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end);
 
+    /**
+     * Tạo checkInCode cho các activity chưa có code
+     * @return Response với số lượng activity đã được cập nhật
+     */
+    Response backfillCheckInCodes();
 
 }

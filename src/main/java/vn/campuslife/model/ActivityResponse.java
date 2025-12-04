@@ -34,6 +34,7 @@ public class ActivityResponse {
     private String benefits;
     private String requirements;
     private String contactInfo;
+    private String checkInCode;
     private boolean requiresApproval;
     private boolean mandatoryForFacultyStudents;
     private BigDecimal penaltyPointsIncomplete;

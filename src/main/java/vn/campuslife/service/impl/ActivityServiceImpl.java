@@ -39,6 +39,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -69,6 +70,15 @@ public class ActivityServiceImpl implements ActivityService {
             applyRequestToEntity(request, a);
             a.setOrganizers(organizers);
             Activity saved = activityRepository.save(a);
+            
+            // Auto-generate checkInCode if not provided
+            if (saved.getCheckInCode() == null || saved.getCheckInCode().isBlank()) {
+                String checkInCode = generateCheckInCode(saved.getId());
+                saved.setCheckInCode(checkInCode);
+                saved = activityRepository.save(saved);
+                logger.debug("Auto-generated checkInCode for activity {}: {}", saved.getId(), checkInCode);
+            }
+            
             // Auto-register students based on flags (this handles both isImportant and mandatoryForFacultyStudents)
             // Note: autoRegisterStudents will skip if activity is draft
             logger.debug("Activity created (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})", 
@@ -461,6 +471,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setBenefits(a.getBenefits());
         dto.setRequirements(a.getRequirements());
         dto.setContactInfo(a.getContactInfo());
+        dto.setCheckInCode(a.getCheckInCode());
         dto.setRequiresApproval(a.isRequiresApproval());
         dto.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
         dto.setPenaltyPointsIncomplete(a.getPenaltyPointsIncomplete());
@@ -526,6 +537,10 @@ public class ActivityServiceImpl implements ActivityService {
                             registration.setStudent(student);
                             registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
                             registration.setRegisteredDate(java.time.LocalDateTime.now());
+                            // Nếu activity thuộc series, lưu seriesId để nhận diện đăng ký chuỗi
+                            if (activity.getSeriesId() != null) {
+                                registration.setSeriesId(activity.getSeriesId());
+                            }
                             return registration;
                         })
                         .collect(Collectors.toList());
@@ -751,5 +766,48 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     public List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
         return activityRepository.findInMonth(start, end);
+    }
+
+    /**
+     * Generate check-in code for activity
+     * Format: ACT-{activityId padded to 6 digits}-{8 random uppercase characters}
+     * Example: ACT-000123-A7B9C2D1
+     */
+    private String generateCheckInCode(Long activityId) {
+        String random = UUID.randomUUID().toString().substring(0, 8).toUpperCase().replace("-", "");
+        return String.format("ACT-%06d-%s", activityId, random);
+    }
+
+    @Override
+    @Transactional
+    public Response backfillCheckInCodes() {
+        try {
+            // Lấy tất cả activities chưa có checkInCode
+            List<Activity> activitiesWithoutCode = activityRepository.findAll().stream()
+                    .filter(a -> !a.isDeleted())
+                    .filter(a -> a.getCheckInCode() == null || a.getCheckInCode().isBlank())
+                    .collect(Collectors.toList());
+
+            if (activitiesWithoutCode.isEmpty()) {
+                return Response.success("Tất cả activities đã có checkInCode", null);
+            }
+
+            int updatedCount = 0;
+            for (Activity activity : activitiesWithoutCode) {
+                String checkInCode = generateCheckInCode(activity.getId());
+                activity.setCheckInCode(checkInCode);
+                activityRepository.save(activity);
+                updatedCount++;
+                logger.info("Generated checkInCode for activity {}: {}", activity.getId(), checkInCode);
+            }
+
+            return Response.success(
+                    String.format("Đã tạo checkInCode cho %d activity", updatedCount),
+                    Map.of("updatedCount", updatedCount, "totalActivities", activitiesWithoutCode.size())
+            );
+        } catch (Exception e) {
+            logger.error("Failed to backfill checkInCodes: {}", e.getMessage(), e);
+            return Response.error("Failed to backfill checkInCodes: " + e.getMessage());
+        }
     }
 }
