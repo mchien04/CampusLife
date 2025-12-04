@@ -26,4 +26,6 @@ public class ActivityRegistrationResponse {
     private LocalDateTime registeredDate;
     private LocalDateTime createdAt;
     private String ticketCode;
+    // Nếu registration thuộc một chuỗi sự kiện, seriesId != null
+    private Long seriesId;
 }

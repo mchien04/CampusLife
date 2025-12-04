@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 public class QuizQuestionDetailResponse {
     private Long id;
     private String questionText;
+    private String imageUrl;
     private Integer displayOrder;
     private List<QuizOptionDetailResponse> options;
     private Long correctOptionId;
@@ -31,6 +32,7 @@ public class QuizQuestionDetailResponse {
         QuizQuestionDetailResponse response = new QuizQuestionDetailResponse();
         response.setId(question.getId());
         response.setQuestionText(question.getQuestionText());
+        response.setImageUrl(question.getImageUrl());
         response.setDisplayOrder(question.getDisplayOrder());
 
         // Tìm đáp án đúng

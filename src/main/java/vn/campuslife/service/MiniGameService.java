@@ -11,7 +11,7 @@ public interface MiniGameService {
      */
     Response createMiniGame(Long activityId, String title, String description, Integer questionCount,
                            Integer timeLimit, Integer requiredCorrectAnswers, java.math.BigDecimal rewardPoints,
-                           List<Map<String, Object>> questions);
+                           Integer maxAttempts, List<Map<String, Object>> questions);
 
     /**
      * Lấy minigame theo activity ID
@@ -53,7 +53,7 @@ public interface MiniGameService {
      */
     Response updateMiniGame(Long miniGameId, String title, String description, Integer questionCount,
                            Integer timeLimit, Integer requiredCorrectAnswers, java.math.BigDecimal rewardPoints,
-                           List<Map<String, Object>> questions);
+                           Integer maxAttempts, List<Map<String, Object>> questions);
 
     /**
      * Xóa minigame (soft delete)

@@ -41,5 +41,9 @@ public class MiniGameQuizQuestion {
     @Column(nullable = false)
     @Comment("Thứ tự hiển thị")
     private Integer displayOrder = 0;
+
+    @Column(name = "image_url", length = 500)
+    @Comment("URL ảnh cho câu hỏi")
+    private String imageUrl;
 }
 

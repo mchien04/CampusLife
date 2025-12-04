@@ -100,6 +100,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             registration.setActivity(activity);
             registration.setStudent(student);
             registration.setRegisteredDate(LocalDateTime.now());
+            // Nếu activity thuộc series, lưu luôn seriesId để FE dễ kiểm tra đăng ký chuỗi
+            if (activity.getSeriesId() != null) {
+                registration.setSeriesId(activity.getSeriesId());
+            }
             // Auto-approve if activity does not require approval
             registration.setStatus(
                     activity.isRequiresApproval() ? RegistrationStatus.PENDING : RegistrationStatus.APPROVED);
@@ -551,6 +555,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         res.setRegisteredDate(r.getRegisteredDate());
         res.setCreatedAt(r.getCreatedAt());
         res.setTicketCode(r.getTicketCode());
+        res.setSeriesId(r.getSeriesId());
         return res;
     }
 
