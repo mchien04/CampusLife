@@ -157,6 +157,12 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
      * Kiểm tra student đã có bất kỳ registration nào thuộc series này chưa
      */
     boolean existsBySeriesIdAndStudentId(Long seriesId, Long studentId);
+
+    /**
+     * Lấy danh sách đăng ký theo series ID
+     */
+    @Query("SELECT ar FROM ActivityRegistration ar WHERE ar.seriesId = :seriesId AND ar.student.isDeleted = false")
+    List<ActivityRegistration> findBySeriesId(@Param("seriesId") Long seriesId);
     /**
      * Lấy danh sách đăng ký theo status của 1 sinh viên
      */

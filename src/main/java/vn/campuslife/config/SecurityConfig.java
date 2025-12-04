@@ -75,6 +75,8 @@ public class SecurityConfig {
 
                         // Check-in endpoints - place early to avoid pattern conflicts
                         .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/registrations/checkin/qr")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/test").authenticated()
 
                         // Admin-only endpoints
@@ -96,6 +98,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/activities/*/photos/*")
                         .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/activities/*/photos/*/order")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        // Backfill checkInCodes - Admin/Manager only
+                        .requestMatchers(HttpMethod.POST, "/api/activities/backfill-checkin-codes")
                         .hasAnyRole("ADMIN", "MANAGER")
 
                         // Activity Series
@@ -131,6 +136,10 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
+                        
+                        // Email endpoints - Admin/Manager only
+                        .requestMatchers("/api/emails/**").hasAnyRole("ADMIN", "MANAGER")
+                        
                         // Hien thi participations
                         .requestMatchers(HttpMethod.GET, "/api/participations").permitAll()
                         // Tasks and Assignments
