@@ -228,6 +228,35 @@ public class ActivityRegistrationController {
     }
 
     /**
+     * Check-in bằng QR code (tự động set thành ATTENDED)
+     */
+    @PostMapping("/checkin/qr")
+    public ResponseEntity<Response> checkInByQrCode(
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+        try {
+            String checkInCode = request.get("checkInCode");
+            if (checkInCode == null || checkInCode.isBlank()) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "checkInCode is required", null));
+            }
+
+            Long studentId = getStudentIdFromAuth(authentication);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+
+            Response response = registrationService.checkInByQrCode(checkInCode, studentId);
+            return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
+        } catch (Exception e) {
+            logger.error("Failed to check-in by QR code: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to check-in: " + e.getMessage(), null));
+        }
+    }
+
+    /**
      * Helper method to get student ID from authentication
      */
     private Long getStudentIdFromAuth(Authentication authentication) {

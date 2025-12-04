@@ -56,8 +56,8 @@ public class StudentServiceImpl implements StudentService {
     @Override
     public Response searchStudents(String keyword, Pageable pageable) {
         try {
-            Page<Student> students = studentRepository.findByFullNameContainingIgnoreCaseAndIsDeletedFalse(
-                    keyword, pageable);
+            // Tìm kiếm theo cả tên và mã sinh viên
+            Page<Student> students = studentRepository.searchByFullNameOrStudentCode(keyword, pageable);
 
             Map<String, Object> result = new HashMap<>();
             result.put("content", students.getContent());

@@ -466,6 +466,118 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
+    @Override
+    @Transactional
+    public Response checkInByQrCode(String checkInCode, Long studentId) {
+        try {
+            // 1. Tìm activity theo checkInCode
+            Activity activity = activityRepository.findByCheckInCode(checkInCode)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy activity với mã QR này"));
+
+            // 2. Validate activity
+            if (activity.isDraft()) {
+                return Response.error("Activity chưa được công bố");
+            }
+
+            // 3. Tìm registration của sinh viên cho activity
+            ActivityRegistration registration = registrationRepository
+                    .findByActivityIdAndStudentId(activity.getId(), studentId)
+                    .filter(r -> r.getStatus() == RegistrationStatus.APPROVED)
+                    .orElseThrow(() -> new RuntimeException("Bạn chưa đăng ký hoặc chưa được duyệt tham gia activity này"));
+
+            // 4. Tìm participation
+            ActivityParticipation participation = participationRepository
+                    .findByRegistration(registration)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
+
+            // 5. Kiểm tra đã check-in chưa
+            if (participation.getParticipationType() == ParticipationType.ATTENDED
+                    || participation.getParticipationType() == ParticipationType.COMPLETED) {
+                return Response.error("Bạn đã điểm danh activity này rồi");
+            }
+
+            // 6. Set trực tiếp thành ATTENDED (bỏ qua CHECKED_IN và CHECKED_OUT)
+            LocalDateTime now = LocalDateTime.now();
+            participation.setParticipationType(ParticipationType.ATTENDED);
+            participation.setCheckInTime(now);
+            participation.setCheckOutTime(now); // Cùng thời điểm
+            participation.setDate(now);
+            registration.setStatus(RegistrationStatus.ATTENDED);
+            registrationRepository.save(registration);
+
+            // 7. Xử lý điểm (giống check-out logic)
+            if (!activity.isRequiresSubmission()) {
+                participation.setIsCompleted(true);
+                participation.setParticipationType(ParticipationType.COMPLETED);
+
+                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và CHUYEN_DE_DOANH_NGHIEP
+                if (activity.getSeriesId() != null) {
+                    // Activity trong series → KHÔNG tính điểm từ maxPoints
+                    participation.setPointsEarned(BigDecimal.ZERO);
+                    participationRepository.save(participation);
+
+                    // Chỉ update series progress (điểm milestone sẽ được tính tự động)
+                    try {
+                        activitySeriesService.updateStudentProgress(
+                                registration.getStudent().getId(),
+                                activity.getId());
+                        logger.info("Updated series progress for activity {} in series {} via QR code",
+                                activity.getName(), activity.getSeriesId());
+                    } catch (Exception e) {
+                        logger.warn("Failed to update series progress: {}", e.getMessage());
+                        // Không fail check-in nếu update series progress lỗi
+                    }
+                } else if (activity.getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP) {
+                    // CHUYEN_DE_DOANH_NGHIEP: Dual Score Calculation
+                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+                    participation.setPointsEarned(points);
+                    participationRepository.save(participation);
+
+                    try {
+                        // CHUYEN_DE: Đếm số buổi
+                        updateChuyenDeScoreCount(participation);
+
+                        // REN_LUYEN: Cộng điểm từ maxPoints (nếu có)
+                        if (activity.getMaxPoints() != null) {
+                            updateRenLuyenScoreFromParticipation(participation);
+                        }
+
+                        logger.info("Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {} via QR code. Count: +1, RL Points: {}",
+                                activity.getName(), activity.getMaxPoints());
+                    } catch (Exception e) {
+                        logger.error("Failed to update dual score after QR code check-in: {}", e.getMessage(), e);
+                    }
+                } else {
+                    // Activity đơn lẻ khác → tính điểm bình thường từ maxPoints
+                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+                    participation.setPointsEarned(points);
+                    participationRepository.save(participation);
+
+                    // Cập nhật StudentScore
+                    try {
+                        updateStudentScoreFromParticipation(participation);
+                        logger.info("Auto-completed participation for activity {} via QR code. Points: {}",
+                                activity.getName(), points);
+                    } catch (Exception e) {
+                        logger.error("Failed to update student score after QR code check-in: {}", e.getMessage(), e);
+                    }
+                }
+            }
+
+            participationRepository.save(participation);
+
+            ActivityParticipationResponse resp = toParticipationResponse(participation);
+            return Response.success("Điểm danh thành công bằng QR code", resp);
+
+        } catch (RuntimeException e) {
+            logger.error("Failed to check-in by QR code: {}", e.getMessage());
+            return Response.error(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Failed to check-in by QR code: {}", e.getMessage(), e);
+            return Response.error("Failed to check-in by QR code: " + e.getMessage());
+        }
+    }
+
     /**
      * Chấm điểm completion (đạt/không đạt)
      */
