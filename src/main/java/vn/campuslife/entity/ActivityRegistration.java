@@ -28,6 +28,11 @@ public class ActivityRegistration {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
+    // Nếu đăng ký này được tạo thông qua đăng ký chuỗi sự kiện,
+    // seriesId sẽ trỏ tới ActivitySeries tương ứng. Activity đơn lẻ: null.
+    @Column(name = "series_id")
+    private Long seriesId;
+
     private LocalDateTime registeredDate;
 
     @Enumerated(EnumType.STRING)

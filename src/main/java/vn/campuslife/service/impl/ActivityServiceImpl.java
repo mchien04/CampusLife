@@ -526,6 +526,10 @@ public class ActivityServiceImpl implements ActivityService {
                             registration.setStudent(student);
                             registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
                             registration.setRegisteredDate(java.time.LocalDateTime.now());
+                            // Nếu activity thuộc series, lưu seriesId để nhận diện đăng ký chuỗi
+                            if (activity.getSeriesId() != null) {
+                                registration.setSeriesId(activity.getSeriesId());
+                            }
                             return registration;
                         })
                         .collect(Collectors.toList());

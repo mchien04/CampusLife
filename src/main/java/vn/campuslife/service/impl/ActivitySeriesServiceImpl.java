@@ -2,13 +2,9 @@ package vn.campuslife.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
-import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
@@ -101,6 +97,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         }
 
         ActivitySeries series = seriesOpt.get();
+        if (series.isDeleted()) {
+            return Response.error("Series has been deleted");
+        }
 
         // Tạo activity với các thuộc tính tối giản
         Activity activity = new Activity();
@@ -140,6 +139,10 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
         Activity saved = activityRepository.save(activity);
         logger.info("Created activity {} in series {} with order {}", saved.getId(), seriesId, order);
+
+        // Auto-register all students who already registered any activity in this series
+        autoRegisterStudentsForNewActivityInSeries(series, saved);
+
         return Response.success("Activity created in series successfully", saved);
     }
 
@@ -217,6 +220,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 registration.setActivity(activity);
                 registration.setStudent(student);
                 registration.setRegisteredDate(LocalDateTime.now());
+                registration.setSeriesId(seriesId);
                 registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
 
                 // Set status dựa trên requiresApproval của series
@@ -262,13 +266,91 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             Activity activity = activityOpt.get();
             activity.setSeriesId(seriesId);
             activity.setSeriesOrder(order);
-            activityRepository.save(activity);
+            Activity savedActivity = activityRepository.save(activity);
+
+            // Auto-register all students who already registered any activity in this series
+            ActivitySeries series = seriesOpt.get();
+            if (!series.isDeleted()) {
+                autoRegisterStudentsForNewActivityInSeries(series, savedActivity);
+            }
 
             logger.info("Added activity {} to series {} with order {}", activityId, seriesId, order);
             return Response.success("Activity added to series successfully", activity);
         } catch (Exception e) {
             logger.error("Failed to add activity to series: {}", e.getMessage(), e);
             return Response.error("Failed to add activity to series: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Auto-register all students who already have at least one registration in this series
+     * for the newly created/added activity.
+     */
+    private void autoRegisterStudentsForNewActivityInSeries(ActivitySeries series, Activity newActivity) {
+        try {
+            Long seriesId = series.getId();
+
+            // Lấy tất cả activities trong series (trừ activity mới nếu cần)
+            List<Activity> activitiesInSeries = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+
+            // Thu thập tất cả student đã đăng ký ít nhất 1 activity trong series
+            Set<Long> studentIds = new HashSet<>();
+            for (Activity activity : activitiesInSeries) {
+                // Không cần bỏ qua newActivity vì tại thời điểm này activity mới chưa có đăng ký
+                List<ActivityRegistration> regs = registrationRepository
+                        .findByActivityIdAndActivityIsDeletedFalse(activity.getId());
+                for (ActivityRegistration reg : regs) {
+                    if (reg.getStudent() != null && reg.getStudent().getId() != null) {
+                        studentIds.add(reg.getStudent().getId());
+                    }
+                }
+            }
+
+            if (studentIds.isEmpty()) {
+                logger.info("No existing registrations in series {} to auto-register for new activity {}", seriesId,
+                        newActivity.getId());
+                return;
+            }
+
+            // Load students từ IDs
+            List<Student> students = studentRepository.findAllById(studentIds);
+
+            List<ActivityRegistration> registrationsToCreate = new ArrayList<>();
+            for (Student student : students) {
+                // Bỏ qua nếu đã có registration cho activity mới
+                if (registrationRepository.existsByActivityIdAndStudentId(newActivity.getId(), student.getId())) {
+                    continue;
+                }
+
+                ActivityRegistration registration = new ActivityRegistration();
+                registration.setActivity(newActivity);
+                registration.setStudent(student);
+                registration.setRegisteredDate(LocalDateTime.now());
+                registration.setSeriesId(series.getId());
+                registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+
+                // Set status dựa trên requiresApproval của series
+                if (series.isRequiresApproval()) {
+                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.PENDING);
+                } else {
+                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
+                }
+
+                registrationsToCreate.add(registration);
+            }
+
+            if (!registrationsToCreate.isEmpty()) {
+                registrationRepository.saveAll(registrationsToCreate);
+                logger.info(
+                        "Auto-registered {} students for new activity {} in series {} based on existing series registrations",
+                        registrationsToCreate.size(), newActivity.getId(), seriesId);
+            } else {
+                logger.info("No students needed auto-registration for new activity {} in series {}", newActivity.getId(),
+                        seriesId);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to auto-register students for new activity in series {}: {}", series.getId(),
+                    e.getMessage(), e);
         }
     }
 
@@ -653,6 +735,36 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         } catch (Exception e) {
             logger.error("Failed to get student progress: {}", e.getMessage(), e);
             return Response.error("Failed to get student progress: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response checkSeriesRegistration(Long seriesId, Long studentId) {
+        try {
+            // Validate series exists
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            // Validate student exists
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+
+            boolean isRegistered = registrationRepository.existsBySeriesIdAndStudentId(seriesId, studentId);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("seriesId", seriesId);
+            data.put("studentId", studentId);
+            data.put("isRegistered", isRegistered);
+
+            return Response.success("Series registration status retrieved", data);
+        } catch (Exception e) {
+            logger.error("Failed to check series registration: {}", e.getMessage(), e);
+            return Response.error("Failed to check series registration: " + e.getMessage());
         }
     }
 

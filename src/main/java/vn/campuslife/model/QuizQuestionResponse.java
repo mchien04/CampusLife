@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 public class QuizQuestionResponse {
     private Long id;
     private String questionText;
+    private String imageUrl;
     private Integer displayOrder;
     private List<QuizOptionResponse> options;
 
@@ -25,6 +26,7 @@ public class QuizQuestionResponse {
         QuizQuestionResponse response = new QuizQuestionResponse();
         response.setId(question.getId());
         response.setQuestionText(question.getQuestionText());
+        response.setImageUrl(question.getImageUrl());
         response.setDisplayOrder(question.getDisplayOrder());
         if (question.getOptions() != null) {
             response.setOptions(question.getOptions().stream()
