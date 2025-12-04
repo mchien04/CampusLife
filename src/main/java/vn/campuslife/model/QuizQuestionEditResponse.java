@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 public class QuizQuestionEditResponse {
     private Long id;
     private String questionText;
+    private String imageUrl;
     private Integer displayOrder;
     private List<QuizOptionEditResponse> options;
 
@@ -24,6 +25,7 @@ public class QuizQuestionEditResponse {
         QuizQuestionEditResponse response = new QuizQuestionEditResponse();
         response.setId(question.getId());
         response.setQuestionText(question.getQuestionText());
+        response.setImageUrl(question.getImageUrl());
         response.setDisplayOrder(question.getDisplayOrder());
         if (question.getOptions() != null) {
             response.setOptions(question.getOptions().stream()

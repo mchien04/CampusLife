@@ -38,12 +38,14 @@ public class MiniGameController {
                     ? Integer.valueOf(request.get("requiredCorrectAnswers").toString()) : null;
             BigDecimal rewardPoints = request.get("rewardPoints") != null 
                     ? new BigDecimal(request.get("rewardPoints").toString()) : null;
+            Integer maxAttempts = request.get("maxAttempts") != null 
+                    ? Integer.valueOf(request.get("maxAttempts").toString()) : null;
             
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> questions = (List<Map<String, Object>>) request.get("questions");
 
             Response response = miniGameService.createMiniGame(activityId, title, description, questionCount,
-                    timeLimit, requiredCorrectAnswers, rewardPoints, questions);
+                    timeLimit, requiredCorrectAnswers, rewardPoints, maxAttempts, questions);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to create minigame: {}", e.getMessage(), e);
@@ -204,12 +206,14 @@ public class MiniGameController {
                     ? Integer.valueOf(request.get("requiredCorrectAnswers").toString()) : null;
             BigDecimal rewardPoints = request.get("rewardPoints") != null
                     ? new BigDecimal(request.get("rewardPoints").toString()) : null;
+            Integer maxAttempts = request.get("maxAttempts") != null
+                    ? Integer.valueOf(request.get("maxAttempts").toString()) : null;
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> questions = (List<Map<String, Object>>) request.get("questions");
 
             Response response = miniGameService.updateMiniGame(miniGameId, title, description, questionCount,
-                    timeLimit, requiredCorrectAnswers, rewardPoints, questions);
+                    timeLimit, requiredCorrectAnswers, rewardPoints, maxAttempts, questions);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to update minigame: {}", e.getMessage(), e);
