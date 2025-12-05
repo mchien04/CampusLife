@@ -10,6 +10,7 @@ public interface UserManagementService {
     Response deleteUser(Long userId);
     Response getUserById(Long userId);
     Response getAllUsers();
+    Response getAllUsersIncludingStudents();
     Response getUsersByRole(String role);
 }
 

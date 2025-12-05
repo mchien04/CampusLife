@@ -15,6 +15,8 @@ public class TaskAssignmentResponse {
     private Long id;
     private Long taskId;
     private String taskName;
+    private Long activityId; // ID của sự kiện chứa nhiệm vụ này
+    private String activityName; // Tên sự kiện
     private Long studentId;
     private String studentName;
     private String studentCode;

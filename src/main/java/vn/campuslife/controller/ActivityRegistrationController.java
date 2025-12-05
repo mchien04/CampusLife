@@ -98,6 +98,15 @@ public class ActivityRegistrationController {
     }
 
     /**
+     * Lấy danh sách đăng ký theo chuỗi sự kiện (Admin/Manager)
+     */
+    @GetMapping("/series/{seriesId}")
+    public ResponseEntity<Response> getSeriesRegistrations(@PathVariable Long seriesId) {
+        Response response = registrationService.getSeriesRegistrations(seriesId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Cập nhật trạng thái đăng ký (Admin/Manager)
      */
     @PutMapping("/{registrationId}/status")
