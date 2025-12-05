@@ -12,8 +12,13 @@ import vn.campuslife.model.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.StudentService;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
+import org.apache.commons.lang3.RandomStringUtils;
+
 
 @RestController
 @RequestMapping("/api/registrations")
@@ -21,6 +26,7 @@ import java.util.Map;
 public class ActivityRegistrationController {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityRegistrationController.class);
+    private final Map<String, LocalDateTime> qrTokenCache = new ConcurrentHashMap<>();
 
     private final ActivityRegistrationService registrationService;
     private final StudentService studentService;
@@ -319,4 +325,44 @@ public class ActivityRegistrationController {
                     .body(new Response(false, "Failed: " + e.getMessage(), null));
         }
     }
+    /**
+     * Lấy danh sách đăng ký theo status của 1 sinh viên
+     */
+    @GetMapping("/search")
+    public ResponseEntity<?> search(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) RegistrationStatus status
+    ) {
+        return ResponseEntity.ok(registrationService.search(keyword, status));
+    }
+    /**
+     * tạo mã checkin
+     */
+    @GetMapping("/token")
+    public ResponseEntity<?> generateToken() {
+
+        String token = RandomStringUtils.randomAlphanumeric(6).toUpperCase();
+
+        qrTokenCache.put(token, LocalDateTime.now().plusSeconds(600));
+
+        return ResponseEntity.ok(Map.of("token", token));
+    }
+
+    @GetMapping("/resolve-token")
+    public ResponseEntity<?> resolveToken(@RequestParam String token) {
+
+        LocalDateTime expires = qrTokenCache.get(token);
+
+        if (expires == null || expires.isBefore(LocalDateTime.now())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "valid", false,
+                    "message", "Token hết hạn hoặc không hợp lệ"
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of("valid", true));
+    }
+
+
+
 }

@@ -389,19 +389,19 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             if (!activity.isRequiresSubmission()) {
                 participation.setIsCompleted(true);
                 participation.setParticipationType(ParticipationType.COMPLETED);
-                
+
                 // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và CHUYEN_DE_DOANH_NGHIEP
                 if (activity.getSeriesId() != null) {
                     // Activity trong series → KHÔNG tính điểm từ maxPoints
                     participation.setPointsEarned(BigDecimal.ZERO);
                     participationRepository.save(participation);
-                    
+
                     // Chỉ update series progress (điểm milestone sẽ được tính tự động)
                     try {
                         activitySeriesService.updateStudentProgress(
-                                registration.getStudent().getId(), 
+                                registration.getStudent().getId(),
                                 activity.getId());
-                        logger.info("Updated series progress for activity {} in series {}", 
+                        logger.info("Updated series progress for activity {} in series {}",
                                 activity.getName(), activity.getSeriesId());
                     } catch (Exception e) {
                         logger.warn("Failed to update series progress: {}", e.getMessage());
@@ -413,16 +413,16 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
                     participation.setPointsEarned(points);
                     participationRepository.save(participation);
-                    
+
                     try {
                         // CHUYEN_DE: Đếm số buổi (không dùng pointsEarned, chỉ đếm số participation)
                         updateChuyenDeScoreCount(participation);
-                        
+
                         // REN_LUYEN: Cộng điểm từ maxPoints (nếu có)
                         if (activity.getMaxPoints() != null) {
                             updateRenLuyenScoreFromParticipation(participation);
                         }
-                        
+
                         logger.info("Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {}. Count: +1, RL Points: {}",
                                 activity.getName(), activity.getMaxPoints());
                     } catch (Exception e) {
@@ -1002,4 +1002,20 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to retrieve registrations due to server error", null);
         }
     }
+    /**
+     * Tìm kiếm
+     */
+    public Response search(String keyword, RegistrationStatus status) {
+        List<ActivityRegistration> registrations =
+                registrationRepository.search(keyword, status);
+
+        List<ActivityRegistrationResponse> responses = registrations.stream()
+                .map(this::toRegistrationResponse)
+                .toList();
+
+        return new Response(true,
+                "Student registrations retrieved successfully",
+                responses);
+    }
+
 }
