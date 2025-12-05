@@ -227,6 +227,31 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     }
 
     @Override
+    public Response getSeriesRegistrations(Long seriesId) {
+        try {
+            List<ActivityRegistration> registrations = registrationRepository.findBySeriesId(seriesId);
+
+            // Lọc unique students (có thể có nhiều registrations cho cùng 1 student trong series)
+            Map<Long, ActivityRegistration> uniqueStudentRegistrations = new HashMap<>();
+            for (ActivityRegistration reg : registrations) {
+                Long studentId = reg.getStudent().getId();
+                if (!uniqueStudentRegistrations.containsKey(studentId)) {
+                    uniqueStudentRegistrations.put(studentId, reg);
+                }
+            }
+
+            List<ActivityRegistrationResponse> responses = uniqueStudentRegistrations.values().stream()
+                    .map(this::toRegistrationResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Series registrations retrieved successfully", responses);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve series registrations: {}", e.getMessage(), e);
+            return new Response(false, "Failed to retrieve registrations due to server error", null);
+        }
+    }
+
+    @Override
     @Transactional
     public Response updateRegistrationStatus(Long registrationId, String status) {
         try {
