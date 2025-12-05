@@ -6,12 +6,16 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vn.campuslife.entity.Student;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.StudentListResponse;
+import vn.campuslife.model.StudentResponse;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.StudentService;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -100,14 +104,19 @@ public class StudentServiceImpl implements StudentService {
             Page<Student> students = studentRepository.findByStudentClassDepartmentIdAndIsDeletedFalse(
                     departmentId, pageable);
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("content", students.getContent());
-            result.put("totalElements", students.getTotalElements());
-            result.put("totalPages", students.getTotalPages());
-            result.put("size", students.getSize());
-            result.put("number", students.getNumber());
-            result.put("first", students.isFirst());
-            result.put("last", students.isLast());
+            // Convert to StudentResponse
+            List<StudentResponse> studentResponses = students.getContent().stream()
+                    .map(StudentResponse::fromEntity)
+                    .collect(Collectors.toList());
+
+            StudentListResponse result = new StudentListResponse();
+            result.setContent(studentResponses);
+            result.setTotalElements(students.getTotalElements());
+            result.setTotalPages(students.getTotalPages());
+            result.setSize(students.getSize());
+            result.setNumber(students.getNumber());
+            result.setFirst(students.isFirst());
+            result.setLast(students.isLast());
 
             return new Response(true, "Students by department retrieved successfully", result);
         } catch (Exception e) {

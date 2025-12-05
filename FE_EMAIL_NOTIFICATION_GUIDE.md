@@ -20,7 +20,7 @@ Hệ thống cho phép Admin/Manager gửi email và tạo thông báo hệ th�
 ```typescript
 interface SendEmailRequest {
   recipientType: RecipientType; // Bắt buộc
-  recipientIds?: number[]; // Cho INDIVIDUAL hoặc CUSTOM_LIST
+  recipientIds?: number[]; // Required for BULK (có thể 1 hoặc nhiều)
   activityId?: number; // Cho ACTIVITY_REGISTRATIONS
   seriesId?: number; // Cho SERIES_REGISTRATIONS
   classId?: number; // Cho BY_CLASS
@@ -41,7 +41,7 @@ interface SendEmailRequest {
 ```typescript
 interface SendNotificationOnlyRequest {
   recipientType: RecipientType; // Bắt buộc
-  recipientIds?: number[]; // Cho INDIVIDUAL hoặc CUSTOM_LIST
+  recipientIds?: number[]; // Required for BULK (có thể 1 hoặc nhiều)
   activityId?: number; // Cho ACTIVITY_REGISTRATIONS
   seriesId?: number; // Cho SERIES_REGISTRATIONS
   classId?: number; // Cho BY_CLASS
@@ -57,53 +57,44 @@ interface SendNotificationOnlyRequest {
 
 ```typescript
 enum RecipientType {
-  INDIVIDUAL = "INDIVIDUAL",              // Gửi cá nhân
-  BULK = "BULK",                          // Gửi bulk (nhiều người)
+  BULK = "BULK",                          // Gửi theo danh sách user IDs (có thể 1 hoặc nhiều)
   ACTIVITY_REGISTRATIONS = "ACTIVITY_REGISTRATIONS",  // Danh sách đăng ký activity
   SERIES_REGISTRATIONS = "SERIES_REGISTRATIONS",    // Danh sách đăng ký series
   ALL_STUDENTS = "ALL_STUDENTS",          // Tất cả sinh viên
   BY_CLASS = "BY_CLASS",                  // Sinh viên theo lớp
-  BY_DEPARTMENT = "BY_DEPARTMENT",        // Sinh viên theo khoa
-  CUSTOM_LIST = "CUSTOM_LIST"             // Danh sách user IDs tùy chọn
+  BY_DEPARTMENT = "BY_DEPARTMENT"         // Sinh viên theo khoa
 }
 ```
 
-### 1.3.1. Sự Khác Biệt Giữa INDIVIDUAL, BULK, và CUSTOM_LIST
+### 1.3.1. BULK - Gửi Theo Danh Sách User IDs
 
 **Về mặt logic backend:**
-- Cả 3 loại đều sử dụng `recipientIds` (mảng user IDs) để xác định người nhận
-- Backend xử lý giống nhau: `userRepository.findAllById(recipientIds)`
+- Sử dụng `recipientIds` (mảng user IDs) để xác định người nhận
+- Backend xử lý: `userRepository.findAllById(recipientIds)`
+- Có thể gửi cho 1 user hoặc nhiều users (FE tự xử lý số lượng)
 
-**Về mặt UI/UX (Frontend nên phân biệt):**
+**Về mặt UI/UX (Frontend tự quyết định):**
 
-1. **INDIVIDUAL** - Gửi cá nhân:
-   - **Mục đích:** Gửi cho 1 hoặc vài người cụ thể
+1. **Gửi cá nhân (1 user):**
    - **UI gợi ý:** 
      - Dropdown/autocomplete để chọn 1 người
-     - Có thể cho phép chọn thêm vài người nữa (nhưng ít)
      - Hiển thị: "Gửi cho: [Tên người nhận]"
-   - **Use case:** Gửi email cho 1 sinh viên cụ thể, gửi thông báo cho vài người
+   - **Use case:** Gửi email cho 1 sinh viên cụ thể, gửi thông báo cho 1 người
 
-2. **BULK** - Gửi hàng loạt:
-   - **Mục đích:** Gửi cho nhiều người (có thể hàng trăm, hàng nghìn)
+2. **Gửi hàng loạt (nhiều users):**
    - **UI gợi ý:**
      - Multi-select với search/filter
      - Có thể import từ file Excel/CSV
      - Hiển thị số lượng: "Gửi cho: 150 người"
    - **Use case:** Gửi email cho danh sách sinh viên từ file Excel, gửi thông báo cho nhiều người cùng lúc
 
-3. **CUSTOM_LIST** - Danh sách tùy chọn:
-   - **Mục đích:** Tương tự BULK, nhưng nhấn mạnh tính "tùy chọn" của danh sách
-   - **UI gợi ý:**
-     - Cho phép tạo/save danh sách tùy chọn
-     - Có thể load danh sách đã lưu trước đó
-     - Có thể kết hợp nhiều nguồn (từ class, từ department, từ activity, v.v.)
+**Lưu ý:** Backend không phân biệt giữa gửi 1 user hay nhiều users. FE có thể tự quyết định UI/UX phù hợp.
    - **Use case:** Gửi email cho danh sách đã lưu, gửi cho nhóm tùy chọn
 
 **Tóm lại:**
-- **INDIVIDUAL:** 1-10 người → UI đơn giản, chọn từng người
-- **BULK:** 10+ người → UI có search, filter, import file
-- **CUSTOM_LIST:** Tương tự BULK nhưng có thể save/load danh sách
+- **BULK:** Có thể gửi cho 1 user hoặc nhiều users (FE tự quyết định UI/UX)
+  - Gửi cá nhân (1 user): UI đơn giản, chọn từng người
+  - Gửi hàng loạt (nhiều users): UI có search, filter, import file
 
 ### 1.4. EmailHistoryResponse
 
@@ -923,9 +914,7 @@ const RecipientSelector = ({
 
   const renderSelector = () => {
     switch (recipientType) {
-      case RecipientType.INDIVIDUAL:
       case RecipientType.BULK:
-      case RecipientType.CUSTOM_LIST:
         return (
           <div>
             <div>
@@ -1062,7 +1051,7 @@ import { useState } from 'react';
 
 const SendEmailForm = () => {
   const [formData, setFormData] = useState<SendEmailRequest>({
-    recipientType: RecipientType.INDIVIDUAL,
+    recipientType: RecipientType.BULK,
     subject: '',
     content: '',
     isHtml: false,
@@ -1095,13 +1084,12 @@ const SendEmailForm = () => {
           value={formData.recipientType}
           onChange={(e) => setFormData({ ...formData, recipientType: e.target.value as RecipientType })}
         >
-          <option value={RecipientType.INDIVIDUAL}>Individual</option>
+          <option value={RecipientType.BULK}>Bulk (Cá nhân/Hàng loạt)</option>
           <option value={RecipientType.ACTIVITY_REGISTRATIONS}>Activity Registrations</option>
           <option value={RecipientType.SERIES_REGISTRATIONS}>Series Registrations</option>
           <option value={RecipientType.ALL_STUDENTS}>All Students</option>
           <option value={RecipientType.BY_CLASS}>By Class</option>
           <option value={RecipientType.BY_DEPARTMENT}>By Department</option>
-          <option value={RecipientType.CUSTOM_LIST}>Custom List</option>
         </select>
       </div>
 
@@ -1226,7 +1214,7 @@ const SendEmailForm = () => {
 ```typescript
 const SendNotificationOnlyForm = () => {
   const [formData, setFormData] = useState<SendNotificationOnlyRequest>({
-    recipientType: RecipientType.INDIVIDUAL,
+    recipientType: RecipientType.BULK,
     title: '',
     content: '',
     type: NotificationType.SYSTEM_ANNOUNCEMENT,
@@ -1352,10 +1340,29 @@ export const sendEmail = async (
   request: SendEmailRequest,
   attachments?: File[]
 ): Promise<Response<EmailSendResult>> => {
+  // Nếu không có attachments, có thể dùng endpoint JSON
+  if (!attachments || attachments.length === 0) {
+    const response = await fetch('/api/emails/send-json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify(request),
+    });
+    
+    return response.json();
+  }
+  
+  // Nếu có attachments, phải dùng multipart
   const formData = new FormData();
   
-  // Convert request to JSON string
-  formData.append('request', JSON.stringify(request));
+  // Convert request to JSON string và append với Blob có Content-Type application/json
+  // QUAN TRỌNG: Phải dùng Blob với Content-Type để Spring có thể parse đúng
+  const requestBlob = new Blob([JSON.stringify(request)], { 
+    type: 'application/json' 
+  });
+  formData.append('request', requestBlob);
   
   // Add attachments if any
   if (attachments && attachments.length > 0) {
@@ -1368,6 +1375,8 @@ export const sendEmail = async (
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${getAuthToken()}`,
+      // KHÔNG set Content-Type header manually khi dùng FormData
+      // Browser sẽ tự động set với boundary
     },
     body: formData,
   });
@@ -1559,7 +1568,7 @@ setAttachments(files);
 ```bash
 curl --location 'http://localhost:8080/api/emails/send' \
 --header 'Authorization: Bearer {ADMIN_TOKEN}' \
---form 'request="{\"recipientType\":\"INDIVIDUAL\",\"recipientIds\":[1,2,3],\"subject\":\"Test Email\",\"content\":\"This is a test email\",\"isHtml\":false}"' \
+--form 'request="{\"recipientType\":\"BULK\",\"recipientIds\":[1,2,3],\"subject\":\"Test Email\",\"content\":\"This is a test email\",\"isHtml\":false}"' \
 --form 'attachments=@"/path/to/file.pdf"'
 ```
 

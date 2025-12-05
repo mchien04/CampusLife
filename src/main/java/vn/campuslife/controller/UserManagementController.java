@@ -89,11 +89,14 @@ public class UserManagementController {
 
     @GetMapping
     public ResponseEntity<Response> getAllUsers(
-            @RequestParam(required = false) String role) {
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false, defaultValue = "false") boolean includeStudents) {
         try {
             Response response;
             if (role != null && !role.trim().isEmpty()) {
                 response = userManagementService.getUsersByRole(role);
+            } else if (includeStudents) {
+                response = userManagementService.getAllUsersIncludingStudents();
             } else {
                 response = userManagementService.getAllUsers();
             }
