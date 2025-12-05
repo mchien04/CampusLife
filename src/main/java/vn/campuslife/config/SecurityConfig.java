@@ -131,6 +131,8 @@ public class SecurityConfig {
                         // Check-in endpoints (already defined above, but keep validate/debug here)
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/debug").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/validate").authenticated()
+                        .requestMatchers(HttpMethod.GET, "api/registrations/search").permitAll()
+
                         // Other specific routes
                         .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**")
                         .hasRole("STUDENT")
