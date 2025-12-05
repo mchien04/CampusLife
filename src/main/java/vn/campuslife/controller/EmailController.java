@@ -22,6 +22,7 @@ import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.EmailService;
 
 import java.io.File;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -36,7 +37,23 @@ public class EmailController {
     private final EmailAttachmentRepository emailAttachmentRepository;
 
     /**
-     * Gửi email với nhiều tùy chọn người nhận
+     * Test endpoint để kiểm tra authentication
+     */
+    @GetMapping("/test-auth")
+    public ResponseEntity<Response> testAuth(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.ok(Response.error("Authentication is null"));
+        }
+        return ResponseEntity.ok(new Response(true, "Authentication successful",
+                Map.of(
+                        "username", authentication.getName(),
+                        "authorities", authentication.getAuthorities().stream()
+                                .map(a -> a.getAuthority())
+                                .collect(java.util.stream.Collectors.toList()))));
+    }
+
+    /**
+     * Gửi email với nhiều tùy chọn người nhận (Multipart - có thể có attachments)
      */
     @PostMapping(value = "/send", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Response> sendEmail(
@@ -44,13 +61,49 @@ public class EmailController {
             @RequestPart(value = "attachments", required = false) MultipartFile[] attachments,
             Authentication authentication) {
         try {
+            logger.info("Email send request received (multipart). Authentication: {}, Authorities: {}",
+                    authentication != null ? authentication.getName() : "null",
+                    authentication != null ? authentication.getAuthorities() : "null");
+
             Long senderId = getUserIdFromAuth(authentication);
             if (senderId == null) {
+                logger.warn("User not found in authentication");
                 return ResponseEntity.badRequest()
                         .body(Response.error("User not found"));
             }
 
             Response response = emailService.sendEmail(request, senderId, attachments);
+            return response.isStatus()
+                    ? ResponseEntity.ok(response)
+                    : ResponseEntity.badRequest().body(response);
+        } catch (Exception e) {
+            logger.error("Error sending email: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(Response.error("Server error occurred: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Gửi email với nhiều tùy chọn người nhận (JSON - không có attachments)
+     * Alternative endpoint cho trường hợp frontend gửi JSON thay vì multipart
+     */
+    @PostMapping(value = "/send-json", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Response> sendEmailJson(
+            @RequestBody SendEmailRequest request,
+            Authentication authentication) {
+        try {
+            logger.info("Email send request received (JSON). Authentication: {}, Authorities: {}",
+                    authentication != null ? authentication.getName() : "null",
+                    authentication != null ? authentication.getAuthorities() : "null");
+
+            Long senderId = getUserIdFromAuth(authentication);
+            if (senderId == null) {
+                logger.warn("User not found in authentication");
+                return ResponseEntity.badRequest()
+                        .body(Response.error("User not found"));
+            }
+
+            Response response = emailService.sendEmail(request, senderId, null);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -144,7 +197,8 @@ public class EmailController {
     @GetMapping("/attachments/{attachmentId}/download")
     public ResponseEntity<Resource> downloadAttachment(@PathVariable Long attachmentId) {
         try {
-            Optional<vn.campuslife.entity.EmailAttachment> attachmentOpt = emailAttachmentRepository.findById(attachmentId);
+            Optional<vn.campuslife.entity.EmailAttachment> attachmentOpt = emailAttachmentRepository
+                    .findById(attachmentId);
             if (attachmentOpt.isEmpty()) {
                 return ResponseEntity.notFound().build();
             }
@@ -157,7 +211,8 @@ public class EmailController {
 
             Resource resource = new FileSystemResource(file);
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + attachment.getFileName() + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + attachment.getFileName() + "\"")
                     .contentType(MediaType.parseMediaType(attachment.getContentType()))
                     .body(resource);
         } catch (Exception e) {
@@ -182,4 +237,3 @@ public class EmailController {
         }
     }
 }
-
