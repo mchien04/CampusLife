@@ -239,4 +239,19 @@ public class ActivityController {
     public ResponseEntity<Response> getAllPhotos() {
         return ResponseEntity.ok(photoService.getAllPhotos());
     }
+
+    /**
+     * Tạo checkInCode cho các activity chưa có code (Admin/Manager only)
+     */
+    @PostMapping("/backfill-checkin-codes")
+    public ResponseEntity<Response> backfillCheckInCodes() {
+        try {
+            Response response = activityService.backfillCheckInCodes();
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error backfilling checkInCodes: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(new Response(false, "Server error occurred: " + e.getMessage(), null));
+        }
+    }
 }

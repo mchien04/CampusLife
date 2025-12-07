@@ -21,6 +21,7 @@ public class UpdateMiniGameRequest {
     private Integer timeLimit;
     private Integer requiredCorrectAnswers;
     private BigDecimal rewardPoints;
+    private Integer maxAttempts;
     private List<CreateMiniGameRequest.QuestionRequest> questions;
 }
 

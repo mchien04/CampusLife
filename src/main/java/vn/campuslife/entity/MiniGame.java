@@ -63,5 +63,9 @@ public class MiniGame {
     @Column(precision = 10, scale = 2)
     @Comment("Điểm thưởng nếu đạt")
     private BigDecimal rewardPoints;
+
+    @Column
+    @Comment("Số lần làm quiz tối đa (null = không giới hạn)")
+    private Integer maxAttempts;
 }
 

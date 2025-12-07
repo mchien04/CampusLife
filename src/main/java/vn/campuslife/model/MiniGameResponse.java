@@ -23,6 +23,7 @@ public class MiniGameResponse {
     private Integer timeLimit;
     private Integer requiredCorrectAnswers;
     private BigDecimal rewardPoints;
+    private Integer maxAttempts;
     private Boolean isActive;
     private MiniGameType type;
     private Long activityId;
@@ -36,6 +37,7 @@ public class MiniGameResponse {
         response.setTimeLimit(miniGame.getTimeLimit());
         response.setRequiredCorrectAnswers(miniGame.getRequiredCorrectAnswers());
         response.setRewardPoints(miniGame.getRewardPoints());
+        response.setMaxAttempts(miniGame.getMaxAttempts());
         response.setIsActive(miniGame.isActive());
         response.setType(miniGame.getType());
         if (miniGame.getActivity() != null) {

@@ -316,8 +316,29 @@ public class StatisticsServiceImpl implements StatisticsService {
                 ScoreStatisticsResponse.ScoreTypeStatistics stats = new ScoreStatisticsResponse.ScoreTypeStatistics();
                 stats.setScoreType(type);
                 stats.setAverageScore(avg != null ? avg : BigDecimal.ZERO);
-                stats.setMaxScore(maxMin != null && maxMin[0] != null ? (BigDecimal) maxMin[0] : BigDecimal.ZERO);
-                stats.setMinScore(maxMin != null && maxMin[1] != null ? (BigDecimal) maxMin[1] : BigDecimal.ZERO);
+                
+                // Safely extract max and min scores
+                BigDecimal maxScore = BigDecimal.ZERO;
+                BigDecimal minScore = BigDecimal.ZERO;
+                if (maxMin != null && maxMin.length >= 2) {
+                    if (maxMin[0] != null) {
+                        if (maxMin[0] instanceof BigDecimal) {
+                            maxScore = (BigDecimal) maxMin[0];
+                        } else if (maxMin[0] instanceof Number) {
+                            maxScore = BigDecimal.valueOf(((Number) maxMin[0]).doubleValue());
+                        }
+                    }
+                    if (maxMin[1] != null) {
+                        if (maxMin[1] instanceof BigDecimal) {
+                            minScore = (BigDecimal) maxMin[1];
+                        } else if (maxMin[1] instanceof Number) {
+                            minScore = BigDecimal.valueOf(((Number) maxMin[1]).doubleValue());
+                        }
+                    }
+                }
+                
+                stats.setMaxScore(maxScore);
+                stats.setMinScore(minScore);
                 stats.setTotalStudents(totalStudents);
 
                 statisticsByType.put(type, stats);

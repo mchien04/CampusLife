@@ -22,6 +22,7 @@ public class CreateMiniGameRequest {
     private Integer timeLimit;
     private Integer requiredCorrectAnswers;
     private BigDecimal rewardPoints;
+    private Integer maxAttempts;
     private List<QuestionRequest> questions;
 
     @Data
@@ -29,6 +30,7 @@ public class CreateMiniGameRequest {
     @AllArgsConstructor
     public static class QuestionRequest {
         private String questionText;
+        private String imageUrl;
         private List<OptionRequest> options;
 
         @Data

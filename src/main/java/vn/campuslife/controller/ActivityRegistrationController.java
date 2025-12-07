@@ -234,6 +234,35 @@ public class ActivityRegistrationController {
     }
 
     /**
+     * Check-in bằng QR code (tự động set thành ATTENDED)
+     */
+    @PostMapping("/checkin/qr")
+    public ResponseEntity<Response> checkInByQrCode(
+            @RequestBody Map<String, String> request,
+            Authentication authentication) {
+        try {
+            String checkInCode = request.get("checkInCode");
+            if (checkInCode == null || checkInCode.isBlank()) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "checkInCode is required", null));
+            }
+
+            Long studentId = getStudentIdFromAuth(authentication);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+
+            Response response = registrationService.checkInByQrCode(checkInCode, studentId);
+            return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
+        } catch (Exception e) {
+            logger.error("Failed to check-in by QR code: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to check-in: " + e.getMessage(), null));
+        }
+    }
+
+    /**
      * Helper method to get student ID from authentication
      */
     private Long getStudentIdFromAuth(Authentication authentication) {
@@ -334,33 +363,6 @@ public class ActivityRegistrationController {
             @RequestParam(required = false) RegistrationStatus status
     ) {
         return ResponseEntity.ok(registrationService.search(keyword, status));
-    }
-    /**
-     * tạo mã checkin
-     */
-    @GetMapping("/token")
-    public ResponseEntity<?> generateToken() {
-
-        String token = RandomStringUtils.randomAlphanumeric(6).toUpperCase();
-
-        qrTokenCache.put(token, LocalDateTime.now().plusSeconds(600));
-
-        return ResponseEntity.ok(Map.of("token", token));
-    }
-
-    @GetMapping("/resolve-token")
-    public ResponseEntity<?> resolveToken(@RequestParam String token) {
-
-        LocalDateTime expires = qrTokenCache.get(token);
-
-        if (expires == null || expires.isBefore(LocalDateTime.now())) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "valid", false,
-                    "message", "Token hết hạn hoặc không hợp lệ"
-            ));
-        }
-
-        return ResponseEntity.ok(Map.of("valid", true));
     }
 
 

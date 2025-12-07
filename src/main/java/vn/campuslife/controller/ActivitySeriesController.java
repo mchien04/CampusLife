@@ -328,6 +328,31 @@ public class ActivitySeriesController {
     }
 
     /**
+     * Student xem trạng thái đã đăng ký chuỗi của chính mình
+     */
+    @GetMapping("/{seriesId}/registration/my")
+    public ResponseEntity<Response> checkMySeriesRegistration(
+            @PathVariable Long seriesId,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            Long studentId = studentService.getStudentIdByUsername(username);
+
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+
+            Response response = seriesService.checkSeriesRegistration(seriesId, studentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to check series registration: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to check series registration: " + e.getMessage(), null));
+        }
+    }
+
+    /**
      * Admin/Manager xem progress của student trong series
      */
     @GetMapping("/{seriesId}/students/{studentId}/progress")
