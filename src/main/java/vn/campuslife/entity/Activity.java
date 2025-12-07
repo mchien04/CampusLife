@@ -135,6 +135,11 @@ public class Activity {
     @Comment("Thông tin liên hệ")
     private String contactInfo;
 
+    /** Mã QR code unique để check-in nhanh. */
+    @Column(name = "check_in_code", length = 50, unique = true)
+    @Comment("Mã QR code unique để check-in nhanh")
+    private String checkInCode;
+
     /** Đăng ký có cần duyệt hay không. */
     @Column(nullable = false)
     @Comment("Cần duyệt đăng ký")

@@ -66,6 +66,11 @@ public interface ActivitySeriesService {
         Response getStudentProgress(Long seriesId, Long studentId);
 
         /**
+         * Kiểm tra student đã đăng ký chuỗi sự kiện này chưa
+         */
+        Response checkSeriesRegistration(Long seriesId, Long studentId);
+
+        /**
          * Cập nhật thông tin chuỗi sự kiện
          */
         Response updateSeries(Long seriesId, String name, String description, String milestonePointsJson,

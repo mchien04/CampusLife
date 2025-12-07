@@ -1,8 +1,6 @@
 package vn.campuslife.repository;
 
-import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.entity.ActivityRegistration;
-import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -154,6 +152,17 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
      */
     @Query("SELECT COUNT(ar) FROM ActivityRegistration ar WHERE ar.student.id = :studentId")
     Long countByStudentId(@Param("studentId") Long studentId);
+
+    /**
+     * Kiểm tra student đã có bất kỳ registration nào thuộc series này chưa
+     */
+    boolean existsBySeriesIdAndStudentId(Long seriesId, Long studentId);
+
+    /**
+     * Lấy danh sách đăng ký theo series ID
+     */
+    @Query("SELECT ar FROM ActivityRegistration ar WHERE ar.seriesId = :seriesId AND ar.student.isDeleted = false")
+    List<ActivityRegistration> findBySeriesId(@Param("seriesId") Long seriesId);
     /**
      * Lấy danh sách đăng ký theo status của 1 sinh viên
      */

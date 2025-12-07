@@ -65,8 +65,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // Public
-                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify", 
-                                "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verify",
+                                "/api/auth/forgot-password", "/api/auth/reset-password")
+                        .permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/api/upload/**").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
@@ -74,6 +75,8 @@ public class SecurityConfig {
 
                         // Check-in endpoints - place early to avoid pattern conflicts
                         .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/registrations/checkin/qr")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/test").authenticated()
 
                         // Admin-only endpoints
@@ -96,15 +99,30 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/activities/*/photos/*/order")
                         .hasAnyRole("ADMIN", "MANAGER")
-                        
-                        // Activity Series - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require MANAGER/ADMIN
-                        .requestMatchers(HttpMethod.GET, "/api/series", "/api/series/*", "/api/series/*/activities", "/api/series/*/progress/my")
+                        // Backfill checkInCodes - Admin/Manager only
+                        .requestMatchers(HttpMethod.POST, "/api/activities/backfill-checkin-codes")
+                        .hasAnyRole("ADMIN", "MANAGER")
+
+                        // Activity Series
+                        // - GET: STUDENT/MANAGER/ADMIN (list, detail, activities, my progress, my
+                        // registration)
+                        // - POST register: STUDENT
+                        // - Other POST/PUT/DELETE: MANAGER/ADMIN
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/series",
+                                "/api/series/*",
+                                "/api/series/*/activities",
+                                "/api/series/*/progress/my",
+                                "/api/series/*/registration/my")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/series/*/register")
+                        .hasRole("STUDENT")
                         .requestMatchers("/api/series/**")
                         .hasAnyRole("ADMIN", "MANAGER")
-                        
-                        // MiniGame - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require MANAGER/ADMIN
-                        .requestMatchers(HttpMethod.GET, "/api/minigames/activity/*", "/api/minigames/*/questions", 
+
+                        // MiniGame - GET allows STUDENT/MANAGER/ADMIN, POST/PUT/DELETE require
+                        // MANAGER/ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/minigames/activity/*", "/api/minigames/*/questions",
                                 "/api/minigames/*/attempts/my", "/api/minigames/attempts/*")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/minigames")
@@ -115,11 +133,15 @@ public class SecurityConfig {
                         .hasRole("STUDENT")
                         .requestMatchers("/api/minigames/**")
                         .hasAnyRole("ADMIN", "MANAGER")
-                        
+
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
-                        //Hien thi participations
-                        .requestMatchers(HttpMethod.GET,"/api/participations").permitAll()
+                        
+                        // Email endpoints - Admin/Manager only
+                        .requestMatchers("/api/emails/**").hasAnyRole("ADMIN", "MANAGER")
+                        
+                        // Hien thi participations
+                        .requestMatchers(HttpMethod.GET, "/api/participations").permitAll()
                         // Tasks and Assignments
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()
@@ -168,6 +190,12 @@ public class SecurityConfig {
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/scores/ranking")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Score history - Student (own), Admin/Manager (all)
+                        .requestMatchers(HttpMethod.GET, "/api/scores/history/student/*")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Recalculate score endpoints - Admin/Manager only
+                        .requestMatchers(HttpMethod.POST, "/api/scores/recalculate/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
                         // removed: /api/scores/training/calculate
 
                         // Task Submissions

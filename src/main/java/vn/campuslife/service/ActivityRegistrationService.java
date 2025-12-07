@@ -49,6 +49,14 @@ public interface ActivityRegistrationService {
     Response checkIn(ActivityParticipationRequest request);
 
     /**
+     * Check-in bằng QR code (tự động set thành ATTENDED)
+     * @param checkInCode Mã QR code từ activity
+     * @param studentId ID của sinh viên (từ authentication)
+     * @return Response với thông tin participation
+     */
+    Response checkInByQrCode(String checkInCode, Long studentId);
+
+    /**
      * Lấy danh sách sinh viên đã tham gia / chưa tham gia
      */
     Response getParticipationReport(Long activityId);

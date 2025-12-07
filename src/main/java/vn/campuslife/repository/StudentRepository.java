@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import java.util.Set;
 
 @Repository
 public interface StudentRepository extends JpaRepository<Student, Long> {
@@ -64,6 +63,14 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
      * Tìm kiếm sinh viên theo tên
      */
     Page<Student> findByFullNameContainingIgnoreCaseAndIsDeletedFalse(String keyword, Pageable pageable);
+
+    /**
+     * Tìm kiếm sinh viên theo tên hoặc mã sinh viên
+     */
+    @Query("SELECT s FROM Student s WHERE s.isDeleted = false " +
+           "AND (LOWER(s.fullName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+           "OR LOWER(s.studentCode) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<Student> searchByFullNameOrStudentCode(@Param("keyword") String keyword, Pageable pageable);
 
     /**
      * Lấy sinh viên chưa có lớp

@@ -7,6 +7,11 @@ import org.springframework.stereotype.Component;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class EmailUtil {
@@ -121,5 +126,62 @@ public class EmailUtil {
             }
             return false;
         }
+    }
+
+    /**
+     * Gửi email tùy chỉnh với nội dung và file đính kèm
+     */
+    public boolean sendCustomEmail(String to, String subject, String content, boolean isHtml, List<File> attachments) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(content, isHtml);
+
+            // Đính kèm files nếu có
+            if (attachments != null && !attachments.isEmpty()) {
+                for (File attachment : attachments) {
+                    if (attachment != null && attachment.exists()) {
+                        helper.addAttachment(attachment.getName(), attachment);
+                    }
+                }
+            }
+
+            System.out.println("Attempting to send custom email to: " + to);
+            mailSender.send(message);
+            System.out.println("Custom email sent successfully to: " + to);
+            return true;
+        } catch (Exception e) {
+            System.err.println("Custom email sending failed to " + to + ": " + e.getMessage());
+            if (e.getMessage() != null && e.getMessage().contains("Daily user sending limit exceeded")) {
+                System.err.println(
+                        "Gmail daily sending limit exceeded. Please wait 24 hours or use a different email service.");
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Xử lý template - thay thế các biến {{variable}} trong template
+     */
+    public String processTemplate(String template, Map<String, String> variables) {
+        if (template == null || variables == null || variables.isEmpty()) {
+            return template;
+        }
+
+        String result = template;
+        Pattern pattern = Pattern.compile("\\{\\{([^}]+)\\}\\}");
+        Matcher matcher = pattern.matcher(template);
+
+        while (matcher.find()) {
+            String variableName = matcher.group(1).trim();
+            String value = variables.getOrDefault(variableName, "");
+            result = result.replace("{{" + variableName + "}}", value);
+        }
+
+        return result;
     }
 }
