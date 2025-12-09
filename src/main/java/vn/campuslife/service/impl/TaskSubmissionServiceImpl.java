@@ -291,25 +291,6 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                                         StudentScore agg = scoreOpt.get();
                                         java.math.BigDecimal oldTotal = agg.getScore();
                                         agg.setScore(total);
-                                        // Ghi thêm activityId vào danh sách nếu chưa có
-                                        String activityIdsJson = agg.getActivityIds() != null ? agg.getActivityIds()
-                                                : "[]";
-                                        if (activityIdsJson.isEmpty())
-                                            activityIdsJson = "[]";
-                                        java.util.Set<Long> idSet = new java.util.LinkedHashSet<>();
-                                        try {
-                                            String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
-                                            if (!content.isEmpty()) {
-                                                String[] ids = content.split(",");
-                                                for (String id : ids)
-                                                    idSet.add(Long.parseLong(id.trim()));
-                                            }
-                                        } catch (Exception ignore) {
-                                        }
-                                        idSet.add(activity.getId());
-                                        String updatedIds = "[" + idSet.stream().map(String::valueOf)
-                                                .collect(java.util.stream.Collectors.joining(",")) + "]";
-                                        agg.setActivityIds(updatedIds);
                                         studentScoreRepository.save(agg);
 
                                         // Lưu lịch sử nếu thay đổi
@@ -477,36 +458,6 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             StudentScore score = scoreOpt.get();
 
-            // Parse activityIds JSON và kiểm tra nếu đã có activity này
-            String activityIdsJson = score.getActivityIds() != null ? score.getActivityIds() : "[]";
-            if (activityIdsJson.isEmpty()) {
-                activityIdsJson = "[]";
-            }
-
-            java.util.List<Long> activityIds = new java.util.ArrayList<>();
-            try {
-                // Simple JSON parsing: remove brackets and split by comma
-                String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
-                if (!content.isEmpty()) {
-                    String[] ids = content.split(",");
-                    for (String id : ids) {
-                        activityIds.add(Long.parseLong(id.trim()));
-                    }
-                }
-            } catch (Exception e) {
-                logger.error("Failed to parse activityIds: {}", activityIdsJson, e);
-            }
-
-            // Kiểm tra nếu đã có điểm từ activity này
-            Long activityId = task.getActivity().getId();
-            if (activityIds.contains(activityId)) {
-                logger.info("Score already exists for activity {} from submission {}", activityId, submission.getId());
-                return;
-            }
-
-            // Thêm activityId vào list
-            activityIds.add(activityId);
-
             // Cộng điểm
             BigDecimal oldScore = score.getScore();
             BigDecimal pointsToAdd = BigDecimal.valueOf(submission.getScore());
@@ -514,10 +465,6 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             // Cập nhật
             score.setScore(newScore);
-            String updatedActivityIds = "["
-                    + activityIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) + "]";
-            score.setActivityIds(updatedActivityIds);
-
             studentScoreRepository.save(score);
 
             // Tạo ScoreHistory
@@ -526,6 +473,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                 grader = userRepository.findById(1L).orElse(null);
             }
 
+            Long activityId = task.getActivity().getId();
             ScoreHistory history = new ScoreHistory();
             history.setScore(score);
             history.setOldScore(oldScore);

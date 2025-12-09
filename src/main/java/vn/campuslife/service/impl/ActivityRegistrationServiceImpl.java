@@ -231,7 +231,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         try {
             List<ActivityRegistration> registrations = registrationRepository.findBySeriesId(seriesId);
 
-            // Lọc unique students (có thể có nhiều registrations cho cùng 1 student trong series)
+            // Lọc unique students (có thể có nhiều registrations cho cùng 1 student trong
+            // series)
             Map<Long, ActivityRegistration> uniqueStudentRegistrations = new HashMap<>();
             for (ActivityRegistration reg : registrations) {
                 Long studentId = reg.getStudent().getId();
@@ -418,19 +419,20 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             if (!activity.isRequiresSubmission()) {
                 participation.setIsCompleted(true);
                 participation.setParticipationType(ParticipationType.COMPLETED);
-                
-                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và CHUYEN_DE_DOANH_NGHIEP
+
+                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và
+                // CHUYEN_DE_DOANH_NGHIEP
                 if (activity.getSeriesId() != null) {
                     // Activity trong series → KHÔNG tính điểm từ maxPoints
                     participation.setPointsEarned(BigDecimal.ZERO);
                     participationRepository.save(participation);
-                    
+
                     // Chỉ update series progress (điểm milestone sẽ được tính tự động)
                     try {
                         activitySeriesService.updateStudentProgress(
-                                registration.getStudent().getId(), 
+                                registration.getStudent().getId(),
                                 activity.getId());
-                        logger.info("Updated series progress for activity {} in series {}", 
+                        logger.info("Updated series progress for activity {} in series {}",
                                 activity.getName(), activity.getSeriesId());
                     } catch (Exception e) {
                         logger.warn("Failed to update series progress: {}", e.getMessage());
@@ -442,17 +444,18 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
                     participation.setPointsEarned(points);
                     participationRepository.save(participation);
-                    
+
                     try {
                         // CHUYEN_DE: Đếm số buổi (không dùng pointsEarned, chỉ đếm số participation)
                         updateChuyenDeScoreCount(participation);
-                        
+
                         // REN_LUYEN: Cộng điểm từ maxPoints (nếu có)
                         if (activity.getMaxPoints() != null) {
                             updateRenLuyenScoreFromParticipation(participation);
                         }
-                        
-                        logger.info("Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {}. Count: +1, RL Points: {}",
+
+                        logger.info(
+                                "Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {}. Count: +1, RL Points: {}",
                                 activity.getName(), activity.getMaxPoints());
                     } catch (Exception e) {
                         logger.error("Failed to update dual score after auto-completion: {}", e.getMessage(), e);
@@ -508,34 +511,55 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityRegistration registration = registrationRepository
                     .findByActivityIdAndStudentId(activity.getId(), studentId)
                     .filter(r -> r.getStatus() == RegistrationStatus.APPROVED)
-                    .orElseThrow(() -> new RuntimeException("Bạn chưa đăng ký hoặc chưa được duyệt tham gia activity này"));
+                    .orElseThrow(
+                            () -> new RuntimeException("Bạn chưa đăng ký hoặc chưa được duyệt tham gia activity này"));
 
-            // 4. Tìm participation
+            // 4. Tìm hoặc tạo participation
             ActivityParticipation participation = participationRepository
                     .findByRegistration(registration)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
+                    .orElseGet(() -> {
+                        // Nếu chưa có participation, tạo mới
+                        ActivityParticipation newParticipation = new ActivityParticipation();
+                        newParticipation.setRegistration(registration);
+                        newParticipation.setParticipationType(ParticipationType.REGISTERED);
+                        newParticipation.setPointsEarned(BigDecimal.ZERO);
+                        newParticipation.setDate(LocalDateTime.now());
+                        return participationRepository.save(newParticipation);
+                    });
 
-            // 5. Kiểm tra đã check-in chưa
-            if (participation.getParticipationType() == ParticipationType.ATTENDED
-                    || participation.getParticipationType() == ParticipationType.COMPLETED) {
-                return Response.error("Bạn đã điểm danh activity này rồi");
+            // 5. Logic check-in/check-out
+            LocalDateTime now = LocalDateTime.now();
+            boolean isFirstTime = participation.getCheckInTime() == null;
+            
+            if (isFirstTime) {
+                // Lần đầu quét QR: Set cả checkInTime VÀ checkOutTime (check-in và check-out cùng lúc)
+                participation.setCheckInTime(now);
+                participation.setCheckOutTime(now);
+                participation.setParticipationType(ParticipationType.ATTENDED);
+                participation.setDate(now);
+                registration.setStatus(RegistrationStatus.ATTENDED);
+                registrationRepository.save(registration);
+                logger.info("Student {} checked in and out to activity {} via QR code (first time)", studentId, activity.getId());
+            } else {
+                // Đã có checkInTime: Chỉ set checkOutTime (check-out)
+                if (participation.getCheckOutTime() != null) {
+                    return Response.error("Bạn đã check-out activity này rồi");
+                }
+                participation.setCheckOutTime(now);
+                participation.setParticipationType(ParticipationType.ATTENDED);
+                registration.setStatus(RegistrationStatus.ATTENDED);
+                registrationRepository.save(registration);
+                logger.info("Student {} checked out from activity {} via QR code", studentId, activity.getId());
             }
 
-            // 6. Set trực tiếp thành ATTENDED (bỏ qua CHECKED_IN và CHECKED_OUT)
-            LocalDateTime now = LocalDateTime.now();
-            participation.setParticipationType(ParticipationType.ATTENDED);
-            participation.setCheckInTime(now);
-            participation.setCheckOutTime(now); // Cùng thời điểm
-            participation.setDate(now);
-            registration.setStatus(RegistrationStatus.ATTENDED);
-            registrationRepository.save(registration);
-
-            // 7. Xử lý điểm (giống check-out logic)
+            // 7. Xử lý điểm (chỉ khi check-out, không phải check-in)
+            // Với logic mới: cả lần đầu và lần sau đều là check-out nên đều xử lý điểm
             if (!activity.isRequiresSubmission()) {
                 participation.setIsCompleted(true);
                 participation.setParticipationType(ParticipationType.COMPLETED);
 
-                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và CHUYEN_DE_DOANH_NGHIEP
+                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và
+                // CHUYEN_DE_DOANH_NGHIEP
                 if (activity.getSeriesId() != null) {
                     // Activity trong series → KHÔNG tính điểm từ maxPoints
                     participation.setPointsEarned(BigDecimal.ZERO);
@@ -567,7 +591,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                             updateRenLuyenScoreFromParticipation(participation);
                         }
 
-                        logger.info("Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {} via QR code. Count: +1, RL Points: {}",
+                        logger.info(
+                                "Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {} via QR code. Count: +1, RL Points: {}",
                                 activity.getName(), activity.getMaxPoints());
                     } catch (Exception e) {
                         logger.error("Failed to update dual score after QR code check-in: {}", e.getMessage(), e);
@@ -1004,22 +1029,48 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             StudentScore score = scoreOpt.get();
 
-            // Tính lại tổng điểm RL từ tất cả ActivityParticipation CHUYEN_DE_DOANH_NGHIEP có maxPoints
+            // Tính lại tổng điểm REN_LUYEN từ TẤT CẢ nguồn:
+            // 1. Activity có scoreType = REN_LUYEN
+            // 2. Activity có type = CHUYEN_DE_DOANH_NGHIEP (dual score)
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
                     .stream()
                     .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
-                            && p.getRegistration().getActivity().getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
-                            && p.getRegistration().getActivity().getMaxPoints() != null
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                            && p.getParticipationType().equals(ParticipationType.COMPLETED)
+                            && (
+                            // Activity có scoreType = REN_LUYEN
+                            (p.getRegistration().getActivity().getScoreType() == ScoreType.REN_LUYEN)
+                                    ||
+                                    // Hoặc activity CHUYEN_DE_DOANH_NGHIEP có maxPoints (dual score)
+                                    (p.getRegistration().getActivity().getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
+                                            && p.getRegistration().getActivity().getMaxPoints() != null)))
                     .collect(Collectors.toList());
 
-            BigDecimal total = allParticipations.stream()
+            BigDecimal totalFromParticipations = allParticipations.stream()
                     .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+            // QUAN TRỌNG: Giữ nguyên điểm milestone từ series
+            // Tính điểm milestone = điểm hiện tại - điểm từ participations cũ (trước khi
+            // thêm participation mới)
+            BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
+
+            // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
+            BigDecimal oldParticipationScore = allParticipations.stream()
+                    .filter(p -> !p.getId().equals(participation.getId())) // Loại bỏ participation hiện tại
+                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Điểm milestone = điểm hiện tại - điểm từ participations cũ
+            BigDecimal milestonePoints = oldScore.subtract(oldParticipationScore);
+            if (milestonePoints.compareTo(BigDecimal.ZERO) < 0) {
+                milestonePoints = BigDecimal.ZERO; // Không cho âm
+            }
+
+            // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone (giữ nguyên)
+            BigDecimal total = totalFromParticipations.add(milestonePoints);
+
             // Cập nhật
-            BigDecimal oldScore = score.getScore();
             score.setScore(total);
             studentScoreRepository.save(score);
 
@@ -1039,8 +1090,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             history.setActivityId(activity.getId());
             scoreHistoryRepository.save(history);
 
-            logger.info("Updated REN_LUYEN score from CHUYEN_DE_DOANH_NGHIEP participation: {} -> {} for student {}",
-                    oldScore, total, student.getId());
+            logger.info(
+                    "Updated REN_LUYEN score from CHUYEN_DE_DOANH_NGHIEP participation: {} -> {} for student {} (participation: {}, milestone: {})",
+                    oldScore, total, student.getId(), totalFromParticipations, milestonePoints);
 
         } catch (Exception e) {
             logger.error("Failed to update REN_LUYEN score from participation: {}", e.getMessage(), e);
@@ -1092,7 +1144,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                             && p.getParticipationType().equals(ParticipationType.COMPLETED))
                     .collect(Collectors.toList());
 
-            // Số buổi = số participation đã COMPLETED (mỗi activity = 1 participation = 1 buổi)
+            // Số buổi = số participation đã COMPLETED (mỗi activity = 1 participation = 1
+            // buổi)
             BigDecimal count = BigDecimal.valueOf(allParticipations.size());
 
             // Cập nhật
@@ -1123,6 +1176,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             logger.error("Failed to update CHUYEN_DE score count: {}", e.getMessage(), e);
         }
     }
+
     /**
      * Lấy danh sách Đăng ký của sinh theo status
      */
@@ -1130,8 +1184,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     public Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status) {
         try {
-            List<ActivityRegistration> registrations =
-                    registrationRepository.findListByStudentIdAndStatus(studentId, status);
+            List<ActivityRegistration> registrations = registrationRepository.findListByStudentIdAndStatus(studentId,
+                    status);
 
             List<ActivityRegistrationResponse> responses = registrations.stream()
                     .map(this::toRegistrationResponse)

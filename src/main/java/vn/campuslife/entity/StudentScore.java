@@ -37,9 +37,6 @@ public class StudentScore {
 
     private BigDecimal score;
 
-    @Column(columnDefinition = "TEXT")
-    private String activityIds; // JSON array: "[1,5,10]" - list of activity IDs that contributed to this score
-
     // Criterion removed; scoring aggregates only from activities
 
     @Column(columnDefinition = "TEXT")
