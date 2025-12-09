@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ParticipationType;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
@@ -82,7 +84,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     public Response createActivityInSeries(Long seriesId, String name, String description,
             LocalDateTime startDate, LocalDateTime endDate,
             String location, Integer order, String shareLink, String bannerUrl,
-            String benefits, String requirements, String contactInfo, List<Long> organizerIds) {
+            String benefits, String requirements, String contactInfo, List<Long> organizerIds,
+            vn.campuslife.enumeration.ActivityType type) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Activity name is required");
@@ -123,7 +126,11 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         activity.setOrganizers(organizers);
 
         // Các thuộc tính không cần (cho phép null)
-        activity.setType(null); // Không cần
+        if (type != null) {
+            activity.setType(type); // Cho phép set type nếu muốn tạo minigame
+        } else {
+            activity.setType(null); // Mặc định null cho activity thường
+        }
         activity.setScoreType(null); // Lấy từ series
         activity.setMaxPoints(null); // Không dùng để tính điểm
         activity.setRegistrationStartDate(series.getRegistrationStartDate()); // Lấy từ series
@@ -225,9 +232,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
                 // Set status dựa trên requiresApproval của series
                 if (series.isRequiresApproval()) {
-                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.PENDING);
+                    registration.setStatus(RegistrationStatus.PENDING);
                 } else {
-                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
+                    registration.setStatus(RegistrationStatus.APPROVED);
                 }
 
                 registrations.add(registration);
@@ -238,6 +245,28 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             }
 
             registrationRepository.saveAll(registrations);
+            
+            // Tạo participation cho các registration có status APPROVED
+            List<ActivityParticipation> participationsToCreate = new ArrayList<>();
+            for (ActivityRegistration registration : registrations) {
+                if (registration.getStatus() == RegistrationStatus.APPROVED) {
+                    // Kiểm tra xem đã có participation chưa
+                    if (!participationRepository.existsByRegistration(registration)) {
+                        ActivityParticipation participation = new ActivityParticipation();
+                        participation.setRegistration(registration);
+                        participation.setParticipationType(ParticipationType.REGISTERED);
+                        participation.setPointsEarned(BigDecimal.ZERO);
+                        participation.setDate(LocalDateTime.now());
+                        participationsToCreate.add(participation);
+                    }
+                }
+            }
+            
+            if (!participationsToCreate.isEmpty()) {
+                participationRepository.saveAll(participationsToCreate);
+                logger.info("Created {} participations for series registrations", participationsToCreate.size());
+            }
+            
             logger.info("Registered student {} for {} activities in series {}",
                     studentId, registrations.size(), seriesId);
 
@@ -331,9 +360,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
                 // Set status dựa trên requiresApproval của series
                 if (series.isRequiresApproval()) {
-                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.PENDING);
+                    registration.setStatus(RegistrationStatus.PENDING);
                 } else {
-                    registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
+                    registration.setStatus(RegistrationStatus.APPROVED);
                 }
 
                 registrationsToCreate.add(registration);
@@ -341,6 +370,28 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
             if (!registrationsToCreate.isEmpty()) {
                 registrationRepository.saveAll(registrationsToCreate);
+                
+                // Tạo participation cho các registration có status APPROVED
+                List<ActivityParticipation> participationsToCreate = new ArrayList<>();
+                for (ActivityRegistration registration : registrationsToCreate) {
+                    if (registration.getStatus() == RegistrationStatus.APPROVED) {
+                        // Kiểm tra xem đã có participation chưa
+                        if (!participationRepository.existsByRegistration(registration)) {
+                            ActivityParticipation participation = new ActivityParticipation();
+                            participation.setRegistration(registration);
+                            participation.setParticipationType(ParticipationType.REGISTERED);
+                            participation.setPointsEarned(BigDecimal.ZERO);
+                            participation.setDate(LocalDateTime.now());
+                            participationsToCreate.add(participation);
+                        }
+                    }
+                }
+                
+                if (!participationsToCreate.isEmpty()) {
+                    participationRepository.saveAll(participationsToCreate);
+                    logger.info("Created {} participations for auto-registered students", participationsToCreate.size());
+                }
+                
                 logger.info(
                         "Auto-registered {} students for new activity {} in series {} based on existing series registrations",
                         registrationsToCreate.size(), newActivity.getId(), seriesId);
@@ -545,11 +596,25 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             }
 
             StudentScore score = scoreOpt.get();
-            BigDecimal currentScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
+            BigDecimal oldTotalScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
 
-            // Trừ điểm cũ, cộng điểm mới
-            BigDecimal updatedScore = currentScore.subtract(oldPoints).add(newPoints);
-            BigDecimal oldTotalScore = score.getScore();
+            // QUAN TRỌNG: Tính lại tổng điểm từ participations + milestone mới
+            // Đảm bảo không ghi đè điểm từ participations
+            List<ActivityParticipation> allParticipations = participationRepository
+                    .findAll()
+                    .stream()
+                    .filter(p -> p.getRegistration().getStudent().getId().equals(studentId)
+                            && p.getRegistration().getActivity().getScoreType() != null
+                            && p.getRegistration().getActivity().getScoreType().equals(scoreType)
+                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .collect(java.util.stream.Collectors.toList());
+
+            BigDecimal totalFromParticipations = allParticipations.stream()
+                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Tổng điểm MỚI = điểm từ participations + milestone mới
+            BigDecimal updatedScore = totalFromParticipations.add(newPoints);
             score.setScore(updatedScore);
             studentScoreRepository.save(score);
 

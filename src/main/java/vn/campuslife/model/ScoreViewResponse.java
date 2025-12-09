@@ -22,7 +22,6 @@ public class ScoreViewResponse {
     @Data
     public static class ScoreItem {
         private BigDecimal score;
-        private List<Long> activityIds; // Danh sách activity đã nhận điểm
         private String notes;
     }
 }

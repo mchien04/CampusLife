@@ -541,6 +541,14 @@ public class ActivityServiceImpl implements ActivityService {
                             if (activity.getSeriesId() != null) {
                                 registration.setSeriesId(activity.getSeriesId());
                             }
+                            // Tạo ticketCode cho registration
+                            String code;
+                            int attempts = 0;
+                            do {
+                                code = TicketCodeUtils.newTicketCode();
+                                attempts++;
+                            } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
+                            registration.setTicketCode(code);
                             return registration;
                         })
                         .collect(Collectors.toList());
