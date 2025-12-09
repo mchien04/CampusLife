@@ -15,7 +15,6 @@ import vn.campuslife.service.StatisticsService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -593,75 +592,4 @@ public class StatisticsServiceImpl implements StatisticsService {
         }
     }
 
-    @Override
-    public Response getTimeBasedStatistics(LocalDateTime startDate, LocalDateTime endDate, String groupBy) {
-        try {
-            TimeBasedStatisticsResponse response = new TimeBasedStatisticsResponse();
-
-            // Default to current month if not provided
-            if (startDate == null || endDate == null) {
-                LocalDateTime now = LocalDateTime.now();
-                startDate = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
-                endDate = now.withDayOfMonth(now.toLocalDate().lengthOfMonth())
-                        .withHour(23).withMinute(59).withSecond(59);
-            }
-
-            // Default groupBy to "day"
-            if (groupBy == null || groupBy.isEmpty()) {
-                groupBy = "day";
-            }
-            response.setGroupBy(groupBy);
-
-            // Registrations over time
-            List<TimeBasedStatisticsResponse.TimeSeriesDataPoint> registrationsOverTime = new ArrayList<>();
-            // Simplified - would need to group by time period based on groupBy
-            Long totalRegs = activityRegistrationRepository.countByDateRange(startDate, endDate);
-            TimeBasedStatisticsResponse.TimeSeriesDataPoint regPoint = new TimeBasedStatisticsResponse.TimeSeriesDataPoint();
-            regPoint.setPeriod(formatPeriod(startDate, groupBy));
-            regPoint.setCount(totalRegs);
-            regPoint.setValue(null);
-            registrationsOverTime.add(regPoint);
-
-            response.setRegistrationsOverTime(registrationsOverTime);
-
-            // Participations over time
-            List<TimeBasedStatisticsResponse.TimeSeriesDataPoint> participationsOverTime = new ArrayList<>();
-            Long totalParts = activityParticipationRepository.countByDateRange(startDate, endDate);
-            TimeBasedStatisticsResponse.TimeSeriesDataPoint partPoint = new TimeBasedStatisticsResponse.TimeSeriesDataPoint();
-            partPoint.setPeriod(formatPeriod(startDate, groupBy));
-            partPoint.setCount(totalParts);
-            partPoint.setValue(null);
-            participationsOverTime.add(partPoint);
-
-            response.setParticipationsOverTime(participationsOverTime);
-
-            // Peak hours (simplified - would need to query by hour)
-            Map<Integer, Long> peakHours = new HashMap<>();
-            // This would require a more complex query to group by hour
-            response.setPeakHours(peakHours);
-
-            return Response.success("Time-based statistics retrieved successfully", response);
-        } catch (Exception e) {
-            logger.error("Error getting time-based statistics: {}", e.getMessage(), e);
-            return Response.error("Failed to get time-based statistics: " + e.getMessage());
-        }
-    }
-
-    private String formatPeriod(LocalDateTime dateTime, String groupBy) {
-        switch (groupBy.toLowerCase()) {
-            case "day":
-                return dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-            case "week":
-                return dateTime.format(DateTimeFormatter.ofPattern("yyyy-'W'ww"));
-            case "month":
-                return dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM"));
-            case "quarter":
-                int quarter = (dateTime.getMonthValue() - 1) / 3 + 1;
-                return dateTime.getYear() + "-Q" + quarter;
-            case "year":
-                return String.valueOf(dateTime.getYear());
-            default:
-                return dateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        }
-    }
 }

@@ -161,6 +161,17 @@ public class ActivitySeriesController {
             String requirements = (String) request.get("requirements");
             String contactInfo = (String) request.get("contactInfo");
             
+            // Parse type từ request (optional)
+            vn.campuslife.enumeration.ActivityType type = null;
+            if (request.get("type") != null) {
+                try {
+                    type = vn.campuslife.enumeration.ActivityType.valueOf(
+                        request.get("type").toString());
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Invalid ActivityType: {}", request.get("type"));
+                }
+            }
+            
             java.util.List<Long> organizerIds = null;
             if (request.get("organizerIds") != null) {
                 try {
@@ -176,7 +187,7 @@ public class ActivitySeriesController {
 
             Response response = seriesService.createActivityInSeries(seriesId, name, description,
                     startDate, endDate, location, order, shareLink, bannerUrl,
-                    benefits, requirements, contactInfo, organizerIds);
+                    benefits, requirements, contactInfo, organizerIds, type);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating activity in series: {}", e.getMessage(), e);

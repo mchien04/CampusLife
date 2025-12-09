@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -15,12 +16,14 @@ import vn.campuslife.enumeration.Gender;
 @Entity
 @Table(name = "students")
 @Data
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
 public class Student {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @lombok.EqualsAndHashCode.Include
     private Long id;
 
     @OneToOne

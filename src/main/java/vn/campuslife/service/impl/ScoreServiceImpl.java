@@ -66,22 +66,6 @@ public class ScoreServiceImpl implements ScoreService {
                 List<ScoreViewResponse.ScoreItem> items = e.getValue().stream().map(ss -> {
                     ScoreViewResponse.ScoreItem it = new ScoreViewResponse.ScoreItem();
                     it.setScore(ss.getScore());
-
-                    // Parse activityIds JSON
-                    List<Long> activityIds = new ArrayList<>();
-                    String activityIdsJson = ss.getActivityIds() != null ? ss.getActivityIds() : "[]";
-                    try {
-                        String content = activityIdsJson.replaceAll("[\\[\\]]", "").trim();
-                        if (!content.isEmpty()) {
-                            String[] ids = content.split(",");
-                            for (String id : ids) {
-                                activityIds.add(Long.parseLong(id.trim()));
-                            }
-                        }
-                    } catch (Exception ex) {
-                        // Ignore parse error
-                    }
-                    it.setActivityIds(activityIds);
                     it.setNotes(ss.getNotes());
                     return it;
                 }).collect(Collectors.toList());
