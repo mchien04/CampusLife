@@ -177,32 +177,5 @@ public class StatisticsController {
         }
     }
 
-    /**
-     * Thống kê theo thời gian
-     * ADMIN, MANAGER only
-     */
-    @GetMapping("/timeline")
-    public ResponseEntity<Response> getTimeBasedStatistics(
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
-            @RequestParam(required = false) String groupBy) {
-        try {
-            LocalDateTime start = null;
-            LocalDateTime end = null;
-            if (startDate != null && !startDate.isEmpty()) {
-                start = LocalDateTime.parse(startDate);
-            }
-            if (endDate != null && !endDate.isEmpty()) {
-                end = LocalDateTime.parse(endDate);
-            }
-
-            Response response = statisticsService.getTimeBasedStatistics(start, end, groupBy);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            logger.error("Error in getTimeBasedStatistics: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError()
-                    .body(Response.error("Failed to get time-based statistics: " + e.getMessage()));
-        }
-    }
 }
 

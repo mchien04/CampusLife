@@ -272,9 +272,6 @@ public class SecurityConfig {
                         // MiniGame statistics - all authenticated
                         .requestMatchers(HttpMethod.GET, "/api/statistics/minigames")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
-                        // Time-based statistics - ADMIN, MANAGER only
-                        .requestMatchers(HttpMethod.GET, "/api/statistics/timeline")
-                        .hasAnyRole("ADMIN", "MANAGER")
 
                         // Default
                         .anyRequest().authenticated())

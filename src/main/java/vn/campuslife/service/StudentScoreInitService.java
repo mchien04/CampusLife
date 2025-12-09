@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
 import java.util.Optional;
 
 @Service
@@ -56,7 +55,6 @@ public class StudentScoreInitService {
                 score.setSemester(semester);
                 score.setScoreType(scoreType);
                 score.setScore(BigDecimal.ZERO);
-                score.setActivityIds("[]"); // Empty JSON array
                 score.setNotes(null);
 
                 studentScoreRepository.save(score);
