@@ -478,6 +478,9 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setOrganizerIds(a.getOrganizers() == null ? List.of()
                 : a.getOrganizers().stream().map(Department::getId).toList());
 
+        dto.setSeriesId(a.getSeriesId());
+        dto.setSeriesOrder(a.getSeriesOrder());
+
         dto.setCreatedAt(a.getCreatedAt());
         dto.setUpdatedAt(a.getUpdatedAt());
         dto.setCreatedBy(a.getCreatedBy());
