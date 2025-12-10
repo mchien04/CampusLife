@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -125,13 +126,16 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         Set<Department> organizers = resolveOrganizers(organizerIds);
         activity.setOrganizers(organizers);
 
+        // Cho phép tất cả các type (có thể chỉnh sửa sau)
+        // Chỉ validate khi tạo minigame (trong MiniGameServiceImpl)
+
         // Các thuộc tính không cần (cho phép null)
         if (type != null) {
-            activity.setType(type); // Cho phép set type nếu muốn tạo minigame
+            activity.setType(type); // MINIGAME - cho phép set type nếu muốn tạo minigame
         } else {
             activity.setType(null); // Mặc định null cho activity thường
         }
-        activity.setScoreType(null); // Lấy từ series
+        activity.setScoreType(null); // Lấy từ series (không dùng scoreType riêng của activity)
         activity.setMaxPoints(null); // Không dùng để tính điểm
         activity.setRegistrationStartDate(series.getRegistrationStartDate()); // Lấy từ series
         activity.setRegistrationDeadline(series.getRegistrationDeadline()); // Lấy từ series
@@ -145,6 +149,16 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         activity.setDeleted(false);
 
         Activity saved = activityRepository.save(activity);
+
+        // Auto-generate checkInCode if not provided
+        if (saved.getCheckInCode() == null || saved.getCheckInCode().isBlank()) {
+            String random = UUID.randomUUID().toString().substring(0, 8).toUpperCase().replace("-", "");
+            String checkInCode = String.format("ACT-%06d-%s", saved.getId(), random);
+            saved.setCheckInCode(checkInCode);
+            saved = activityRepository.save(saved);
+            logger.debug("Auto-generated checkInCode for activity {} in series {}: {}",
+                    saved.getId(), seriesId, checkInCode);
+        }
         logger.info("Created activity {} in series {} with order {}", saved.getId(), seriesId, order);
 
         // Auto-register all students who already registered any activity in this series
@@ -245,7 +259,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             }
 
             registrationRepository.saveAll(registrations);
-            
+
             // Tạo participation cho các registration có status APPROVED
             List<ActivityParticipation> participationsToCreate = new ArrayList<>();
             for (ActivityRegistration registration : registrations) {
@@ -261,12 +275,12 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                     }
                 }
             }
-            
+
             if (!participationsToCreate.isEmpty()) {
                 participationRepository.saveAll(participationsToCreate);
                 logger.info("Created {} participations for series registrations", participationsToCreate.size());
             }
-            
+
             logger.info("Registered student {} for {} activities in series {}",
                     studentId, registrations.size(), seriesId);
 
@@ -312,7 +326,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     }
 
     /**
-     * Auto-register all students who already have at least one registration in this series
+     * Auto-register all students who already have at least one registration in this
+     * series
      * for the newly created/added activity.
      */
     private void autoRegisterStudentsForNewActivityInSeries(ActivitySeries series, Activity newActivity) {
@@ -325,7 +340,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             // Thu thập tất cả student đã đăng ký ít nhất 1 activity trong series
             Set<Long> studentIds = new HashSet<>();
             for (Activity activity : activitiesInSeries) {
-                // Không cần bỏ qua newActivity vì tại thời điểm này activity mới chưa có đăng ký
+                // Không cần bỏ qua newActivity vì tại thời điểm này activity mới chưa có đăng
+                // ký
                 List<ActivityRegistration> regs = registrationRepository
                         .findByActivityIdAndActivityIsDeletedFalse(activity.getId());
                 for (ActivityRegistration reg : regs) {
@@ -370,7 +386,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
             if (!registrationsToCreate.isEmpty()) {
                 registrationRepository.saveAll(registrationsToCreate);
-                
+
                 // Tạo participation cho các registration có status APPROVED
                 List<ActivityParticipation> participationsToCreate = new ArrayList<>();
                 for (ActivityRegistration registration : registrationsToCreate) {
@@ -386,17 +402,19 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                         }
                     }
                 }
-                
+
                 if (!participationsToCreate.isEmpty()) {
                     participationRepository.saveAll(participationsToCreate);
-                    logger.info("Created {} participations for auto-registered students", participationsToCreate.size());
+                    logger.info("Created {} participations for auto-registered students",
+                            participationsToCreate.size());
                 }
-                
+
                 logger.info(
                         "Auto-registered {} students for new activity {} in series {} based on existing series registrations",
                         registrationsToCreate.size(), newActivity.getId(), seriesId);
             } else {
-                logger.info("No students needed auto-registration for new activity {} in series {}", newActivity.getId(),
+                logger.info("No students needed auto-registration for new activity {} in series {}",
+                        newActivity.getId(),
                         seriesId);
             }
         } catch (Exception e) {
@@ -532,17 +550,25 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 }
             }
 
-            // Cập nhật pointsEarned nếu có thay đổi
-            if (pointsToAward.compareTo(progress.getPointsEarned()) > 0) {
-                BigDecimal oldPoints = progress.getPointsEarned();
+            // Cập nhật pointsEarned nếu có thay đổi (>= thay vì > để đảm bảo cập nhật khi
+            // bằng nhau)
+            BigDecimal currentPointsEarned = progress.getPointsEarned() != null
+                    ? progress.getPointsEarned()
+                    : BigDecimal.ZERO;
+            if (pointsToAward.compareTo(currentPointsEarned) >= 0) {
+                BigDecimal oldPoints = currentPointsEarned;
                 progress.setPointsEarned(pointsToAward);
                 progressRepository.save(progress);
 
-                // Cập nhật StudentScore REN_LUYEN
+                // Cập nhật StudentScore (theo scoreType của series)
                 updateRenLuyenScoreFromMilestone(studentId, seriesId, oldPoints, pointsToAward);
 
-                logger.info("Awarded milestone points {} to student {} for series {}",
-                        pointsToAward, studentId, seriesId);
+                logger.info("Awarded milestone points {} (was {}) to student {} for series {}",
+                        pointsToAward, oldPoints, studentId, seriesId);
+            } else {
+                logger.warn(
+                        "Milestone points {} is less than current points {} for student {} in series {}. Skipping update.",
+                        pointsToAward, currentPointsEarned, studentId, seriesId);
             }
 
             return Response.success("Milestone points calculated", progress);
@@ -566,6 +592,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
      */
     private void updateRenLuyenScoreFromMilestone(Long studentId, Long seriesId, BigDecimal oldPoints,
             BigDecimal newPoints) {
+        ScoreType scoreType = null;
         try {
             // Lấy series để lấy scoreType
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
@@ -574,7 +601,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 return;
             }
             ActivitySeries series = seriesOpt.get();
-            ScoreType scoreType = series.getScoreType();
+            scoreType = series.getScoreType();
 
             // Lấy semester hiện tại
             Semester currentSemester = semesterRepository.findAll().stream()
@@ -598,23 +625,29 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             StudentScore score = scoreOpt.get();
             BigDecimal oldTotalScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
 
-            // QUAN TRỌNG: Tính lại tổng điểm từ participations + milestone mới
-            // Đảm bảo không ghi đè điểm từ participations
-            List<ActivityParticipation> allParticipations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> p.getRegistration().getStudent().getId().equals(studentId)
-                            && p.getRegistration().getActivity().getScoreType() != null
-                            && p.getRegistration().getActivity().getScoreType().equals(scoreType)
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
-                    .collect(java.util.stream.Collectors.toList());
+            // QUAN TRỌNG: Logic tính điểm milestone - tính theo mốc cuối đạt, KHÔNG cộng
+            // dồn
+            // Ví dụ: Mốc 1 = 5đ, Mốc 2 = 10đ
+            // - Đạt mốc 1 → tổng = 5đ
+            // - Đạt mốc 2 → tổng = 10đ (KHÔNG phải 5+10=15đ)
+            //
+            // Công thức: newTotal = (oldTotal - oldMilestone) + newMilestone
+            // oldTotal đã bao gồm: participations (từ activities đơn lẻ) + oldMilestone
+            // newTotal sẽ là: participations (từ activities đơn lẻ) + newMilestone
 
-            BigDecimal totalFromParticipations = allParticipations.stream()
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            // Sử dụng oldPoints đã truyền vào (không lấy lại từ progress vì đã được cập
+            // nhật)
+            BigDecimal oldMilestonePoints = oldPoints != null ? oldPoints : BigDecimal.ZERO;
 
-            // Tổng điểm MỚI = điểm từ participations + milestone mới
-            BigDecimal updatedScore = totalFromParticipations.add(newPoints);
+            // Tổng điểm MỚI = (tổng điểm cũ - milestone cũ) + milestone mới
+            // Đảm bảo không cộng dồn milestone
+            BigDecimal updatedScore = oldTotalScore.subtract(oldMilestonePoints).add(newPoints);
+
+            // Đảm bảo điểm không âm
+            if (updatedScore.compareTo(BigDecimal.ZERO) < 0) {
+                logger.warn("Calculated score is negative: {}. Setting to 0.", updatedScore);
+                updatedScore = BigDecimal.ZERO;
+            }
             score.setScore(updatedScore);
             studentScoreRepository.save(score);
 
@@ -634,10 +667,13 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             history.setReason("Milestone points from series: " + seriesId);
             scoreHistoryRepository.save(history);
 
-            logger.info("Updated {} score from milestone: {} -> {} for student {}",
-                    scoreType, oldTotalScore, updatedScore, studentId);
+            logger.info("Updated {} score from milestone: {} -> {} for student {} (oldMilestone: {}, newMilestone: {})",
+                    scoreType, oldTotalScore, updatedScore, studentId, oldMilestonePoints, newPoints);
         } catch (Exception e) {
-            logger.error("Failed to update REN_LUYEN score from milestone: {}", e.getMessage(), e);
+            logger.error("Failed to update score from milestone for student {} in series {} (scoreType: {}): {}",
+                    studentId, seriesId, scoreType, e.getMessage(), e);
+            // Không throw exception để không làm gián đoạn flow chính
+            // Nhưng log đầy đủ để debug
         }
     }
 
@@ -871,7 +907,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (milestonePointsJson != null) {
                 // Validate JSON format
                 try {
-                    objectMapper.readValue(milestonePointsJson, new TypeReference<Map<String, Integer>>() {});
+                    objectMapper.readValue(milestonePointsJson, new TypeReference<Map<String, Integer>>() {
+                    });
                     series.setMilestonePoints(milestonePointsJson);
                 } catch (Exception e) {
                     logger.error("Invalid milestonePoints JSON format: {}", milestonePointsJson, e);
@@ -932,7 +969,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
             // Find all activities in this series (including already deleted ones)
             List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-            
+
             // Soft delete all activities in the series
             int deletedActivitiesCount = 0;
             for (Activity activity : activities) {
@@ -949,9 +986,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
             logger.info("Deleted activity series: {} and {} activities", seriesId, deletedActivitiesCount);
             return Response.success(
-                String.format("Activity series deleted successfully. %d activities also deleted.", deletedActivitiesCount),
-                null
-            );
+                    String.format("Activity series deleted successfully. %d activities also deleted.",
+                            deletedActivitiesCount),
+                    null);
         } catch (Exception e) {
             logger.error("Failed to delete series: {}", e.getMessage(), e);
             return Response.error("Failed to delete series: " + e.getMessage());
