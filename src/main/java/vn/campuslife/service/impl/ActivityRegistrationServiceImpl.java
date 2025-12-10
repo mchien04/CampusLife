@@ -554,6 +554,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             // 7. Xử lý điểm (chỉ khi check-out, không phải check-in)
             // Với logic mới: cả lần đầu và lần sau đều là check-out nên đều xử lý điểm
+            // CTXH: Cả sinh viên quét QR code và admin/manager quét ticketCode đều được cộng điểm
             if (!activity.isRequiresSubmission()) {
                 participation.setIsCompleted(true);
                 participation.setParticipationType(ParticipationType.COMPLETED);
@@ -609,7 +610,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                         logger.info("Auto-completed participation for activity {} via QR code. Points: {}",
                                 activity.getName(), points);
                     } catch (Exception e) {
-                        logger.error("Failed to update student score after QR code check-in: {}", e.getMessage(), e);
+                        logger.error("Failed to update student score after QR code check-in for activity {}: {}", 
+                                activity.getId(), e.getMessage(), e);
+                        // Không throw để không làm gián đoạn check-in, nhưng log đầy đủ
                     }
                 }
             }
@@ -766,6 +769,15 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             Student student = participation.getRegistration().getStudent();
             Activity activity = participation.getRegistration().getActivity();
 
+            // Validate activity có scoreType
+            if (activity.getScoreType() == null) {
+                logger.warn("Activity {} has no scoreType, skipping score update", activity.getId());
+                return;
+            }
+
+            logger.debug("Updating score for student {} activity {} scoreType {} participation {}",
+                    student.getId(), activity.getId(), activity.getScoreType(), participation.getId());
+
             // Lấy semester hiện tại (hoặc lấy semester đang mở)
             Semester currentSemester = semesterRepository.findAll().stream()
                     .filter(Semester::isOpen)
@@ -785,21 +797,35 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                             activity.getScoreType());
 
             if (scoreOpt.isEmpty()) {
-                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}",
+                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}. " +
+                        "Creating new StudentScore record.",
                         student.getId(), activity.getScoreType(), currentSemester.getId());
-                return;
+                
+                // Tạo StudentScore mới nếu chưa có
+                StudentScore newScore = new StudentScore();
+                newScore.setStudent(student);
+                newScore.setSemester(currentSemester);
+                newScore.setScoreType(activity.getScoreType());
+                newScore.setScore(BigDecimal.ZERO);
+                scoreOpt = Optional.of(studentScoreRepository.save(newScore));
+                logger.info("Created new StudentScore for student {} scoreType {} in semester {}",
+                        student.getId(), activity.getScoreType(), currentSemester.getId());
             }
 
             StudentScore score = scoreOpt.get();
 
             // Tính lại tổng điểm từ tất cả ActivityParticipation của sinh viên này
-            // Query tất cả participation có COMPLETED status
+            // Query tất cả participation có COMPLETED status và cùng scoreType
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
                     .stream()
-                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
-                            && p.getRegistration().getActivity().getScoreType().equals(activity.getScoreType())
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .filter(p -> {
+                        Activity act = p.getRegistration().getActivity();
+                        return p.getRegistration().getStudent().getId().equals(student.getId())
+                                && act.getScoreType() != null
+                                && act.getScoreType().equals(activity.getScoreType())
+                                && p.getParticipationType().equals(ParticipationType.COMPLETED);
+                    })
                     .collect(Collectors.toList());
 
             BigDecimal total = allParticipations.stream()
@@ -807,31 +833,42 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             // Cập nhật
-            BigDecimal oldScore = score.getScore();
-            score.setScore(total);
-            studentScoreRepository.save(score);
+            BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
+            
+            // Chỉ cập nhật nếu có thay đổi
+            if (total.compareTo(oldScore) != 0) {
+                score.setScore(total);
+                studentScoreRepository.save(score);
 
-            // Tạo history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
-                    .findFirst()
-                    .orElse(null);
+                // Tạo history
+                User systemUser = userRepository.findAll().stream()
+                        .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
+                        .findFirst()
+                        .orElse(null);
 
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldScore);
-            history.setNewScore(total);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason("Recalculated from activity participation: " + activity.getName());
-            history.setActivityId(activity.getId());
-            scoreHistoryRepository.save(history);
+                ScoreHistory history = new ScoreHistory();
+                history.setScore(score);
+                history.setOldScore(oldScore);
+                history.setNewScore(total);
+                history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+                history.setChangeDate(LocalDateTime.now());
+                history.setReason("Score from activity participation: " + activity.getName());
+                history.setActivityId(activity.getId());
+                scoreHistoryRepository.save(history);
 
-            logger.info("Updated student score from participation: {} -> {} for student {}",
-                    oldScore, total, student.getId());
+                logger.info("Updated {} score from participation: {} -> {} for student {} (activity: {}, participation: {})",
+                        activity.getScoreType(), oldScore, total, student.getId(), activity.getId(), participation.getId());
+            } else {
+                logger.debug("Score unchanged for student {} activity {}: {}", 
+                        student.getId(), activity.getId(), total);
+            }
 
         } catch (Exception e) {
-            logger.error("Failed to update student score from participation: {}", e.getMessage(), e);
+            logger.error("Failed to update student score from participation (student: {}, activity: {}, participation: {}): {}", 
+                    participation.getRegistration().getStudent().getId(),
+                    participation.getRegistration().getActivity().getId(),
+                    participation.getId(),
+                    e.getMessage(), e);
         }
     }
 

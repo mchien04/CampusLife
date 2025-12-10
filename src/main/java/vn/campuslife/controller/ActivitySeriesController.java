@@ -162,13 +162,16 @@ public class ActivitySeriesController {
             String contactInfo = (String) request.get("contactInfo");
             
             // Parse type từ request (optional)
+            // Cho phép tất cả các type (có thể chỉnh sửa sau)
             vn.campuslife.enumeration.ActivityType type = null;
             if (request.get("type") != null) {
                 try {
-                    type = vn.campuslife.enumeration.ActivityType.valueOf(
-                        request.get("type").toString());
+                    String typeStr = request.get("type").toString();
+                    type = vn.campuslife.enumeration.ActivityType.valueOf(typeStr);
                 } catch (IllegalArgumentException e) {
                     logger.warn("Invalid ActivityType: {}", request.get("type"));
+                    return ResponseEntity.badRequest()
+                        .body(new Response(false, "Invalid ActivityType: " + request.get("type"), null));
                 }
             }
             

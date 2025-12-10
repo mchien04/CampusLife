@@ -3,8 +3,13 @@
 ## 📋 Tổng Quan
 
 Khi tạo minigame (quiz) trong series, có 2 bước:
-1. **Tạo Activity trong Series** với `type = "MINIGAME"`
+1. **Tạo Activity trong Series** với `type = "MINIGAME"` (Frontend tự động truyền khi user chọn "Minigame/Quiz")
 2. **Tạo Minigame** cho activity đó (có thể không cần `rewardPoints`)
+
+**Lưu ý quan trọng:**
+- ✅ Frontend có UI cho phép user chọn loại activity: **"Activity thường"** hoặc **"Minigame/Quiz"**
+- ✅ Nếu user chọn **"Minigame/Quiz"**, Frontend **tự động thêm** `type: "MINIGAME"` vào request body
+- ✅ Nếu user chọn **"Activity thường"**, Frontend **không truyền** `type` hoặc truyền `null`
 
 ---
 
@@ -12,14 +17,19 @@ Khi tạo minigame (quiz) trong series, có 2 bước:
 
 ### Bước 1: Tạo Activity Trong Series
 
+**UI Flow:**
+1. User chọn loại activity: **"Activity thường"** hoặc **"Minigame/Quiz"**
+2. Nếu chọn **"Minigame/Quiz"** → Frontend tự động set `type = "MINIGAME"` trong request
+3. Nếu chọn **"Activity thường"** → Frontend không truyền `type` hoặc truyền `type = null`
+
 **API:** `POST /api/series/{seriesId}/activities`
 
-**Request Body:**
+**Request Body (Khi chọn Minigame):**
 ```json
 {
   "name": "Quiz kiến thức IT - Bài 1",
   "description": "Bài quiz về kiến thức IT cơ bản",
-  "type": "MINIGAME",  // ⚠️ QUAN TRỌNG: Phải truyền type = "MINIGAME"
+  "type": "MINIGAME",  // ⚠️ QUAN TRỌNG: Frontend tự động truyền khi chọn "Minigame"
   "startDate": "2025-02-01T08:00:00",
   "endDate": "2025-02-01T23:59:59",
   "location": "Online",
@@ -30,6 +40,20 @@ Khi tạo minigame (quiz) trong series, có 2 bước:
   "requirements": "Đã học môn IT cơ bản",
   "contactInfo": "contact@example.com",
   "organizerIds": [1, 2]
+}
+```
+
+**Request Body (Khi chọn Activity thường):**
+```json
+{
+  "name": "Workshop IT",
+  "description": "Workshop về IT",
+  // type không truyền hoặc null
+  "startDate": "2025-02-01T08:00:00",
+  "endDate": "2025-02-01T23:59:59",
+  "location": "Online",
+  "order": 1,
+  ...
 }
 ```
 
@@ -270,7 +294,7 @@ Khi tạo minigame (quiz) trong series, có 2 bước:
 interface CreateActivityInSeriesFormData {
   name: string;
   description?: string;
-  type?: "MINIGAME" | null;  // null = activity thường, "MINIGAME" = quiz
+  activityType: "REGULAR" | "MINIGAME";  // ⚠️ User chọn từ UI
   startDate?: string;
   endDate?: string;
   location?: string;
@@ -283,28 +307,110 @@ interface CreateActivityInSeriesFormData {
   organizerIds?: number[];
 }
 
-// Khi user chọn "Tạo Quiz"
-const handleCreateQuiz = async (formData: CreateActivityInSeriesFormData) => {
-  const response = await fetch(`/api/series/${seriesId}/activities`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      ...formData,
-      type: "MINIGAME"  // ⚠️ Bắt buộc
-    })
+// Component UI
+const CreateActivityInSeriesForm = ({ seriesId, onSuccess }) => {
+  const [formData, setFormData] = useState<CreateActivityInSeriesFormData>({
+    name: "",
+    activityType: "REGULAR",  // Default: Activity thường
+    ...
   });
-  
-  const result = await response.json();
-  if (result.status) {
-    const activityId = result.data.id;
-    // Chuyển sang form tạo minigame
-    navigate(`/series/${seriesId}/activities/${activityId}/create-quiz`);
-  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Chuẩn bị request body
+    const requestBody: any = {
+      name: formData.name,
+      description: formData.description,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      location: formData.location,
+      order: formData.order,
+      shareLink: formData.shareLink,
+      bannerUrl: formData.bannerUrl,
+      benefits: formData.benefits,
+      requirements: formData.requirements,
+      contactInfo: formData.contactInfo,
+      organizerIds: formData.organizerIds,
+    };
+
+    // ⚠️ QUAN TRỌNG: Nếu user chọn "MINIGAME", tự động thêm type = "MINIGAME"
+    if (formData.activityType === "MINIGAME") {
+      requestBody.type = "MINIGAME";
+    }
+    // Nếu là "REGULAR", không truyền type (hoặc truyền null)
+
+    try {
+      const response = await fetch(`/api/series/${seriesId}/activities`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      const result = await response.json();
+      if (result.status) {
+        const activityId = result.data.id;
+        
+        // Nếu là minigame, chuyển sang form tạo quiz
+        if (formData.activityType === "MINIGAME") {
+          navigate(`/series/${seriesId}/activities/${activityId}/create-quiz`);
+        } else {
+          // Nếu là activity thường, quay lại danh sách hoặc hiển thị thông báo
+          onSuccess?.(result.data);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to create activity:", error);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <FormField name="name" label="Tên Activity" required />
+      
+      {/* ⚠️ QUAN TRỌNG: Radio button để chọn loại activity */}
+      <FormField 
+        name="activityType" 
+        label="Loại Activity"
+        type="radio"
+        options={[
+          { value: "REGULAR", label: "Activity thường" },
+          { value: "MINIGAME", label: "Minigame/Quiz" }
+        ]}
+        value={formData.activityType}
+        onChange={(e) => setFormData({ ...formData, activityType: e.target.value })}
+      />
+      
+      {/* Hiển thị thông báo nếu chọn Minigame */}
+      {formData.activityType === "MINIGAME" && (
+        <Alert type="info">
+          Activity này sẽ là quiz. Sau khi tạo, bạn sẽ được chuyển đến form tạo minigame.
+          Điểm sẽ được tính từ milestone của series.
+        </Alert>
+      )}
+      
+      {/* Các field khác */}
+      <FormField name="description" label="Mô tả" />
+      <FormField name="startDate" label="Ngày bắt đầu" type="datetime-local" />
+      <FormField name="endDate" label="Ngày kết thúc" type="datetime-local" />
+      <FormField name="location" label="Địa điểm" />
+      <FormField name="order" label="Thứ tự" type="number" />
+      {/* ... các field khác */}
+      
+      <Button type="submit">Tạo Activity</Button>
+    </form>
+  );
 };
 ```
+
+**Lưu ý:**
+- ✅ User chọn loại activity từ UI (Radio button hoặc Select)
+- ✅ Frontend tự động thêm `type: "MINIGAME"` vào request nếu chọn "Minigame"
+- ✅ Nếu chọn "Activity thường", không truyền `type` hoặc truyền `null`
+- ✅ Sau khi tạo activity minigame, tự động chuyển sang form tạo quiz
 
 ### Component: CreateMinigameForm
 
