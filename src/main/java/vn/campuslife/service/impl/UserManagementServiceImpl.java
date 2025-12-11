@@ -236,6 +236,26 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     @Transactional(readOnly = true)
+    public Response getAllUsersIncludingStudents() {
+        try {
+            List<User> users = userRepository.findAll()
+                    .stream()
+                    .filter(user -> !user.isDeleted())
+                    .collect(Collectors.toList());
+
+            List<UserResponse> responses = users.stream()
+                    .map(this::toUserResponse)
+                    .collect(Collectors.toList());
+
+            return new Response(true, "All users retrieved successfully", responses);
+        } catch (Exception e) {
+            logger.error("Failed to get all users including students: {}", e.getMessage(), e);
+            return new Response(false, "Failed to get all users: " + e.getMessage(), null);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Response getUsersByRole(String role) {
         try {
             Role roleEnum;

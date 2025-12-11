@@ -6,6 +6,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.ActivitySeries;
 
+import java.util.List;
+
 @Repository
 public interface ActivitySeriesRepository extends JpaRepository<ActivitySeries, Long> {
 
@@ -22,5 +24,8 @@ public interface ActivitySeriesRepository extends JpaRepository<ActivitySeries, 
             "WHERE ar.activity.seriesId = :seriesId " +
             "AND ar.student.isDeleted = false")
     Long countStudentsBySeriesId(@Param("seriesId") Long seriesId);
+
+    List<ActivitySeries> findByIsDeletedFalse();
+
 }
 

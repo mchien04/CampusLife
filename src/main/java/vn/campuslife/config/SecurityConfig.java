@@ -79,10 +79,15 @@ public class SecurityConfig {
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/test").authenticated()
 
-                        // Admin-only endpoints
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Specific admin endpoints - must be before general /api/admin/** rule
+                        // Departments - Admin and Manager can access
+                        .requestMatchers("/api/admin/departments/**").hasAnyRole("ADMIN", "MANAGER")
+                        // Users Management - Admin and Manager can access
+                        .requestMatchers("/api/admin/users/**").hasAnyRole("ADMIN", "MANAGER")
                         // Student Account Management - Admin only
                         .requestMatchers("/api/admin/students/**").hasRole("ADMIN")
+                        // Admin-only endpoints (general rule - must be last)
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
                         // Activities
                         .requestMatchers(HttpMethod.GET, "/api/activities/upcoming")
@@ -134,15 +139,26 @@ public class SecurityConfig {
                         .requestMatchers("/api/minigames/**")
                         .hasAnyRole("ADMIN", "MANAGER")
 
+                        // Email endpoints - Admin/Manager only (place before activities to avoid
+                        // conflicts)
+                        .requestMatchers(HttpMethod.POST, "/api/emails/send").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/emails/send-json").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/emails/notifications/send")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/emails/history").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/emails/history/*/resend").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/emails/history/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/emails/attachments/*/download")
+                        .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/emails/**").hasAnyRole("ADMIN", "MANAGER")
+
                         .requestMatchers(HttpMethod.GET, "/api/activities/**").permitAll()
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
-                        
-                        // Email endpoints - Admin/Manager only
-                        .requestMatchers("/api/emails/**").hasAnyRole("ADMIN", "MANAGER")
-                        
+
                         // Hien thi participations
                         .requestMatchers(HttpMethod.GET, "/api/participations").permitAll()
                         // Tasks and Assignments
+                        .requestMatchers(HttpMethod.GET, "/api/assignments/activity/*/student/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/assignments/*/status").hasRole("STUDENT")
@@ -165,6 +181,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/registrations/backfill/**")
                         .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/activity/*").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/series/*").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/registrations/*/status").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/registrations/*")
                         .hasAnyRole("ADMIN", "MANAGER", "STUDENT")

@@ -1,5 +1,6 @@
 package vn.campuslife.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,6 +24,7 @@ public class Address {
 
     @OneToOne
     @JoinColumn(name = "student_id", unique = true, nullable = false)
+    @JsonBackReference
     private Student student;
 
     @Column(nullable = false)

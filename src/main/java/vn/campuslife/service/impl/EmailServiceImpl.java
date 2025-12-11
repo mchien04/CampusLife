@@ -114,8 +114,7 @@ public class EmailServiceImpl implements EmailService {
                             processedSubject,
                             processedContent,
                             request.getIsHtml() != null && request.getIsHtml(),
-                            attachmentFiles
-                    );
+                            attachmentFiles);
 
                     // Create email history
                     EmailHistory emailHistory = new EmailHistory();
@@ -152,11 +151,11 @@ public class EmailServiceImpl implements EmailService {
                                     notificationContent,
                                     notificationType,
                                     request.getNotificationActionUrl(),
-                                    null
-                            );
+                                    null);
                             emailHistory.setNotificationCreated(true);
                         } catch (Exception e) {
-                            logger.error("Failed to create notification for user {}: {}", recipient.getId(), e.getMessage());
+                            logger.error("Failed to create notification for user {}: {}", recipient.getId(),
+                                    e.getMessage());
                         }
                     }
 
@@ -251,14 +250,20 @@ public class EmailServiceImpl implements EmailService {
 
             for (User recipient : recipients) {
                 try {
+                    // Build template variables
+                    Map<String, String> templateVars = buildTemplateVariablesForNotification(recipient, request);
+
+                    // Process template
+                    String processedContent = emailUtil.processTemplate(request.getContent(), templateVars);
+                    String processedTitle = emailUtil.processTemplate(request.getTitle(), templateVars);
+
                     notificationService.sendNotification(
                             recipient.getId(),
-                            request.getTitle(),
-                            request.getContent(),
+                            processedTitle,
+                            processedContent,
                             request.getType(),
                             request.getActionUrl(),
-                            null
-                    );
+                            null);
                     successCount++;
                 } catch (Exception e) {
                     logger.error("Failed to send notification to user {}: {}", recipient.getId(), e.getMessage());
@@ -283,7 +288,8 @@ public class EmailServiceImpl implements EmailService {
     @Override
     public Response getEmailHistory(Long senderId, Pageable pageable) {
         try {
-            Page<EmailHistory> emailHistories = emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId, pageable);
+            Page<EmailHistory> emailHistories = emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId,
+                    pageable);
             List<EmailHistoryResponse> responses = emailHistories.getContent().stream()
                     .map(this::toEmailHistoryResponse)
                     .collect(Collectors.toList());
@@ -343,8 +349,7 @@ public class EmailServiceImpl implements EmailService {
                     emailHistory.getSubject(),
                     emailHistory.getContent(),
                     emailHistory.isHtml(),
-                    attachmentFiles
-            );
+                    attachmentFiles);
 
             // Update email history
             emailHistory.setSentAt(LocalDateTime.now());
@@ -368,7 +373,8 @@ public class EmailServiceImpl implements EmailService {
         List<User> recipients = new ArrayList<>();
 
         switch (request.getRecipientType()) {
-            case INDIVIDUAL:
+            case BULK:
+                // BULK: Gửi theo danh sách user IDs (có thể 1 hoặc nhiều)
                 if (request.getRecipientIds() != null && !request.getRecipientIds().isEmpty()) {
                     recipients = userRepository.findAllById(request.getRecipientIds());
                 }
@@ -428,19 +434,6 @@ public class EmailServiceImpl implements EmailService {
                             .collect(Collectors.toList());
                 }
                 break;
-
-            case CUSTOM_LIST:
-                if (request.getRecipientIds() != null && !request.getRecipientIds().isEmpty()) {
-                    recipients = userRepository.findAllById(request.getRecipientIds());
-                }
-                break;
-
-            case BULK:
-                // BULK is same as CUSTOM_LIST
-                if (request.getRecipientIds() != null && !request.getRecipientIds().isEmpty()) {
-                    recipients = userRepository.findAllById(request.getRecipientIds());
-                }
-                break;
         }
 
         return recipients;
@@ -451,9 +444,8 @@ public class EmailServiceImpl implements EmailService {
         List<User> recipients = new ArrayList<>();
 
         switch (request.getRecipientType()) {
-            case INDIVIDUAL:
-            case CUSTOM_LIST:
             case BULK:
+                // BULK: Gửi theo danh sách user IDs (có thể 1 hoặc nhiều)
                 if (request.getRecipientIds() != null && !request.getRecipientIds().isEmpty()) {
                     recipients = userRepository.findAllById(request.getRecipientIds());
                 }
@@ -521,6 +513,9 @@ public class EmailServiceImpl implements EmailService {
     private Map<String, String> buildTemplateVariables(User recipient, SendEmailRequest request) {
         Map<String, String> vars = new HashMap<>();
 
+        // Add email for all recipients
+        vars.put("email", recipient.getEmail() != null ? recipient.getEmail() : "");
+
         // Get student info if recipient is a student
         Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(recipient.getId());
         if (studentOpt.isPresent()) {
@@ -529,10 +524,66 @@ public class EmailServiceImpl implements EmailService {
             vars.put("studentCode", student.getStudentCode() != null ? student.getStudentCode() : "");
 
             if (student.getStudentClass() != null) {
-                vars.put("className", student.getStudentClass().getClassName() != null ? student.getStudentClass().getClassName() : "");
+                vars.put("className",
+                        student.getStudentClass().getClassName() != null ? student.getStudentClass().getClassName()
+                                : "");
             }
             if (student.getDepartment() != null) {
-                vars.put("departmentName", student.getDepartment().getName() != null ? student.getDepartment().getName() : "");
+                vars.put("departmentName",
+                        student.getDepartment().getName() != null ? student.getDepartment().getName() : "");
+            }
+        }
+
+        // Add activity info if applicable
+        if (request.getActivityId() != null) {
+            Optional<Activity> activityOpt = activityRepository.findById(request.getActivityId());
+            if (activityOpt.isPresent()) {
+                Activity activity = activityOpt.get();
+                vars.put("activityName", activity.getName() != null ? activity.getName() : "");
+                if (activity.getStartDate() != null) {
+                    vars.put("activityDate", activity.getStartDate().toString());
+                }
+            }
+        }
+
+        // Add series info if applicable
+        if (request.getSeriesId() != null) {
+            Optional<ActivitySeries> seriesOpt = activitySeriesRepository.findById(request.getSeriesId());
+            if (seriesOpt.isPresent()) {
+                ActivitySeries series = seriesOpt.get();
+                vars.put("seriesName", series.getName() != null ? series.getName() : "");
+            }
+        }
+
+        // Add custom template variables
+        if (request.getTemplateVariables() != null) {
+            vars.putAll(request.getTemplateVariables());
+        }
+
+        return vars;
+    }
+
+    private Map<String, String> buildTemplateVariablesForNotification(User recipient, SendNotificationOnlyRequest request) {
+        Map<String, String> vars = new HashMap<>();
+
+        // Add email for all recipients
+        vars.put("email", recipient.getEmail() != null ? recipient.getEmail() : "");
+
+        // Get student info if recipient is a student
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(recipient.getId());
+        if (studentOpt.isPresent()) {
+            Student student = studentOpt.get();
+            vars.put("studentName", student.getFullName() != null ? student.getFullName() : "");
+            vars.put("studentCode", student.getStudentCode() != null ? student.getStudentCode() : "");
+
+            if (student.getStudentClass() != null) {
+                vars.put("className",
+                        student.getStudentClass().getClassName() != null ? student.getStudentClass().getClassName()
+                                : "");
+            }
+            if (student.getDepartment() != null) {
+                vars.put("departmentName",
+                        student.getDepartment().getName() != null ? student.getDepartment().getName() : "");
             }
         }
 
@@ -631,7 +682,8 @@ public class EmailServiceImpl implements EmailService {
                 attachment.setFileName(originalFilename != null ? originalFilename : fileName);
                 attachment.setFilePath(filePath.toString());
                 attachment.setFileSize(file.getSize());
-                attachment.setContentType(file.getContentType() != null ? file.getContentType() : "application/octet-stream");
+                attachment.setContentType(
+                        file.getContentType() != null ? file.getContentType() : "application/octet-stream");
                 attachments.add(attachment);
             }
         } catch (IOException e) {
@@ -687,4 +739,3 @@ public class EmailServiceImpl implements EmailService {
         return response;
     }
 }
-

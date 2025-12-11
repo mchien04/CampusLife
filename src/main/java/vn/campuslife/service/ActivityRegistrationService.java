@@ -29,6 +29,11 @@ public interface ActivityRegistrationService {
     Response getActivityRegistrations(Long activityId);
 
     /**
+     * Lấy danh sách đăng ký theo chuỗi sự kiện (series)
+     */
+    Response getSeriesRegistrations(Long seriesId);
+
+    /**
      * Cập nhật trạng thái đăng ký (Admin/Manager)
      */
     Response updateRegistrationStatus(Long registrationId, String status);

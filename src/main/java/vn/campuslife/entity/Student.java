@@ -1,5 +1,7 @@
 package vn.campuslife.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,6 +12,8 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.util.List;
+
 import vn.campuslife.enumeration.Gender;
 
 @Entity
@@ -38,11 +42,14 @@ public class Student {
 
     @ManyToOne
     @JoinColumn(name = "department_id")
+    @JsonBackReference
     private Department department;
 
     @ManyToOne
     @JoinColumn(name = "class_id")
+    @JsonBackReference
     private StudentClass studentClass;
+
 
     private String phone;
 

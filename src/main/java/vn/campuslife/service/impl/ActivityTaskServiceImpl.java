@@ -378,6 +378,9 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         response.setId(assignment.getId());
         response.setTaskId(assignment.getTask().getId());
         response.setTaskName(assignment.getTask().getName());
+        // Thêm thông tin Activity để sinh viên biết nhiệm vụ thuộc sự kiện nào
+        response.setActivityId(assignment.getTask().getActivity().getId());
+        response.setActivityName(assignment.getTask().getActivity().getName());
         response.setStudentId(assignment.getStudent().getId());
         response.setStudentName(assignment.getStudent().getFullName());
         response.setStudentCode(assignment.getStudent().getStudentCode());
@@ -539,6 +542,22 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         } catch (Exception e) {
             logger.error("Failed to check and update overdue assignments: {}", e.getMessage(), e);
             return new Response(false, "Failed to check overdue assignments: " + e.getMessage(), null);
+        }
+    }
+    @Override
+    public Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId) {
+        try {
+            List<TaskAssignment> assignments =
+                    taskAssignmentRepository.findByActivityIdAndStudentId(activityId, studentId);
+
+            if (assignments.isEmpty()) {
+                return new Response(false, "No task assignments found for this student in the activity", null);
+            }
+
+            return new Response(true, "Assignments retrieved successfully", assignments);
+        } catch (Exception e) {
+            logger.error("Failed to get task assignments by activity and student: {}", e.getMessage(), e);
+            return new Response(false, "Error fetching task assignments: " + e.getMessage(), null);
         }
     }
 }
