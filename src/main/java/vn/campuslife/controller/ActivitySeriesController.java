@@ -161,6 +161,20 @@ public class ActivitySeriesController {
             String requirements = (String) request.get("requirements");
             String contactInfo = (String) request.get("contactInfo");
             
+            // Parse type từ request (optional)
+            // Cho phép tất cả các type (có thể chỉnh sửa sau)
+            vn.campuslife.enumeration.ActivityType type = null;
+            if (request.get("type") != null) {
+                try {
+                    String typeStr = request.get("type").toString();
+                    type = vn.campuslife.enumeration.ActivityType.valueOf(typeStr);
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Invalid ActivityType: {}", request.get("type"));
+                    return ResponseEntity.badRequest()
+                        .body(new Response(false, "Invalid ActivityType: " + request.get("type"), null));
+                }
+            }
+            
             java.util.List<Long> organizerIds = null;
             if (request.get("organizerIds") != null) {
                 try {
@@ -176,7 +190,7 @@ public class ActivitySeriesController {
 
             Response response = seriesService.createActivityInSeries(seriesId, name, description,
                     startDate, endDate, location, order, shareLink, bannerUrl,
-                    benefits, requirements, contactInfo, organizerIds);
+                    benefits, requirements, contactInfo, organizerIds, type);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating activity in series: {}", e.getMessage(), e);

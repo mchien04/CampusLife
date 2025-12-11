@@ -41,6 +41,9 @@ public class ActivityResponse {
 
     private List<Long> organizerIds;
 
+    private Long seriesId;
+    private Integer seriesOrder;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String createdBy;

@@ -18,7 +18,8 @@ public interface ActivitySeriesService {
         Response createActivityInSeries(Long seriesId, String name, String description,
                         java.time.LocalDateTime startDate, java.time.LocalDateTime endDate,
                         String location, Integer order, String shareLink, String bannerUrl,
-                        String benefits, String requirements, String contactInfo, java.util.List<Long> organizerIds);
+                        String benefits, String requirements, String contactInfo, java.util.List<Long> organizerIds,
+                        vn.campuslife.enumeration.ActivityType type);
 
         /**
          * Thêm activity vào chuỗi
