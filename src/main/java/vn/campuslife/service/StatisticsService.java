@@ -36,11 +36,5 @@ public interface StatisticsService {
      */
     Response getMiniGameStatistics(Long miniGameId, java.time.LocalDateTime startDate, 
                                     java.time.LocalDateTime endDate);
-    
-    /**
-     * Thống kê theo thời gian
-     */
-    Response getTimeBasedStatistics(java.time.LocalDateTime startDate, java.time.LocalDateTime endDate, 
-                                     String groupBy);
 }
 

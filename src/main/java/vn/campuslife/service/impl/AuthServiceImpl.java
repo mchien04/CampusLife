@@ -123,7 +123,7 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
             user.setUsername(request.getUsername());
             user.setEmail(request.getEmail());
             user.setPassword(passwordEncoder.encode(request.getPassword()));
-            user.setRole(Role.STUDENT);
+            user.setRole(Role.ADMIN);
             user.setActivated(false);
 
             // Save user
