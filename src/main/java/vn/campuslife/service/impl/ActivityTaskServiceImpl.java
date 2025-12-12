@@ -544,4 +544,20 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             return new Response(false, "Failed to check overdue assignments: " + e.getMessage(), null);
         }
     }
+    @Override
+    public Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId) {
+        try {
+            List<TaskAssignment> assignments =
+                    taskAssignmentRepository.findByActivityIdAndStudentId(activityId, studentId);
+
+            if (assignments.isEmpty()) {
+                return new Response(false, "No task assignments found for this student in the activity", null);
+            }
+
+            return new Response(true, "Assignments retrieved successfully", assignments);
+        } catch (Exception e) {
+            logger.error("Failed to get task assignments by activity and student: {}", e.getMessage(), e);
+            return new Response(false, "Error fetching task assignments: " + e.getMessage(), null);
+        }
+    }
 }

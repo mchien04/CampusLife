@@ -1,7 +1,10 @@
 package vn.campuslife.service;
 
+import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.*;
+
+import java.util.List;
 
 public interface ActivityRegistrationService {
 
@@ -86,4 +89,8 @@ public interface ActivityRegistrationService {
      * Lấy danh sách Đăng ký của sinh theo status
      */
     Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status);
+    /**
+     * Tìm kiếm
+     */
+    Response search(String keyword, RegistrationStatus status);
 }

@@ -311,7 +311,15 @@ public class ActivityServiceImpl implements ActivityService {
         Long deptId = studentRepository.findDepartmentIdByUsername(username);
         if (deptId == null)
             return Collections.emptyList();
-        return activityRepository.findForDepartment(deptId);
+
+        List<Activity> all = activityRepository.findForDepartment(deptId);
+
+        LocalDate today = LocalDate.now();
+
+        return all.stream()
+                .filter(a -> a.getEndDate() != null &&
+                        !a.getEndDate().toLocalDate().isBefore(today))
+                .collect(Collectors.toList());
     }
 
     @Override

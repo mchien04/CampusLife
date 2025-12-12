@@ -1,5 +1,6 @@
 package vn.campuslife.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -31,8 +32,8 @@ public class StudentClass {
     @ManyToOne
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;
-
     @OneToMany(mappedBy = "studentClass", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
     private List<Student> students;
 
     @CreatedDate

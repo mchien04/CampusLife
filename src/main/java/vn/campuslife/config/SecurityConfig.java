@@ -158,6 +158,7 @@ public class SecurityConfig {
                         // Hien thi participations
                         .requestMatchers(HttpMethod.GET, "/api/participations").permitAll()
                         // Tasks and Assignments
+                        .requestMatchers(HttpMethod.GET, "/api/assignments/activity/*/student/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/assignments/*/status").hasRole("STUDENT")
@@ -168,6 +169,8 @@ public class SecurityConfig {
                         // Check-in endpoints (already defined above, but keep validate/debug here)
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/debug").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/validate").authenticated()
+                        .requestMatchers(HttpMethod.GET, "api/registrations/search").permitAll()
+
                         // Other specific routes
                         .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**")
                         .hasRole("STUDENT")
