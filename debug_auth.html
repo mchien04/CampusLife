@@ -21,6 +21,17 @@
     </div>
 
     <script>
+        // ============================================
+        // API Configuration - Thay đổi URL tại đây
+        // ============================================
+        // Production URL (mặc định)
+        const API_BASE_URL = 'https://campuslife-v2iu.onrender.com';
+
+        // Local development URL (uncomment để dùng local)
+        // const API_BASE_URL = 'http://localhost:8080';
+
+        // ============================================
+
         // Lấy token từ localStorage
         function getToken() {
             return localStorage.getItem('token');
@@ -35,7 +46,7 @@
             }
 
             try {
-                const response = await fetch('http://localhost:8080/api/activities/debug/user-info', {
+                const response = await fetch(`${API_BASE_URL}/api/activities/debug/user-info`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -78,7 +89,7 @@
             };
 
             try {
-                const response = await fetch('http://localhost:8080/api/activities/2', {
+                const response = await fetch(`${API_BASE_URL}/api/activities/2`, {
                     method: 'PUT',
                     headers: {
                         'Authorization': `Bearer ${token}`,
