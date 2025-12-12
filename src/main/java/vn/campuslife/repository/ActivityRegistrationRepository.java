@@ -177,4 +177,18 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
             @Param("studentId") Long studentId,
             @Param("status") RegistrationStatus status
     );
+    /**
+     * tìm kiếm
+     */
+    @Query("""
+        SELECT ar FROM ActivityRegistration ar
+        JOIN ar.activity a
+        WHERE (:keyword IS NULL 
+               OR LOWER(a.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
+          AND (:status IS NULL OR ar.status = :status)
+    """)
+    List<ActivityRegistration> search(
+            @Param("keyword") String keyword,
+            @Param("status") RegistrationStatus status
+    );
 }

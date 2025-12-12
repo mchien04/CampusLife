@@ -4,6 +4,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.ScoreType;
 
 import java.time.LocalDateTime;
 
@@ -28,4 +29,7 @@ public class ActivityRegistrationResponse {
     private String ticketCode;
     // Nếu registration thuộc một chuỗi sự kiện, seriesId != null
     private Long seriesId;
+    private boolean isImportant;
+    private boolean mandatoryForFacultyStudents;
+    private ScoreType scoreType;
 }

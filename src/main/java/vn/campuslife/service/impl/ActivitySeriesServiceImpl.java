@@ -681,13 +681,14 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     @Transactional(readOnly = true)
     public Response getAllSeries() {
         try {
-            List<ActivitySeries> seriesList = seriesRepository.findAll();
+            List<ActivitySeries> seriesList = seriesRepository.findByIsDeletedFalse();
             return Response.success("Series retrieved successfully", seriesList);
         } catch (Exception e) {
             logger.error("Failed to get all series: {}", e.getMessage(), e);
             return Response.error("Failed to get all series: " + e.getMessage());
         }
     }
+
 
     @Override
     @Transactional(readOnly = true)

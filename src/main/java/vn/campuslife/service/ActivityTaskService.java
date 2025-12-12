@@ -75,4 +75,8 @@ public interface ActivityTaskService {
      * Kiểm tra và cập nhật status OVERDUE cho các assignment quá hạn chưa nộp
      */
     Response checkAndUpdateOverdueAssignments();
+    /**
+     * Lấy danh sách phân công theo Activity ID và Student ID
+     */
+    Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId);
 }

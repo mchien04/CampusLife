@@ -21,4 +21,5 @@ public class ActivityParticipationRequest {
     private ParticipationType participationType;
 
     private BigDecimal pointsEarned;
+
 }

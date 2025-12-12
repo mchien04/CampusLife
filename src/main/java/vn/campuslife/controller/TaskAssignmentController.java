@@ -74,4 +74,11 @@ public class TaskAssignmentController {
             return null;
         }
     }
+    @GetMapping("/activity/{activityId}/student/{studentId}")
+    public ResponseEntity<Response> getAssignmentsByActivityAndStudent(
+            @PathVariable Long activityId,
+            @PathVariable Long studentId) {
+        Response response = activityTaskService.getAssignmentsByActivityAndStudent(activityId, studentId);
+        return ResponseEntity.ok(response);
+    }
 }

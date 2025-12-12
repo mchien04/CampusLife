@@ -721,6 +721,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         res.setCreatedAt(r.getCreatedAt());
         res.setTicketCode(r.getTicketCode());
         res.setSeriesId(r.getSeriesId());
+        res.setImportant(a.isImportant());
+        res.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
+        res.setScoreType(a.getScoreType());
         return res;
     }
 
@@ -1235,4 +1238,20 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to retrieve registrations due to server error", null);
         }
     }
+    /**
+     * Tìm kiếm
+     */
+    public Response search(String keyword, RegistrationStatus status) {
+        List<ActivityRegistration> registrations =
+                registrationRepository.search(keyword, status);
+
+        List<ActivityRegistrationResponse> responses = registrations.stream()
+                .map(this::toRegistrationResponse)
+                .toList();
+
+        return new Response(true,
+                "Student registrations retrieved successfully",
+                responses);
+    }
+
 }
