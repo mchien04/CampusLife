@@ -563,7 +563,8 @@ public class EmailServiceImpl implements EmailService {
         return vars;
     }
 
-    private Map<String, String> buildTemplateVariablesForNotification(User recipient, SendNotificationOnlyRequest request) {
+    private Map<String, String> buildTemplateVariablesForNotification(User recipient,
+            SendNotificationOnlyRequest request) {
         Map<String, String> vars = new HashMap<>();
 
         // Add email for all recipients
