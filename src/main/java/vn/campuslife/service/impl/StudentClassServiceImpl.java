@@ -3,11 +3,10 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import vn.campuslife.entity.*;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.StudentResponse;
@@ -218,7 +217,12 @@ public class StudentClassServiceImpl implements StudentClassService {
             }
 
             Student student = studentOpt.get();
-            student.setStudentClass(classOpt.get());
+            StudentClass studentClass = classOpt.get();
+            student.setStudentClass(studentClass);
+            // Tự động gán department từ class
+            if (studentClass.getDepartment() != null) {
+                student.setDepartment(studentClass.getDepartment());
+            }
             studentRepository.save(student);
 
             return new Response(true, "Student added to class successfully", null);

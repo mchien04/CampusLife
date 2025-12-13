@@ -1,5 +1,7 @@
 package vn.campuslife.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -27,5 +29,26 @@ public interface StudentSeriesProgressRepository extends JpaRepository<StudentSe
             "WHERE ssp.series.id = :seriesId " +
             "AND ssp.completedCount >= (SELECT COUNT(a) FROM Activity a WHERE a.seriesId = :seriesId AND a.isDeleted = false)")
     Long countCompletedStudentsBySeriesId(@Param("seriesId") Long seriesId);
+
+    /**
+     * Lấy tất cả progress của series với pagination
+     */
+    @Query("SELECT ssp FROM StudentSeriesProgress ssp " +
+            "WHERE ssp.series.id = :seriesId " +
+            "AND ssp.student.isDeleted = false")
+    Page<StudentSeriesProgress> findBySeriesId(@Param("seriesId") Long seriesId, Pageable pageable);
+
+    /**
+     * Tìm progress theo series và student name/code (cho search)
+     */
+    @Query("SELECT ssp FROM StudentSeriesProgress ssp " +
+            "WHERE ssp.series.id = :seriesId " +
+            "AND ssp.student.isDeleted = false " +
+            "AND (LOWER(ssp.student.fullName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "OR LOWER(ssp.student.studentCode) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+    Page<StudentSeriesProgress> findBySeriesIdAndStudentNameOrCode(
+            @Param("seriesId") Long seriesId,
+            @Param("keyword") String keyword,
+            Pageable pageable);
 }
 

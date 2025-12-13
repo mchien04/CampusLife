@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
@@ -12,6 +15,9 @@ import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.SeriesOverviewResponse;
+import vn.campuslife.model.SeriesProgressItemResponse;
+import vn.campuslife.model.SeriesProgressListResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
 
@@ -682,13 +688,38 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     public Response getAllSeries() {
         try {
             List<ActivitySeries> seriesList = seriesRepository.findByIsDeletedFalse();
-            return Response.success("Series retrieved successfully", seriesList);
+
+            // Thêm totalActivities vào mỗi series
+            List<Map<String, Object>> seriesWithCount = seriesList.stream()
+                    .map(series -> {
+                        Map<String, Object> seriesMap = new HashMap<>();
+                        seriesMap.put("id", series.getId());
+                        seriesMap.put("name", series.getName());
+                        seriesMap.put("description", series.getDescription());
+                        seriesMap.put("milestonePoints", series.getMilestonePoints());
+                        seriesMap.put("scoreType", series.getScoreType());
+                        seriesMap.put("mainActivity", series.getMainActivity());
+                        seriesMap.put("registrationStartDate", series.getRegistrationStartDate());
+                        seriesMap.put("registrationDeadline", series.getRegistrationDeadline());
+                        seriesMap.put("requiresApproval", series.isRequiresApproval());
+                        seriesMap.put("ticketQuantity", series.getTicketQuantity());
+                        seriesMap.put("createdAt", series.getCreatedAt());
+                        seriesMap.put("isDeleted", series.isDeleted());
+
+                        // Đếm số activities trong series
+                        Long totalActivities = activityRepository.countBySeriesId(series.getId());
+                        seriesMap.put("totalActivities", totalActivities != null ? totalActivities.intValue() : 0);
+
+                        return seriesMap;
+                    })
+                    .collect(Collectors.toList());
+
+            return Response.success("Series retrieved successfully", seriesWithCount);
         } catch (Exception e) {
             logger.error("Failed to get all series: {}", e.getMessage(), e);
             return Response.error("Failed to get all series: " + e.getMessage());
         }
     }
-
 
     @Override
     @Transactional(readOnly = true)
@@ -867,6 +898,286 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         } catch (Exception e) {
             logger.error("Failed to check series registration: {}", e.getMessage(), e);
             return Response.error("Failed to check series registration: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesProgress(Long seriesId, Integer page, Integer size, String keyword) {
+        try {
+            // Validate series exists
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+
+            // Get total activities in series
+            List<Activity> allActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            Integer totalActivities = allActivities.size();
+
+            // Get all registered students (distinct)
+            List<ActivityRegistration> allRegistrations = registrationRepository.findBySeriesId(seriesId);
+            Set<Long> registeredStudentIds = allRegistrations.stream()
+                    .map(reg -> reg.getStudent().getId())
+                    .collect(Collectors.toSet());
+            Long totalRegistered = (long) registeredStudentIds.size();
+
+            // Parse milestone points
+            Map<String, Integer> milestonePoints = null;
+            if (series.getMilestonePoints() != null && !series.getMilestonePoints().isEmpty()) {
+                try {
+                    milestonePoints = objectMapper.readValue(series.getMilestonePoints(),
+                            new TypeReference<Map<String, Integer>>() {
+                            });
+                } catch (Exception e) {
+                    logger.warn("Failed to parse milestonePoints: {}", series.getMilestonePoints(), e);
+                }
+            }
+
+            // Setup pagination
+            if (page == null || page < 0) {
+                page = 0;
+            }
+            if (size == null || size < 1) {
+                size = 20;
+            }
+            Pageable pageable = PageRequest.of(page, size);
+
+            // Query progress with or without keyword
+            Page<StudentSeriesProgress> progressPage;
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                progressPage = progressRepository.findBySeriesIdAndStudentNameOrCode(seriesId, keyword.trim(),
+                        pageable);
+            } else {
+                progressPage = progressRepository.findBySeriesId(seriesId, pageable);
+            }
+
+            // Map progress to DTOs
+            List<SeriesProgressItemResponse> progressList = new ArrayList<>();
+            Set<Long> progressStudentIds = new HashSet<>();
+
+            for (StudentSeriesProgress progress : progressPage.getContent()) {
+                progressStudentIds.add(progress.getStudent().getId());
+                SeriesProgressItemResponse item = mapProgressToResponse(progress, totalActivities, milestonePoints);
+                progressList.add(item);
+            }
+
+            // Add registered students without progress (if they're in the current page
+            // range)
+            // This is a simplified approach - in a real scenario, you might want to handle
+            // this differently
+            // For now, we'll only show students with progress records
+
+            // Build response
+            SeriesProgressListResponse response = new SeriesProgressListResponse();
+            response.setSeriesId(seriesId);
+            response.setSeriesName(series.getName());
+            response.setTotalActivities(totalActivities);
+            response.setTotalRegistered(totalRegistered);
+            response.setProgressList(progressList);
+            response.setPage(page);
+            response.setSize(size);
+            response.setTotalPages(progressPage.getTotalPages());
+            response.setTotalElements(progressPage.getTotalElements());
+
+            return Response.success("Series progress retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to get series progress: {}", e.getMessage(), e);
+            return Response.error("Failed to get series progress: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Map StudentSeriesProgress to SeriesProgressItemResponse
+     */
+    private SeriesProgressItemResponse mapProgressToResponse(StudentSeriesProgress progress, Integer totalActivities,
+            Map<String, Integer> milestonePoints) {
+        SeriesProgressItemResponse item = new SeriesProgressItemResponse();
+        Student student = progress.getStudent();
+
+        item.setStudentId(student.getId());
+        item.setStudentCode(student.getStudentCode());
+        item.setStudentName(student.getFullName());
+        item.setCompletedCount(progress.getCompletedCount());
+        item.setTotalActivities(totalActivities);
+        item.setPointsEarned(progress.getPointsEarned());
+        item.setLastUpdated(progress.getLastUpdated());
+        item.setIsRegistered(true); // Có progress record = đã đăng ký
+
+        // Class info
+        if (student.getStudentClass() != null) {
+            item.setClassName(student.getStudentClass().getClassName());
+        }
+
+        // Department info
+        if (student.getDepartment() != null) {
+            item.setDepartmentName(student.getDepartment().getName());
+        }
+
+        // Parse completed activity IDs
+        List<Long> completedActivityIds = new ArrayList<>();
+        String completedIdsJson = progress.getCompletedActivityIds();
+        if (completedIdsJson != null && !completedIdsJson.isEmpty()) {
+            try {
+                completedActivityIds = objectMapper.readValue(completedIdsJson,
+                        new TypeReference<List<Long>>() {
+                        });
+            } catch (Exception e) {
+                logger.warn("Failed to parse completedActivityIds: {}", completedIdsJson, e);
+            }
+        }
+        item.setCompletedActivityIds(completedActivityIds);
+
+        // Calculate current milestone
+        String currentMilestone = null;
+        if (milestonePoints != null && !milestonePoints.isEmpty()) {
+            int maxMilestone = 0;
+            for (Map.Entry<String, Integer> entry : milestonePoints.entrySet()) {
+                int milestoneCount = Integer.parseInt(entry.getKey());
+                if (progress.getCompletedCount() >= milestoneCount && milestoneCount > maxMilestone) {
+                    maxMilestone = milestoneCount;
+                    currentMilestone = entry.getKey();
+                }
+            }
+        }
+        item.setCurrentMilestone(currentMilestone);
+
+        return item;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesOverview(Long seriesId) {
+        try {
+            // Validate series exists
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+
+            // Build basic info
+            SeriesOverviewResponse response = new SeriesOverviewResponse();
+            response.setSeriesId(series.getId());
+            response.setSeriesName(series.getName());
+            response.setDescription(series.getDescription());
+            response.setScoreType(series.getScoreType());
+            response.setMilestonePoints(series.getMilestonePoints());
+            response.setRegistrationStartDate(series.getRegistrationStartDate());
+            response.setRegistrationDeadline(series.getRegistrationDeadline());
+            response.setRequiresApproval(series.isRequiresApproval());
+            response.setTicketQuantity(series.getTicketQuantity());
+            response.setCreatedAt(series.getCreatedAt());
+
+            // Parse milestone points
+            Map<String, Integer> milestonePointsMap = null;
+            if (series.getMilestonePoints() != null && !series.getMilestonePoints().isEmpty()) {
+                try {
+                    milestonePointsMap = objectMapper.readValue(series.getMilestonePoints(),
+                            new TypeReference<Map<String, Integer>>() {
+                            });
+                    response.setMilestonePointsMap(milestonePointsMap);
+                } catch (Exception e) {
+                    logger.warn("Failed to parse milestonePoints: {}", series.getMilestonePoints(), e);
+                }
+            }
+
+            // Get total activities
+            List<Activity> allActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            response.setTotalActivities(allActivities.size());
+
+            // Get total registered students
+            Long totalRegistered = seriesRepository.countStudentsBySeriesId(seriesId);
+            response.setTotalRegisteredStudents(totalRegistered);
+
+            // Get total completed students (completed all activities)
+            Long totalCompleted = progressRepository.countCompletedStudentsBySeriesId(seriesId);
+            response.setTotalCompletedStudents(totalCompleted);
+
+            // Calculate completion rate
+            Double completionRate = totalRegistered > 0 ? (double) totalCompleted / totalRegistered : 0.0;
+            response.setCompletionRate(completionRate);
+
+            // Calculate total milestone points awarded
+            Page<StudentSeriesProgress> progressPage = progressRepository.findBySeriesId(seriesId, Pageable.unpaged());
+            List<StudentSeriesProgress> allProgress = progressPage.getContent();
+            BigDecimal totalMilestonePoints = allProgress.stream()
+                    .map(progress -> progress.getPointsEarned() != null ? progress.getPointsEarned() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            response.setTotalMilestonePointsAwarded(totalMilestonePoints);
+
+            // Calculate milestone progress distribution
+            List<SeriesOverviewResponse.MilestoneProgressItem> milestoneProgress = new ArrayList<>();
+            if (milestonePointsMap != null && !milestonePointsMap.isEmpty()) {
+                for (Map.Entry<String, Integer> entry : milestonePointsMap.entrySet()) {
+                    String milestoneKey = entry.getKey();
+                    Integer milestoneCount = Integer.parseInt(milestoneKey);
+                    Integer milestonePointsValue = entry.getValue();
+
+                    // Count students who have reached this milestone
+                    long studentCount = allProgress.stream()
+                            .filter(p -> p.getCompletedCount() >= milestoneCount)
+                            .count();
+
+                    Double percentage = totalRegistered > 0 ? (double) studentCount / totalRegistered * 100 : 0.0;
+
+                    SeriesOverviewResponse.MilestoneProgressItem item = new SeriesOverviewResponse.MilestoneProgressItem();
+                    item.setMilestoneKey(milestoneKey);
+                    item.setMilestoneCount(milestoneCount);
+                    item.setMilestonePoints(milestonePointsValue);
+                    item.setStudentCount(studentCount);
+                    item.setPercentage(percentage);
+                    milestoneProgress.add(item);
+                }
+                // Sort by milestone count ascending
+                milestoneProgress.sort((a, b) -> Integer.compare(a.getMilestoneCount(), b.getMilestoneCount()));
+            }
+            response.setMilestoneProgress(milestoneProgress);
+
+            // Calculate activity statistics
+            List<SeriesOverviewResponse.ActivityStatItem> activityStats = new ArrayList<>();
+            for (Activity activity : allActivities) {
+                Long activityId = activity.getId();
+
+                // Count registrations
+                Long registrationCount = registrationRepository.countByActivityId(activityId);
+
+                // Count participations (COMPLETED)
+                Long participationCount = participationRepository
+                        .countByActivityIdAndParticipationType(activityId, ParticipationType.COMPLETED);
+
+                Double participationRate = registrationCount > 0
+                        ? (double) participationCount / registrationCount
+                        : 0.0;
+
+                SeriesOverviewResponse.ActivityStatItem item = new SeriesOverviewResponse.ActivityStatItem();
+                item.setActivityId(activityId);
+                item.setActivityName(activity.getName());
+                item.setOrder(activity.getSeriesOrder());
+                item.setRegistrationCount(registrationCount);
+                item.setParticipationCount(participationCount);
+                item.setParticipationRate(participationRate);
+                activityStats.add(item);
+            }
+            // Sort by order
+            activityStats.sort((a, b) -> {
+                if (a.getOrder() == null && b.getOrder() == null)
+                    return 0;
+                if (a.getOrder() == null)
+                    return 1;
+                if (b.getOrder() == null)
+                    return -1;
+                return Integer.compare(a.getOrder(), b.getOrder());
+            });
+            response.setActivityStats(activityStats);
+
+            return Response.success("Series overview retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Failed to get series overview: {}", e.getMessage(), e);
+            return Response.error("Failed to get series overview: " + e.getMessage());
         }
     }
 
