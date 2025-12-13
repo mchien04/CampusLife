@@ -384,6 +384,40 @@ public class ActivitySeriesController {
     }
 
     /**
+     * Admin/Manager xem tiến độ tham gia của tất cả sinh viên trong series
+     */
+    @GetMapping("/{seriesId}/progress")
+    public ResponseEntity<Response> getSeriesProgress(
+            @PathVariable Long seriesId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size,
+            @RequestParam(required = false) String keyword) {
+        try {
+            Response response = seriesService.getSeriesProgress(seriesId, page, size, keyword);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get series progress: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get series progress: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Admin/Manager xem tổng quan thống kê của chuỗi sự kiện
+     */
+    @GetMapping("/{seriesId}/overview")
+    public ResponseEntity<Response> getSeriesOverview(@PathVariable Long seriesId) {
+        try {
+            Response response = seriesService.getSeriesOverview(seriesId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to get series overview: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get series overview: " + e.getMessage(), null));
+        }
+    }
+
+    /**
      * Cập nhật thông tin chuỗi sự kiện
      */
     @PutMapping("/{seriesId}")

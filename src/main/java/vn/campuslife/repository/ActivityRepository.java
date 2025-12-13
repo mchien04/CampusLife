@@ -52,6 +52,12 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
   List<Activity> findBySeriesIdAndIsDeletedFalse(Long seriesId);
 
   /**
+   * Đếm số activities trong một series cụ thể
+   */
+  @Query("SELECT COUNT(a) FROM Activity a WHERE a.seriesId = :seriesId AND a.isDeleted = false")
+  Long countBySeriesId(@Param("seriesId") Long seriesId);
+
+  /**
    * Tìm activity theo check-in code
    */
   Optional<Activity> findByCheckInCode(String checkInCode);
