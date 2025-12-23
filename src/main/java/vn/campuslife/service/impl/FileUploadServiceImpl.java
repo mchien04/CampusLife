@@ -42,8 +42,9 @@ public class FileUploadServiceImpl implements FileUploadService {
             Path filePath = uploadPath.resolve(fileName);
             Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
-            // Trả về relative path để frontend có thể truy cập
-            return "/uploads/" + fileName;
+            // Trả về full URL để frontend có thể truy cập từ bất kỳ đâu
+            String relativePath = "/uploads/" + fileName;
+            return publicUrl + relativePath;
         } catch (IOException e) {
             throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);
         }

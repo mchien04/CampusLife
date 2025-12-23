@@ -35,6 +35,15 @@ public class AttemptDetailResponse {
             MiniGameQuiz quiz,
             Map<Long, Long> studentAnswers,
             BigDecimal pointsEarned) {
+        return fromEntities(attempt, quiz, studentAnswers, pointsEarned, null);
+    }
+
+    public static AttemptDetailResponse fromEntities(
+            MiniGameAttempt attempt,
+            MiniGameQuiz quiz,
+            Map<Long, Long> studentAnswers,
+            BigDecimal pointsEarned,
+            String publicUrl) {
         AttemptDetailResponse response = new AttemptDetailResponse();
         response.setId(attempt.getId());
         response.setStatus(attempt.getStatus().toString());
@@ -52,7 +61,7 @@ public class AttemptDetailResponse {
                         Integer order2 = q2.getDisplayOrder() != null ? q2.getDisplayOrder() : 0;
                         return order1.compareTo(order2);
                     })
-                    .map(q -> QuizQuestionDetailResponse.fromEntity(q, studentAnswers))
+                    .map(q -> QuizQuestionDetailResponse.fromEntity(q, studentAnswers, publicUrl))
                     .collect(Collectors.toList()));
         }
 

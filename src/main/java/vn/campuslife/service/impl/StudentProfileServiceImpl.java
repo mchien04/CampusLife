@@ -9,6 +9,8 @@ import vn.campuslife.entity.*;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.StudentProfileService;
+import vn.campuslife.util.UrlUtils;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Optional;
 
@@ -17,6 +19,9 @@ import java.util.Optional;
 public class StudentProfileServiceImpl implements StudentProfileService {
 
     private static final Logger logger = LoggerFactory.getLogger(StudentProfileServiceImpl.class);
+
+    @Value("${app.upload.public-url:http://localhost:8080}")
+    private String publicUrl;
 
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
@@ -171,7 +176,8 @@ public class StudentProfileServiceImpl implements StudentProfileService {
         }
 
         response.setDob(student.getDob());
-        response.setAvatarUrl(student.getAvatarUrl());
+        // Convert relative path to full URL for API response
+        response.setAvatarUrl(UrlUtils.toFullUrl(student.getAvatarUrl(), publicUrl));
         response.setGender(student.getGender());
         response.setCreatedAt(student.getCreatedAt());
         response.setUpdatedAt(student.getUpdatedAt());

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vn.campuslife.entity.MiniGameQuizQuestion;
+import vn.campuslife.util.UrlUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -29,10 +30,18 @@ public class QuizQuestionDetailResponse {
     public static QuizQuestionDetailResponse fromEntity(
             MiniGameQuizQuestion question,
             Map<Long, Long> studentAnswers) {
+        return fromEntity(question, studentAnswers, null);
+    }
+
+    public static QuizQuestionDetailResponse fromEntity(
+            MiniGameQuizQuestion question,
+            Map<Long, Long> studentAnswers,
+            String publicUrl) {
         QuizQuestionDetailResponse response = new QuizQuestionDetailResponse();
         response.setId(question.getId());
         response.setQuestionText(question.getQuestionText());
-        response.setImageUrl(question.getImageUrl());
+        // Convert relative path to full URL if publicUrl is provided
+        response.setImageUrl(UrlUtils.toFullUrl(question.getImageUrl(), publicUrl));
         response.setDisplayOrder(question.getDisplayOrder());
 
         // Tìm đáp án đúng
