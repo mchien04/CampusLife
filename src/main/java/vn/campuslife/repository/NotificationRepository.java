@@ -12,6 +12,7 @@ import vn.campuslife.enumeration.NotificationType;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
@@ -31,4 +32,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     @Query("SELECT n FROM Notification n WHERE n.user.id = :userId AND n.isDeleted = false ORDER BY n.createdAt DESC")
     List<Notification> findAllByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
+
+    // Find notification by ID and user ID for validation
+    @Query("SELECT n FROM Notification n WHERE n.id = :id AND n.user.id = :userId AND n.isDeleted = false")
+    Optional<Notification> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 }
