@@ -163,6 +163,27 @@ public class NotificationController {
     }
 
     /**
+     * Lấy chi tiết thông báo
+     */
+    @GetMapping("/{notificationId}")
+    public ResponseEntity<Response> getNotificationDetail(@PathVariable Long notificationId,
+            Authentication authentication) {
+        try {
+            Long userId = getUserIdFromAuth(authentication);
+            if (userId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "User not found", null));
+            }
+
+            Response response = notificationService.getNotificationDetail(notificationId, userId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get notification detail: " + e.getMessage(), null));
+        }
+    }
+
+    /**
      * Helper method to get user ID from authentication
      */
     private Long getUserIdFromAuth(Authentication authentication) {

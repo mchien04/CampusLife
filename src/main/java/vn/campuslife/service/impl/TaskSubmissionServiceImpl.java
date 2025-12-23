@@ -14,6 +14,8 @@ import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.TaskSubmissionService;
+import vn.campuslife.util.UrlUtils;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -29,6 +31,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskSubmissionServiceImpl.class);
     private static final String UPLOAD_DIR = "uploads/submissions";
+
+    @Value("${app.upload.public-url:http://localhost:8080}")
+    private String publicUrl;
 
     private final TaskSubmissionRepository taskSubmissionRepository;
     private final ActivityTaskRepository activityTaskRepository;
@@ -371,7 +376,11 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             TaskSubmission submission = submissionOpt.get();
             List<String> fileUrls = new ArrayList<>();
             if (submission.getFileUrls() != null && !submission.getFileUrls().isEmpty()) {
-                fileUrls = Arrays.asList(submission.getFileUrls().split(","));
+                // Convert relative paths to full URLs
+                List<String> relativeUrls = Arrays.asList(submission.getFileUrls().split(","));
+                fileUrls = relativeUrls.stream()
+                        .map(url -> UrlUtils.toFullUrl(url.trim(), publicUrl))
+                        .collect(java.util.stream.Collectors.toList());
             }
 
             return new Response(true, "Submission files retrieved successfully", fileUrls);
@@ -398,7 +407,12 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
         dto.setContent(submission.getContent());
         if (submission.getFileUrls() != null && !submission.getFileUrls().isEmpty()) {
-            dto.setFileUrls(Arrays.asList(submission.getFileUrls().split(",")));
+            // Convert relative paths to full URLs
+            List<String> fileUrls = Arrays.asList(submission.getFileUrls().split(","));
+            List<String> fullUrls = fileUrls.stream()
+                    .map(url -> UrlUtils.toFullUrl(url.trim(), publicUrl))
+                    .collect(java.util.stream.Collectors.toList());
+            dto.setFileUrls(fullUrls);
         }
 
         dto.setScore(submission.getScore());

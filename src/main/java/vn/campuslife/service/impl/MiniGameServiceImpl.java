@@ -15,6 +15,8 @@ import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.MiniGameService;
+import vn.campuslife.util.UrlUtils;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -26,6 +28,9 @@ import java.util.stream.Collectors;
 public class MiniGameServiceImpl implements MiniGameService {
 
     private static final Logger logger = LoggerFactory.getLogger(MiniGameServiceImpl.class);
+
+    @Value("${app.upload.public-url:http://localhost:8080}")
+    private String publicUrl;
 
     private final MiniGameRepository miniGameRepository;
     private final MiniGameQuizRepository quizRepository;
@@ -99,7 +104,12 @@ public class MiniGameServiceImpl implements MiniGameService {
             for (Map<String, Object> questionData : questions) {
                 MiniGameQuizQuestion question = new MiniGameQuizQuestion();
                 question.setQuestionText((String) questionData.get("questionText"));
-                question.setImageUrl((String) questionData.get("imageUrl"));
+                // Normalize imageUrl to relative path for storage (extract from full URL if needed)
+                String imageUrl = (String) questionData.get("imageUrl");
+                if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+                    imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);
+                }
+                question.setImageUrl(imageUrl);
                 question.setMiniGameQuiz(savedQuiz);
                 question.setDisplayOrder(order++);
                 MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
@@ -643,7 +653,7 @@ public class MiniGameServiceImpl implements MiniGameService {
             });
 
             // Build response using DTO (KHÔNG có isCorrect để student không biết đáp án)
-            QuizQuestionsResponse response = QuizQuestionsResponse.fromEntities(miniGame, quiz);
+            QuizQuestionsResponse response = QuizQuestionsResponse.fromEntities(miniGame, quiz, publicUrl);
             return Response.success("Questions retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to get questions: {}", e.getMessage(), e);
@@ -689,7 +699,7 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             // Build response using DTO
             AttemptDetailResponse response = AttemptDetailResponse.fromEntities(
-                    attempt, quiz, studentAnswers, pointsEarned);
+                    attempt, quiz, studentAnswers, pointsEarned, publicUrl);
             return Response.success("Attempt detail retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to get attempt detail: {}", e.getMessage(), e);
@@ -751,7 +761,12 @@ public class MiniGameServiceImpl implements MiniGameService {
                 for (Map<String, Object> questionData : questions) {
                     MiniGameQuizQuestion question = new MiniGameQuizQuestion();
                     question.setQuestionText((String) questionData.get("questionText"));
-                    question.setImageUrl((String) questionData.get("imageUrl"));
+                    // Normalize imageUrl to relative path for storage (extract from full URL if needed)
+                    String imageUrl = (String) questionData.get("imageUrl");
+                    if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+                        imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);
+                    }
+                    question.setImageUrl(imageUrl);
                     question.setMiniGameQuiz(quiz);
                     question.setDisplayOrder(order++);
                     MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
@@ -883,7 +898,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             // Nếu chưa có quiz, trả về questions rỗng
             QuizQuestionsEditResponse response = QuizQuestionsEditResponse.fromEntities(
                     miniGame,
-                    quizOpt.orElse(null));
+                    quizOpt.orElse(null),
+                    publicUrl);
 
             return Response.success("Questions retrieved successfully for edit", response);
         } catch (Exception e) {

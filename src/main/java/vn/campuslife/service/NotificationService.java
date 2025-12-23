@@ -48,4 +48,7 @@ public interface NotificationService {
 
     // Lưu trữ thông báo
     Response archiveNotification(Long notificationId, Long userId);
+
+    // Lấy chi tiết thông báo
+    Response getNotificationDetail(Long notificationId, Long userId);
 }
