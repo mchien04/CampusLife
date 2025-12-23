@@ -17,6 +17,7 @@ import vn.campuslife.repository.*;
 import vn.campuslife.service.EmailService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.EmailUtil;
+import vn.campuslife.util.NotificationUrlUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -51,6 +52,9 @@ public class EmailServiceImpl implements EmailService {
 
     @Value("${app.upload.public-url:http://localhost:8080}")
     private String publicUrl;
+
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -145,13 +149,33 @@ public class EmailServiceImpl implements EmailService {
                                     ? request.getNotificationType()
                                     : NotificationType.SYSTEM_ANNOUNCEMENT;
 
+                            // Auto-generate actionUrl and metadata if not provided
+                            String actionUrl = request.getNotificationActionUrl();
+                            Map<String, Object> metadata = new HashMap<>();
+                            
+                            // Auto-generate URL for activity
+                            if (request.getActivityId() != null) {
+                                if (actionUrl == null || actionUrl.trim().isEmpty()) {
+                                    actionUrl = NotificationUrlUtils.generateActivityUrl(request.getActivityId(), frontendUrl);
+                                }
+                                metadata.put("activityId", request.getActivityId());
+                            }
+                            
+                            // Auto-generate URL for series
+                            if (request.getSeriesId() != null) {
+                                if (actionUrl == null || actionUrl.trim().isEmpty()) {
+                                    actionUrl = NotificationUrlUtils.generateSeriesUrl(request.getSeriesId(), frontendUrl);
+                                }
+                                metadata.put("seriesId", request.getSeriesId());
+                            }
+
                             notificationService.sendNotification(
                                     recipient.getId(),
                                     notificationTitle,
                                     notificationContent,
                                     notificationType,
-                                    request.getNotificationActionUrl(),
-                                    null);
+                                    actionUrl,
+                                    metadata.isEmpty() ? null : metadata);
                             emailHistory.setNotificationCreated(true);
                         } catch (Exception e) {
                             logger.error("Failed to create notification for user {}: {}", recipient.getId(),
@@ -248,6 +272,26 @@ public class EmailServiceImpl implements EmailService {
             int successCount = 0;
             int failedCount = 0;
 
+            // Auto-generate actionUrl and metadata if not provided
+            String actionUrl = request.getActionUrl();
+            Map<String, Object> metadata = new HashMap<>();
+            
+            // Auto-generate URL for activity
+            if (request.getActivityId() != null) {
+                if (actionUrl == null || actionUrl.trim().isEmpty()) {
+                    actionUrl = NotificationUrlUtils.generateActivityUrl(request.getActivityId(), frontendUrl);
+                }
+                metadata.put("activityId", request.getActivityId());
+            }
+            
+            // Auto-generate URL for series
+            if (request.getSeriesId() != null) {
+                if (actionUrl == null || actionUrl.trim().isEmpty()) {
+                    actionUrl = NotificationUrlUtils.generateSeriesUrl(request.getSeriesId(), frontendUrl);
+                }
+                metadata.put("seriesId", request.getSeriesId());
+            }
+
             for (User recipient : recipients) {
                 try {
                     // Build template variables
@@ -262,8 +306,8 @@ public class EmailServiceImpl implements EmailService {
                             processedTitle,
                             processedContent,
                             request.getType(),
-                            request.getActionUrl(),
-                            null);
+                            actionUrl,
+                            metadata.isEmpty() ? null : metadata);
                     successCount++;
                 } catch (Exception e) {
                     logger.error("Failed to send notification to user {}: {}", recipient.getId(), e.getMessage());

@@ -3,6 +3,7 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
@@ -28,6 +29,9 @@ import java.util.stream.Collectors;
 public class ActivityRegistrationServiceImpl implements ActivityRegistrationService {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityRegistrationServiceImpl.class);
+
+    @Value("${app.upload.public-url:http://localhost:8080}")
+    private String publicUrl;
 
     private final ActivityRegistrationRepository registrationRepository;
     private final ActivityParticipationRepository participationRepository;
@@ -748,7 +752,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
         for (ActivityRegistration reg : approvedRegs) {
             Student s = reg.getStudent();
-            StudentResponse dto = StudentResponse.fromEntity(s);
+            StudentResponse dto = StudentResponse.fromEntity(s, publicUrl);
 
             if (checkedInStudentIds.contains(s.getId())) {
                 attended.add(dto);
