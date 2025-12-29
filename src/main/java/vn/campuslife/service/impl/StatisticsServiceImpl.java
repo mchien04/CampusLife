@@ -454,13 +454,33 @@ public class StatisticsServiceImpl implements StatisticsService {
                     continue;
                 }
 
+                // Get total activities in series (only non-deleted)
                 Long totalActivities = (long) activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId()).size();
+                
+                // Get registered students (students who registered for at least one activity in series)
                 Long registeredStudents = activitySeriesRepository.countStudentsBySeriesId(series.getId());
+                
+                // Get completed students (students who completed all activities in series)
+                // Note: This counts students where completedCount >= totalActivities
                 Long completedStudents = studentSeriesProgressRepository
                         .countCompletedStudentsBySeriesId(series.getId());
+                
+                // Debug logging
+                logger.debug("Series {} ({}): totalActivities={}, registeredStudents={}, completedStudents={}", 
+                        series.getId(), series.getName(), totalActivities, registeredStudents, completedStudents);
+                
+                // Calculate completion rate: completedStudents / registeredStudents
+                // If no students registered, rate is 0
                 Double completionRate = registeredStudents > 0
                         ? (double) completedStudents / registeredStudents
                         : 0.0;
+                
+                // Additional validation: completion rate should be between 0 and 1
+                if (completionRate > 1.0) {
+                    logger.warn("Series {}: completionRate > 1.0 ({}), this may indicate a data inconsistency", 
+                            series.getId(), completionRate);
+                    completionRate = 1.0; // Cap at 100%
+                }
 
                 SeriesStatisticsResponse.SeriesDetailItem item = new SeriesStatisticsResponse.SeriesDetailItem();
                 item.setSeriesId(series.getId());

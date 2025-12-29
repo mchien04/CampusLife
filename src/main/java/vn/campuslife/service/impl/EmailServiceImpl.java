@@ -17,7 +17,6 @@ import vn.campuslife.repository.*;
 import vn.campuslife.service.EmailService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.EmailUtil;
-import vn.campuslife.util.NotificationUrlUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -149,23 +148,19 @@ public class EmailServiceImpl implements EmailService {
                                     ? request.getNotificationType()
                                     : NotificationType.SYSTEM_ANNOUNCEMENT;
 
-                            // Auto-generate actionUrl and metadata if not provided
-                            String actionUrl = request.getNotificationActionUrl();
+                            // Set actionUrl and metadata if not provided
+                            String actionUrl = request.getNotificationActionUrl(); // Chỉ dùng nếu FE gửi
                             Map<String, Object> metadata = new HashMap<>();
                             
-                            // Auto-generate URL for activity
+                            // Chỉ set metadata cho activityId, KHÔNG tự tạo actionUrl
+                            // Frontend sẽ tự route: /student/events/{id} hoặc /manager/events/{id}
                             if (request.getActivityId() != null) {
-                                if (actionUrl == null || actionUrl.trim().isEmpty()) {
-                                    actionUrl = NotificationUrlUtils.generateActivityUrl(request.getActivityId(), frontendUrl);
-                                }
                                 metadata.put("activityId", request.getActivityId());
                             }
                             
-                            // Auto-generate URL for series
+                            // Chỉ set metadata cho seriesId, KHÔNG tự tạo actionUrl
+                            // Frontend sẽ tự route: /student/series/{id} hoặc /manager/series/{id}
                             if (request.getSeriesId() != null) {
-                                if (actionUrl == null || actionUrl.trim().isEmpty()) {
-                                    actionUrl = NotificationUrlUtils.generateSeriesUrl(request.getSeriesId(), frontendUrl);
-                                }
                                 metadata.put("seriesId", request.getSeriesId());
                             }
 
@@ -272,23 +267,19 @@ public class EmailServiceImpl implements EmailService {
             int successCount = 0;
             int failedCount = 0;
 
-            // Auto-generate actionUrl and metadata if not provided
-            String actionUrl = request.getActionUrl();
+            // Set actionUrl and metadata if not provided
+            String actionUrl = request.getActionUrl(); // Chỉ dùng nếu FE gửi
             Map<String, Object> metadata = new HashMap<>();
             
-            // Auto-generate URL for activity
+            // Chỉ set metadata cho activityId, KHÔNG tự tạo actionUrl
+            // Frontend sẽ tự route: /student/events/{id} hoặc /manager/events/{id}
             if (request.getActivityId() != null) {
-                if (actionUrl == null || actionUrl.trim().isEmpty()) {
-                    actionUrl = NotificationUrlUtils.generateActivityUrl(request.getActivityId(), frontendUrl);
-                }
                 metadata.put("activityId", request.getActivityId());
             }
             
-            // Auto-generate URL for series
+            // Chỉ set metadata cho seriesId, KHÔNG tự tạo actionUrl
+            // Frontend sẽ tự route: /student/series/{id} hoặc /manager/series/{id}
             if (request.getSeriesId() != null) {
-                if (actionUrl == null || actionUrl.trim().isEmpty()) {
-                    actionUrl = NotificationUrlUtils.generateSeriesUrl(request.getSeriesId(), frontendUrl);
-                }
                 metadata.put("seriesId", request.getSeriesId());
             }
 

@@ -123,7 +123,8 @@ public class ReminderServiceImpl implements ReminderService {
 
             String title = "Nhắc nhở sự kiện";
             String content = String.format("Sự kiện \"%s\" sẽ diễn ra sau %s", activity.getName(), timeText);
-            String actionUrl = "/activities/" + activity.getId();
+            // Không set actionUrl, để frontend tự route dựa trên metadata.activityId
+            String actionUrl = null;
 
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("activityId", activity.getId());
