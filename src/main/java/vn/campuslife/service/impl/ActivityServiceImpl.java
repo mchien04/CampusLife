@@ -623,7 +623,7 @@ public class ActivityServiceImpl implements ActivityService {
                                         title,
                                         content,
                                         NotificationType.ACTIVITY_REGISTRATION,
-                                        "/activities/" + activity.getId(),
+                                        null, // Không set actionUrl, để frontend tự route dựa trên metadata.activityId
                                         metadata
                                 );
                             } catch (Exception e) {
