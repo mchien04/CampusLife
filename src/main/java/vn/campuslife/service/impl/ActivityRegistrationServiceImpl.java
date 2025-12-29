@@ -147,7 +147,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                         title,
                         content,
                         NotificationType.ACTIVITY_REGISTRATION,
-                        "/activities/" + activity.getId(),
+                        null, // Không set actionUrl, để frontend tự route dựa trên metadata.activityId
                         metadata);
                 logger.info("Sent registration notification to user {} for activity {}", userId, activity.getId());
             } catch (Exception e) {
