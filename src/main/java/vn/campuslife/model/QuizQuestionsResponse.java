@@ -25,6 +25,10 @@ public class QuizQuestionsResponse {
     private List<QuizQuestionResponse> questions;
 
     public static QuizQuestionsResponse fromEntities(MiniGame miniGame, MiniGameQuiz quiz) {
+        return fromEntities(miniGame, quiz, null);
+    }
+
+    public static QuizQuestionsResponse fromEntities(MiniGame miniGame, MiniGameQuiz quiz, String publicUrl) {
         QuizQuestionsResponse response = new QuizQuestionsResponse();
         response.setMiniGameId(miniGame.getId());
         response.setTitle(miniGame.getTitle());
@@ -39,7 +43,7 @@ public class QuizQuestionsResponse {
                         Integer order2 = q2.getDisplayOrder() != null ? q2.getDisplayOrder() : 0;
                         return order1.compareTo(order2);
                     })
-                    .map(QuizQuestionResponse::fromEntity)
+                    .map(q -> QuizQuestionResponse.fromEntity(q, publicUrl))
                     .collect(Collectors.toList()));
         }
 

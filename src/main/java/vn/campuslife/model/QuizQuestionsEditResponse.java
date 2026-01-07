@@ -28,6 +28,10 @@ public class QuizQuestionsEditResponse {
     private List<QuizQuestionEditResponse> questions;
 
     public static QuizQuestionsEditResponse fromEntities(MiniGame miniGame, MiniGameQuiz quiz) {
+        return fromEntities(miniGame, quiz, null);
+    }
+
+    public static QuizQuestionsEditResponse fromEntities(MiniGame miniGame, MiniGameQuiz quiz, String publicUrl) {
         QuizQuestionsEditResponse response = new QuizQuestionsEditResponse();
         response.setMiniGameId(miniGame.getId());
         response.setTitle(miniGame.getTitle());
@@ -44,7 +48,7 @@ public class QuizQuestionsEditResponse {
                         Integer order2 = q2.getDisplayOrder() != null ? q2.getDisplayOrder() : 0;
                         return order1.compareTo(order2);
                     })
-                    .map(QuizQuestionEditResponse::fromEntity)
+                    .map(q -> QuizQuestionEditResponse.fromEntity(q, publicUrl))
                     .collect(Collectors.toList()));
         } else {
             // Nếu chưa có quiz, trả về questions rỗng

@@ -52,6 +52,9 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.upload.public-url:http://localhost:8080}")
     private String publicUrl;
 
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -145,13 +148,29 @@ public class EmailServiceImpl implements EmailService {
                                     ? request.getNotificationType()
                                     : NotificationType.SYSTEM_ANNOUNCEMENT;
 
+                            // Set actionUrl and metadata if not provided
+                            String actionUrl = request.getNotificationActionUrl(); // Chỉ dùng nếu FE gửi
+                            Map<String, Object> metadata = new HashMap<>();
+                            
+                            // Chỉ set metadata cho activityId, KHÔNG tự tạo actionUrl
+                            // Frontend sẽ tự route: /student/events/{id} hoặc /manager/events/{id}
+                            if (request.getActivityId() != null) {
+                                metadata.put("activityId", request.getActivityId());
+                            }
+                            
+                            // Chỉ set metadata cho seriesId, KHÔNG tự tạo actionUrl
+                            // Frontend sẽ tự route: /student/series/{id} hoặc /manager/series/{id}
+                            if (request.getSeriesId() != null) {
+                                metadata.put("seriesId", request.getSeriesId());
+                            }
+
                             notificationService.sendNotification(
                                     recipient.getId(),
                                     notificationTitle,
                                     notificationContent,
                                     notificationType,
-                                    request.getNotificationActionUrl(),
-                                    null);
+                                    actionUrl,
+                                    metadata.isEmpty() ? null : metadata);
                             emailHistory.setNotificationCreated(true);
                         } catch (Exception e) {
                             logger.error("Failed to create notification for user {}: {}", recipient.getId(),
@@ -248,6 +267,22 @@ public class EmailServiceImpl implements EmailService {
             int successCount = 0;
             int failedCount = 0;
 
+            // Set actionUrl and metadata if not provided
+            String actionUrl = request.getActionUrl(); // Chỉ dùng nếu FE gửi
+            Map<String, Object> metadata = new HashMap<>();
+            
+            // Chỉ set metadata cho activityId, KHÔNG tự tạo actionUrl
+            // Frontend sẽ tự route: /student/events/{id} hoặc /manager/events/{id}
+            if (request.getActivityId() != null) {
+                metadata.put("activityId", request.getActivityId());
+            }
+            
+            // Chỉ set metadata cho seriesId, KHÔNG tự tạo actionUrl
+            // Frontend sẽ tự route: /student/series/{id} hoặc /manager/series/{id}
+            if (request.getSeriesId() != null) {
+                metadata.put("seriesId", request.getSeriesId());
+            }
+
             for (User recipient : recipients) {
                 try {
                     // Build template variables
@@ -262,8 +297,8 @@ public class EmailServiceImpl implements EmailService {
                             processedTitle,
                             processedContent,
                             request.getType(),
-                            request.getActionUrl(),
-                            null);
+                            actionUrl,
+                            metadata.isEmpty() ? null : metadata);
                     successCount++;
                 } catch (Exception e) {
                     logger.error("Failed to send notification to user {}: {}", recipient.getId(), e.getMessage());

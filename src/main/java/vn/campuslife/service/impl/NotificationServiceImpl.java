@@ -1,5 +1,7 @@
 package vn.campuslife.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -9,6 +11,7 @@ import vn.campuslife.entity.Notification;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.NotificationStatus;
 import vn.campuslife.enumeration.NotificationType;
+import vn.campuslife.model.NotificationDetailResponse;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.NotificationRepository;
 import vn.campuslife.repository.UserRepository;
@@ -30,6 +33,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final StudentClassRepository studentClassRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     @Transactional
@@ -49,9 +53,14 @@ public class NotificationServiceImpl implements NotificationService {
             notification.setActionUrl(actionUrl);
             notification.setStatus(NotificationStatus.UNREAD);
 
-            if (metadata != null) {
-                // Convert metadata to JSON string (simple implementation)
-                notification.setMetadata(metadata.toString());
+            if (metadata != null && !metadata.isEmpty()) {
+                try {
+                    // Convert metadata to JSON string using ObjectMapper
+                    notification.setMetadata(objectMapper.writeValueAsString(metadata));
+                } catch (Exception e) {
+                    // Fallback to toString if JSON conversion fails
+                    notification.setMetadata(metadata.toString());
+                }
             }
 
             notificationRepository.save(notification);
@@ -78,8 +87,14 @@ public class NotificationServiceImpl implements NotificationService {
                     notification.setActionUrl(actionUrl);
                     notification.setStatus(NotificationStatus.UNREAD);
 
-                    if (metadata != null) {
-                        notification.setMetadata(metadata.toString());
+                    if (metadata != null && !metadata.isEmpty()) {
+                        try {
+                            // Convert metadata to JSON string using ObjectMapper
+                            notification.setMetadata(objectMapper.writeValueAsString(metadata));
+                        } catch (Exception e) {
+                            // Fallback to toString if JSON conversion fails
+                            notification.setMetadata(metadata.toString());
+                        }
                     }
 
                     notifications.add(notification);
@@ -229,5 +244,69 @@ public class NotificationServiceImpl implements NotificationService {
         } catch (Exception e) {
             return new Response(false, "Failed to archive notification: " + e.getMessage(), null);
         }
+    }
+
+    @Override
+    public Response getNotificationDetail(Long notificationId, Long userId) {
+        try {
+            Optional<Notification> notificationOpt = notificationRepository.findByIdAndUserId(notificationId, userId);
+            if (notificationOpt.isEmpty()) {
+                return new Response(false, "Notification not found or unauthorized", null);
+            }
+
+            Notification notification = notificationOpt.get();
+            NotificationDetailResponse response = toDetailResponse(notification);
+            return new Response(true, "Notification detail retrieved successfully", response);
+        } catch (Exception e) {
+            return new Response(false, "Failed to get notification detail: " + e.getMessage(), null);
+        }
+    }
+
+    private NotificationDetailResponse toDetailResponse(Notification notification) {
+        NotificationDetailResponse response = new NotificationDetailResponse();
+        response.setId(notification.getId());
+        response.setTitle(notification.getTitle());
+        response.setContent(notification.getContent());
+        response.setType(notification.getType());
+        response.setStatus(notification.getStatus());
+        response.setActionUrl(notification.getActionUrl());
+        response.setCreatedAt(notification.getCreatedAt());
+        response.setUpdatedAt(notification.getUpdatedAt());
+        
+        // Parse metadata from JSON string
+        Map<String, Object> metadata = null;
+        if (notification.getMetadata() != null && !notification.getMetadata().trim().isEmpty()) {
+            try {
+                metadata = objectMapper.readValue(notification.getMetadata(), 
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            } catch (Exception e) {
+                // If parsing fails, metadata remains null
+                metadata = null;
+            }
+        }
+        response.setMetadata(metadata);
+        
+        // Extract activityId and seriesId from metadata
+        if (metadata != null) {
+            if (metadata.containsKey("activityId")) {
+                Object activityIdObj = metadata.get("activityId");
+                if (activityIdObj instanceof Number) {
+                    response.setActivityId(((Number) activityIdObj).longValue());
+                }
+            }
+            if (metadata.containsKey("seriesId")) {
+                Object seriesIdObj = metadata.get("seriesId");
+                if (seriesIdObj instanceof Number) {
+                    response.setSeriesId(((Number) seriesIdObj).longValue());
+                }
+            }
+        }
+        
+        // Set readAt to updatedAt when status is READ
+        if (notification.getStatus() == NotificationStatus.READ) {
+            response.setReadAt(notification.getUpdatedAt());
+        }
+        
+        return response;
     }
 }

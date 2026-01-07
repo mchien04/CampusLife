@@ -14,6 +14,7 @@ import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivityPhotoRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.service.ActivityPhotoService;
+import vn.campuslife.util.UrlUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -40,6 +41,9 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
+
+    @Value("${app.upload.public-url:http://localhost:8080}")
+    private String publicUrl;
 
     @Override
     @Transactional
@@ -211,10 +215,12 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
     }
 
     private ActivityPhotoResponse toResponse(ActivityPhoto photo) {
+        // Convert relative path to full URL for API response
+        String imageUrl = UrlUtils.toFullUrl(photo.getImageUrl(), publicUrl);
         return new ActivityPhotoResponse(
                 photo.getId(),
                 photo.getActivity().getId(),
-                photo.getImageUrl(),
+                imageUrl,
                 photo.getCaption(),
                 photo.getDisplayOrder(),
                 photo.getUploadedBy(),

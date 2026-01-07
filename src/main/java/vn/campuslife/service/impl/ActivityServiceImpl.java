@@ -33,7 +33,9 @@ import java.math.BigDecimal;
 import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.TicketCodeUtils;
+import vn.campuslife.util.UrlUtils;
 import vn.campuslife.enumeration.NotificationType;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,6 +48,9 @@ import java.util.UUID;
 public class ActivityServiceImpl implements ActivityService {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityServiceImpl.class);
+
+    @Value("${app.upload.public-url:http://localhost:8080}")
+    private String publicUrl;
 
     private final ActivityRepository activityRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
@@ -472,7 +477,8 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setShareLink(a.getShareLink());
         dto.setImportant(a.isImportant());
         dto.setDraft(a.isDraft());
-        dto.setBannerUrl(a.getBannerUrl());
+        // Convert relative path to full URL for API response
+        dto.setBannerUrl(UrlUtils.toFullUrl(a.getBannerUrl(), publicUrl));
         dto.setLocation(a.getLocation());
 
         dto.setTicketQuantity(a.getTicketQuantity());
@@ -617,7 +623,7 @@ public class ActivityServiceImpl implements ActivityService {
                                         title,
                                         content,
                                         NotificationType.ACTIVITY_REGISTRATION,
-                                        "/activities/" + activity.getId(),
+                                        null, // Không set actionUrl, để frontend tự route dựa trên metadata.activityId
                                         metadata
                                 );
                             } catch (Exception e) {

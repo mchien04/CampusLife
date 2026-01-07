@@ -3,6 +3,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vn.campuslife.entity.Student;
+import vn.campuslife.util.UrlUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,6 +28,10 @@ public class StudentResponse {
     private LocalDateTime updatedAt;
 
     public static StudentResponse fromEntity(Student student) {
+        return fromEntity(student, null);
+    }
+
+    public static StudentResponse fromEntity(Student student, String publicUrl) {
         StudentResponse response = new StudentResponse();
         response.setId(student.getId());
         response.setStudentCode(student.getStudentCode());
@@ -34,7 +39,8 @@ public class StudentResponse {
         response.setEmail(student.getUser().getEmail());
         response.setPhone(student.getPhone());
         response.setDob(student.getDob());
-        response.setAvatarUrl(student.getAvatarUrl());
+        // Convert relative path to full URL if publicUrl is provided
+        response.setAvatarUrl(UrlUtils.toFullUrl(student.getAvatarUrl(), publicUrl));
 
         // Department info
         if (student.getDepartment() != null) {
