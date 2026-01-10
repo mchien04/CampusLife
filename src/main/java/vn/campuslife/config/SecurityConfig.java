@@ -276,6 +276,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/statistics/minigames")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
 
+                        .requestMatchers(HttpMethod.GET, "/api/device-tokens")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/test/push")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+
                         // Default
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
