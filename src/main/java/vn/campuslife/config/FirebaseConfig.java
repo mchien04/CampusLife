@@ -7,19 +7,26 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.util.Base64;
 import java.util.List;
 
 @Configuration
 public class FirebaseConfig {
 
     @PostConstruct
-    public void init() {
+    public void initFirebase() {
         try {
-            ClassPathResource resource = new ClassPathResource("firebase-admin.json");
-            System.out.println(" exists = " + resource.exists());
+            String base64 = System.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64");
 
-            try (InputStream is = resource.getInputStream()) {
+            if (base64 == null || base64.isBlank()) {
+                throw new RuntimeException("FIREBASE_SERVICE_ACCOUNT_BASE64 is not set");
+            }
+
+            byte[] decoded = Base64.getDecoder().decode(base64);
+
+            try (InputStream is = new ByteArrayInputStream(decoded)) {
 
                 GoogleCredentials credentials = GoogleCredentials
                         .fromStream(is)
@@ -37,12 +44,13 @@ public class FirebaseConfig {
                 }
             }
 
-            System.out.println("Firebase initialized successfully");
+            System.out.println("🔥 Firebase initialized successfully");
 
         } catch (Exception e) {
-            throw new RuntimeException(" Firebase init failed", e);
+            throw new RuntimeException("❌ Firebase init failed", e);
         }
     }
+
 //@PostConstruct
 //public void init() {
 //    try {
