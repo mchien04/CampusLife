@@ -18,36 +18,24 @@ public class FirebaseConfig {
     @PostConstruct
     public void initFirebase() {
         try {
-            String base64 = System.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64");
+            ClassPathResource resource = new ClassPathResource("firebase-admin.json");
 
-            if (base64 == null || base64.isBlank()) {
-                throw new RuntimeException("FIREBASE_SERVICE_ACCOUNT_BASE64 is not set");
+            GoogleCredentials credentials =
+                    GoogleCredentials.fromStream(resource.getInputStream())
+                            .createScoped("https://www.googleapis.com/auth/cloud-platform");
+
+            FirebaseOptions options = FirebaseOptions.builder()
+                    .setCredentials(credentials)
+                    .build();
+
+            if (FirebaseApp.getApps().isEmpty()) {
+                FirebaseApp.initializeApp(options);
             }
 
-            byte[] decoded = Base64.getDecoder().decode(base64);
-
-            try (InputStream is = new ByteArrayInputStream(decoded)) {
-
-                GoogleCredentials credentials = GoogleCredentials
-                        .fromStream(is)
-                        .createScoped(List.of(
-                                "https://www.googleapis.com/auth/firebase.messaging",
-                                "https://www.googleapis.com/auth/cloud-platform"
-                        ));
-
-                FirebaseOptions options = FirebaseOptions.builder()
-                        .setCredentials(credentials)
-                        .build();
-
-                if (FirebaseApp.getApps().isEmpty()) {
-                    FirebaseApp.initializeApp(options);
-                }
-            }
-
-            System.out.println("🔥 Firebase initialized successfully");
+            System.out.println(" Firebase initialized successfully");
 
         } catch (Exception e) {
-            throw new RuntimeException("❌ Firebase init failed", e);
+            throw new RuntimeException(" Firebase init failed", e);
         }
     }
 
