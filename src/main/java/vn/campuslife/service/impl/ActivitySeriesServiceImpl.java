@@ -20,12 +20,14 @@ import vn.campuslife.model.SeriesProgressItemResponse;
 import vn.campuslife.model.SeriesProgressListResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.SemesterHelperService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.UUID;
+import java.util.Comparator;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +47,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRegistrationRepository registrationRepository;
     private final DepartmentRepository departmentRepository;
+    private final SemesterHelperService semesterHelperService;
 
     @Override
     @Transactional
@@ -609,19 +612,35 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             ActivitySeries series = seriesOpt.get();
             scoreType = series.getScoreType();
 
-            // Lấy semester hiện tại
-            Semester currentSemester = semesterRepository.findAll().stream()
-                    .filter(Semester::isOpen)
-                    .findFirst()
-                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            // Use SemesterHelperService to find semester from first activity in series
+            List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
 
-            if (currentSemester == null) {
+            Semester semester = null;
+            if (!seriesActivities.isEmpty()) {
+                // Lấy activity có startDate sớm nhất
+                Activity firstActivity = seriesActivities.stream()
+                        .filter(a -> a.getStartDate() != null)
+                        .min(Comparator.comparing(Activity::getStartDate))
+                        .orElse(seriesActivities.get(0));
+
+                semester = semesterHelperService.getSemesterForActivity(firstActivity);
+            }
+
+            // Fallback: Dùng semester đang mở
+            if (semester == null) {
+                semester = semesterRepository.findAll().stream()
+                        .filter(Semester::isOpen)
+                        .findFirst()
+                        .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            }
+
+            if (semester == null) {
                 logger.warn("No semester found for milestone score update");
                 return;
             }
 
             Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(studentId, currentSemester.getId(), scoreType);
+                    .findByStudentIdAndSemesterIdAndScoreType(studentId, semester.getId(), scoreType);
 
             if (scoreOpt.isEmpty()) {
                 logger.warn("No {} score record found for student {}", scoreType, studentId);
@@ -670,7 +689,11 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             history.setNewScore(updatedScore);
             history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
             history.setChangeDate(LocalDateTime.now());
-            history.setReason("Milestone points from series: " + seriesId);
+            history.setReason(scoreType + " milestone from series '" + series.getName() + "' (ID: " + seriesId +
+                            "). Old milestone: " + oldMilestonePoints + ", New milestone: " + newPoints +
+                            ". Semester: " + semester.getName());
+            // For series milestone, activityId is null (affects multiple activities in series)
+            history.setActivityId(null);
             scoreHistoryRepository.save(history);
 
             logger.info("Updated {} score from milestone: {} -> {} for student {} (oldMilestone: {}, newMilestone: {})",
