@@ -5,6 +5,7 @@ import vn.campuslife.entity.Student;
 import vn.campuslife.entity.StudentScore;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.repository.SemesterRepository;
+import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentScoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +24,7 @@ public class StudentScoreInitService {
 
     private final StudentScoreRepository studentScoreRepository;
     private final SemesterRepository semesterRepository;
+    private final StudentRepository studentRepository;
 
     /**
      * Initialize 3 score records (REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE) for a
@@ -83,5 +87,62 @@ public class StudentScoreInitService {
         }
 
         initializeStudentScores(student, currentSemester.get());
+    }
+
+    /**
+     * Initialize scores for all active students in a semester
+     * Used when creating a new semester
+     */
+    @Transactional
+    public void initializeScoresForAllStudents(Semester semester) {
+        try {
+            log.info("Initializing scores for all students in semester {}", semester.getId());
+
+            // Get all active students
+            List<Student> students = studentRepository.findAll()
+                    .stream()
+                    .filter(s -> !s.isDeleted())
+                    .collect(Collectors.toList());
+
+            log.info("Found {} active students to initialize scores", students.size());
+
+            int successCount = 0;
+            int skipCount = 0;
+
+            for (Student student : students) {
+                try {
+                    // Check if already initialized
+                    boolean alreadyExists = studentScoreRepository
+                            .findByStudentIdAndSemesterIdAndScoreType(
+                                    student.getId(),
+                                    semester.getId(),
+                                    ScoreType.REN_LUYEN)
+                            .isPresent();
+
+                    if (alreadyExists) {
+                        skipCount++;
+                        continue;
+                    }
+
+                    initializeStudentScores(student, semester);
+                    successCount++;
+
+                    // Log progress every 100 students
+                    if (successCount % 100 == 0) {
+                        log.info("Initialized scores for {} students...", successCount);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to initialize scores for student {}: {}",
+                            student.getId(), e.getMessage());
+                }
+            }
+
+            log.info("Completed initializing scores: {} created, {} skipped, {} total students",
+                    successCount, skipCount, students.size());
+
+        } catch (Exception e) {
+            log.error("Failed to initialize scores for all students: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to initialize scores for all students", e);
+        }
     }
 }

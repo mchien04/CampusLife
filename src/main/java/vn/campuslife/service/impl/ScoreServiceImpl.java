@@ -12,6 +12,7 @@ import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ScoreService;
+import vn.campuslife.service.SemesterHelperService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,7 @@ public class ScoreServiceImpl implements ScoreService {
     private final UserRepository userRepository;
     private final ActivityRepository activityRepository;
     private final ActivitySeriesRepository seriesRepository;
+    private final SemesterHelperService semesterHelperService;
 
     @Override
     @Transactional
@@ -325,13 +327,27 @@ public class ScoreServiceImpl implements ScoreService {
 
             List<Map<String, Object>> updatedScores = new ArrayList<>();
 
-            // Get all ActivityParticipation COMPLETED của student
+            // Get all ActivityParticipation COMPLETED của student trong semester được chỉ định
+            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
+            final Semester targetSemester = semester;
             List<ActivityParticipation> participations = participationRepository
                     .findAll()
                     .stream()
-                    .filter(p -> p.getRegistration().getStudent().getId().equals(studentId)
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED)
-                            && p.getRegistration().getActivity().getScoreType() != null)
+                    .filter(p -> {
+                        if (!p.getRegistration().getStudent().getId().equals(studentId)) {
+                            return false;
+                        }
+                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
+                            return false;
+                        }
+                        if (p.getRegistration().getActivity().getScoreType() == null) {
+                            return false;
+                        }
+                        // ✅ Filter theo semester
+                        Semester pSemester = semesterHelperService.getSemesterForActivity(
+                                p.getRegistration().getActivity());
+                        return pSemester != null && pSemester.getId().equals(targetSemester.getId());
+                    })
                     .collect(Collectors.toList());
 
             // Group by scoreType và tính tổng điểm từ participations
@@ -344,6 +360,7 @@ public class ScoreServiceImpl implements ScoreService {
                                     BigDecimal::add)));
 
             // Get milestone points từ StudentSeriesProgress
+            // ✅ UPDATED: Filter theo semester dựa vào activity đầu tiên của series
             List<StudentSeriesProgress> allProgress = progressRepository.findAll()
                     .stream()
                     .filter(p -> p.getStudent().getId().equals(studentId))
@@ -353,6 +370,19 @@ public class ScoreServiceImpl implements ScoreService {
             for (StudentSeriesProgress progress : allProgress) {
                 ActivitySeries series = progress.getSeries();
                 if (series.getScoreType() != null && progress.getPointsEarned() != null) {
+                    // ✅ Filter series theo semester dựa vào activity đầu tiên
+                    List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId());
+                    if (!seriesActivities.isEmpty()) {
+                        Activity firstActivity = seriesActivities.stream()
+                                .filter(a -> a.getStartDate() != null)
+                                .min(java.util.Comparator.comparing(Activity::getStartDate))
+                                .orElse(seriesActivities.get(0));
+                        Semester seriesSemester = semesterHelperService.getSemesterForActivity(firstActivity);
+                        if (seriesSemester == null || !seriesSemester.getId().equals(targetSemester.getId())) {
+                            continue; // Skip series không thuộc semester này
+                        }
+                    }
+
                     ScoreType scoreType = series.getScoreType();
                     BigDecimal currentMilestone = milestoneScores.getOrDefault(scoreType, BigDecimal.ZERO);
                     milestoneScores.put(scoreType, currentMilestone.add(progress.getPointsEarned()));
@@ -405,7 +435,9 @@ public class ScoreServiceImpl implements ScoreService {
                     history.setNewScore(totalScore);
                     history.setChangedBy(systemUser);
                     history.setChangeDate(LocalDateTime.now());
-                    history.setReason("Recalculated score: Participation (" + participationTotal + ") + Milestone (" + milestoneTotal + ")");
+                    history.setReason("Recalculated " + scoreType + " score: Participation (" + participationTotal + ") + Milestone (" + milestoneTotal + ") for semester " + semester.getName());
+                    // Note: activityId is null for recalculation (affects multiple activities)
+                    history.setActivityId(null);
                     scoreHistoryRepository.save(history);
                 }
 

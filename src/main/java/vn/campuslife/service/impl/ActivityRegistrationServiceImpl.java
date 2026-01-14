@@ -16,6 +16,7 @@ import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.NotificationService;
+import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.enumeration.NotificationType;
 
@@ -43,6 +44,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
+    private final SemesterHelperService semesterHelperService;
 
     @Override
     @Transactional
@@ -667,9 +669,46 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 if (!hasGradedSubmission) {
                     return Response.error("Sinh viên chưa nộp bài hoặc chưa được chấm điểm");
                 }
+
+                // ✅ SỰ KIỆN CÓ BÀI NỘP: Điểm đã được cộng qua createScoreFromSubmission()
+                // Chỉ cần cập nhật status, KHÔNG set pointsEarned (để tránh cộng trùng)
+                participation.setIsCompleted(isCompleted);
+                participation.setPointsEarned(BigDecimal.ZERO); // Điểm đã cộng qua submission
+                participation.setParticipationType(ParticipationType.COMPLETED);
+                participationRepository.save(participation);
+
+                logger.info("Completed grading for submission-based activity {}. Points were already added via submission.",
+                        activity.getName());
+
+                return Response.success("Đã chấm điểm completion (điểm đã được tính từ bài nộp)", participation);
             }
 
-            // Tính điểm
+            // ✅ SỰ KIỆN KHÔNG CÓ BÀI NỘP: Tính điểm từ maxPoints/penalty
+            // Nhưng phải phân biệt giữa activity đơn lẻ và activity trong series
+
+            if (activity.getSeriesId() != null) {
+                // ✅ ACTIVITY TRONG SERIES: Không tính điểm từ maxPoints
+                // Điểm được tính từ milestone của series
+                participation.setIsCompleted(isCompleted);
+                participation.setPointsEarned(BigDecimal.ZERO); // ✅ Không set điểm
+                participation.setParticipationType(ParticipationType.COMPLETED);
+                participationRepository.save(participation);
+
+                // ✅ Gọi updateStudentProgress để cập nhật series milestone
+                try {
+                    activitySeriesService.updateStudentProgress(
+                            participation.getRegistration().getStudent().getId(),
+                            activity.getId());
+                    logger.info("Completed grading for series activity {}. Milestone will be calculated automatically.",
+                            activity.getName());
+                } catch (Exception e) {
+                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                }
+
+                return Response.success("Đã chấm điểm completion (điểm từ milestone series)", participation);
+            }
+
+            // ✅ ACTIVITY ĐƠN LẺ: Tính điểm từ maxPoints/penalty
             BigDecimal points;
             if (isCompleted) {
                 points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
@@ -785,63 +824,88 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             logger.debug("Updating score for student {} activity {} scoreType {} participation {}",
                     student.getId(), activity.getId(), activity.getScoreType(), participation.getId());
 
-            // Lấy semester hiện tại (hoặc lấy semester đang mở)
-            Semester currentSemester = semesterRepository.findAll().stream()
-                    .filter(Semester::isOpen)
-                    .findFirst()
-                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            // Use SemesterHelperService to find semester based on activity timing
+            Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-            if (currentSemester == null) {
-                logger.warn("No semester found for score aggregation");
+            if (semester == null) {
+                logger.warn("No semester found for activity {} score aggregation", activity.getId());
                 return;
             }
+
+            logger.debug("Using semester {} for activity {} (startDate: {})",
+                    semester.getId(), activity.getId(), activity.getStartDate());
 
             // Tìm bản ghi StudentScore tổng hợp
             Optional<StudentScore> scoreOpt = studentScoreRepository
                     .findByStudentIdAndSemesterIdAndScoreType(
                             student.getId(),
-                            currentSemester.getId(),
+                            semester.getId(),
                             activity.getScoreType());
 
             if (scoreOpt.isEmpty()) {
                 logger.warn("No aggregate score record found for student {} scoreType {} in semester {}. " +
                         "Creating new StudentScore record.",
-                        student.getId(), activity.getScoreType(), currentSemester.getId());
-                
+                        student.getId(), activity.getScoreType(), semester.getId());
+
                 // Tạo StudentScore mới nếu chưa có
                 StudentScore newScore = new StudentScore();
                 newScore.setStudent(student);
-                newScore.setSemester(currentSemester);
+                newScore.setSemester(semester);
                 newScore.setScoreType(activity.getScoreType());
                 newScore.setScore(BigDecimal.ZERO);
                 scoreOpt = Optional.of(studentScoreRepository.save(newScore));
                 logger.info("Created new StudentScore for student {} scoreType {} in semester {}",
-                        student.getId(), activity.getScoreType(), currentSemester.getId());
+                        student.getId(), activity.getScoreType(), semester.getId());
             }
 
             StudentScore score = scoreOpt.get();
 
             // Tính lại tổng điểm từ tất cả ActivityParticipation của sinh viên này
-            // Query tất cả participation có COMPLETED status và cùng scoreType
+            // Query tất cả participation có COMPLETED status và cùng scoreType trong cùng semester
+            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
                     .stream()
                     .filter(p -> {
                         Activity act = p.getRegistration().getActivity();
-                        return p.getRegistration().getStudent().getId().equals(student.getId())
-                                && act.getScoreType() != null
-                                && act.getScoreType().equals(activity.getScoreType())
-                                && p.getParticipationType().equals(ParticipationType.COMPLETED);
+                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
+                            return false;
+                        }
+                        if (act.getScoreType() == null || !act.getScoreType().equals(activity.getScoreType())) {
+                            return false;
+                        }
+                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
+                            return false;
+                        }
+                        // ✅ Filter theo semester
+                        Semester pSemester = semesterHelperService.getSemesterForActivity(act);
+                        return pSemester != null && pSemester.getId().equals(semester.getId());
                     })
                     .collect(Collectors.toList());
 
-            BigDecimal total = allParticipations.stream()
+            BigDecimal totalFromParticipations = allParticipations.stream()
                     .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            // Cập nhật
+            // ✅ QUAN TRỌNG: Giữ nguyên điểm milestone từ series (nếu có)
+            // Tính điểm milestone = điểm hiện tại - điểm từ participations cũ
             BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-            
+
+            // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
+            BigDecimal oldParticipationScore = allParticipations.stream()
+                    .filter(p -> !p.getId().equals(participation.getId())) // Loại bỏ participation hiện tại
+                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Điểm milestone = điểm hiện tại - điểm từ participations cũ
+            BigDecimal milestonePoints = oldScore.subtract(oldParticipationScore);
+            if (milestonePoints.compareTo(BigDecimal.ZERO) < 0) {
+                milestonePoints = BigDecimal.ZERO; // Không cho âm
+            }
+
+            // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone (giữ nguyên)
+            BigDecimal total = totalFromParticipations.add(milestonePoints);
+
             // Chỉ cập nhật nếu có thay đổi
             if (total.compareTo(oldScore) != 0) {
                 score.setScore(total);
@@ -863,8 +927,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 history.setActivityId(activity.getId());
                 scoreHistoryRepository.save(history);
 
-                logger.info("Updated {} score from participation: {} -> {} for student {} (activity: {}, participation: {})",
-                        activity.getScoreType(), oldScore, total, student.getId(), activity.getId(), participation.getId());
+                logger.info("Updated {} score from participation: {} -> {} for student {} (activity: {}, participation: {}, milestone: {})",
+                        activity.getScoreType(), oldScore, total, student.getId(), activity.getId(), participation.getId(), milestonePoints);
             } else {
                 logger.debug("Score unchanged for student {} activity {}: {}", 
                         student.getId(), activity.getId(), total);
@@ -1047,13 +1111,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             Student student = participation.getRegistration().getStudent();
             Activity activity = participation.getRegistration().getActivity();
 
-            // Lấy semester hiện tại
-            Semester currentSemester = semesterRepository.findAll().stream()
-                    .filter(Semester::isOpen)
-                    .findFirst()
-                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            // Use SemesterHelperService to find semester based on activity timing
+            Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-            if (currentSemester == null) {
+            if (semester == null) {
                 logger.warn("No semester found for RL score aggregation");
                 return;
             }
@@ -1062,32 +1123,42 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             Optional<StudentScore> scoreOpt = studentScoreRepository
                     .findByStudentIdAndSemesterIdAndScoreType(
                             student.getId(),
-                            currentSemester.getId(),
+                            semester.getId(),
                             ScoreType.REN_LUYEN);
 
             if (scoreOpt.isEmpty()) {
                 logger.warn("No REN_LUYEN score record found for student {} in semester {}",
-                        student.getId(), currentSemester.getId());
+                        student.getId(), semester.getId());
                 return;
             }
 
             StudentScore score = scoreOpt.get();
 
-            // Tính lại tổng điểm REN_LUYEN từ TẤT CẢ nguồn:
+            // Tính lại tổng điểm REN_LUYEN từ TẤT CẢ nguồn trong cùng semester:
             // 1. Activity có scoreType = REN_LUYEN
             // 2. Activity có type = CHUYEN_DE_DOANH_NGHIEP (dual score)
+            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
                     .stream()
-                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED)
-                            && (
-                            // Activity có scoreType = REN_LUYEN
-                            (p.getRegistration().getActivity().getScoreType() == ScoreType.REN_LUYEN)
-                                    ||
-                                    // Hoặc activity CHUYEN_DE_DOANH_NGHIEP có maxPoints (dual score)
-                                    (p.getRegistration().getActivity().getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
-                                            && p.getRegistration().getActivity().getMaxPoints() != null)))
+                    .filter(p -> {
+                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
+                            return false;
+                        }
+                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
+                            return false;
+                        }
+                        Activity pActivity = p.getRegistration().getActivity();
+                        boolean isRenLuyen = pActivity.getScoreType() == ScoreType.REN_LUYEN;
+                        boolean isChuyenDeDualScore = pActivity.getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
+                                && pActivity.getMaxPoints() != null;
+                        if (!isRenLuyen && !isChuyenDeDualScore) {
+                            return false;
+                        }
+                        // ✅ Filter theo semester
+                        Semester pSemester = semesterHelperService.getSemesterForActivity(pActivity);
+                        return pSemester != null && pSemester.getId().equals(semester.getId());
+                    })
                     .collect(Collectors.toList());
 
             BigDecimal totalFromParticipations = allParticipations.stream()
@@ -1152,13 +1223,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             Student student = participation.getRegistration().getStudent();
             Activity activity = participation.getRegistration().getActivity();
 
-            // Lấy semester hiện tại
-            Semester currentSemester = semesterRepository.findAll().stream()
-                    .filter(Semester::isOpen)
-                    .findFirst()
-                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            // ✅ USE: SemesterHelperService to find semester based on activity timing
+            Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-            if (currentSemester == null) {
+            if (semester == null) {
                 logger.warn("No semester found for CHUYEN_DE score count");
                 return;
             }
@@ -1167,29 +1235,40 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             Optional<StudentScore> scoreOpt = studentScoreRepository
                     .findByStudentIdAndSemesterIdAndScoreType(
                             student.getId(),
-                            currentSemester.getId(),
+                            semester.getId(),
                             ScoreType.CHUYEN_DE);
 
             if (scoreOpt.isEmpty()) {
                 logger.warn("No CHUYEN_DE score record found for student {} in semester {}",
-                        student.getId(), currentSemester.getId());
+                        student.getId(), semester.getId());
                 return;
             }
 
             StudentScore score = scoreOpt.get();
 
-            // Đếm số buổi tham gia CHUYEN_DE_DOANH_NGHIEP đã COMPLETED
-            // Mỗi participation COMPLETED = 1 buổi tham gia
+            // Đếm số buổi tham gia CHUYEN_DE_DOANH_NGHIEP đã COMPLETED trong cùng semester
+            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
                     .stream()
-                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
-                            && p.getRegistration().getActivity().getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .filter(p -> {
+                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
+                            return false;
+                        }
+                        if (p.getRegistration().getActivity().getType() != ActivityType.CHUYEN_DE_DOANH_NGHIEP) {
+                            return false;
+                        }
+                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
+                            return false;
+                        }
+                        // Filter theo semester
+                        Semester pSemester = semesterHelperService.getSemesterForActivity(
+                                p.getRegistration().getActivity());
+                        return pSemester != null && pSemester.getId().equals(semester.getId());
+                    })
                     .collect(Collectors.toList());
 
-            // Số buổi = số participation đã COMPLETED (mỗi activity = 1 participation = 1
-            // buổi)
+            // Số buổi = số participation đã COMPLETED trong semester
             BigDecimal count = BigDecimal.valueOf(allParticipations.size());
 
             // Cập nhật
@@ -1213,8 +1292,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             history.setActivityId(activity.getId());
             scoreHistoryRepository.save(history);
 
-            logger.info("Updated CHUYEN_DE score count: {} -> {} ({} sessions) for student {}",
-                    oldScore, count, allParticipations.size(), student.getId());
+            logger.info("Updated CHUYEN_DE score count: {} -> {} ({} sessions) for student {} in semester {}",
+                    oldScore, count, allParticipations.size(), student.getId(), semester.getId());
 
         } catch (Exception e) {
             logger.error("Failed to update CHUYEN_DE score count: {}", e.getMessage(), e);

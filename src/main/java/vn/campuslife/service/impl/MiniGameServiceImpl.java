@@ -15,6 +15,7 @@ import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.MiniGameService;
+import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.util.UrlUtils;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -47,6 +48,7 @@ public class MiniGameServiceImpl implements MiniGameService {
     private final SemesterRepository semesterRepository;
     private final UserRepository userRepository;
     private final ActivitySeriesService activitySeriesService;
+    private final SemesterHelperService semesterHelperService;
 
     @Override
     @Transactional
@@ -104,7 +106,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             for (Map<String, Object> questionData : questions) {
                 MiniGameQuizQuestion question = new MiniGameQuizQuestion();
                 question.setQuestionText((String) questionData.get("questionText"));
-                // Normalize imageUrl to relative path for storage (extract from full URL if needed)
+                // Normalize imageUrl to relative path for storage (extract from full URL if
+                // needed)
                 String imageUrl = (String) questionData.get("imageUrl");
                 if (imageUrl != null && !imageUrl.trim().isEmpty()) {
                     imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);
@@ -397,8 +400,8 @@ public class MiniGameServiceImpl implements MiniGameService {
                             existingParticipation);
                 }
                 // Nếu có participation nhưng chưa COMPLETED (trường hợp hiếm), xóa để tạo mới
+                // Không trừ điểm vì chưa có điểm được cộng
                 participationRepository.delete(existingParticipation);
-                updateStudentScoreFromParticipationRemoval(existingParticipation);
             }
 
             // Tạo participation mới (chỉ khi chưa có participation COMPLETED)
@@ -464,12 +467,10 @@ public class MiniGameServiceImpl implements MiniGameService {
             Student student = participation.getRegistration().getStudent();
             Activity activity = participation.getRegistration().getActivity();
 
-            Semester currentSemester = semesterRepository.findAll().stream()
-                    .filter(Semester::isOpen)
-                    .findFirst()
-                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            // Use SemesterHelperService to find semester based on activity timing
+            Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-            if (currentSemester == null) {
+            if (semester == null) {
                 logger.warn("No semester found for score aggregation");
                 return;
             }
@@ -477,24 +478,38 @@ public class MiniGameServiceImpl implements MiniGameService {
             Optional<StudentScore> scoreOpt = studentScoreRepository
                     .findByStudentIdAndSemesterIdAndScoreType(
                             student.getId(),
-                            currentSemester.getId(),
+                            semester.getId(),
                             activity.getScoreType());
 
             if (scoreOpt.isEmpty()) {
                 logger.warn("No score record found for student {} scoreType {} in semester {}",
-                        student.getId(), activity.getScoreType(), currentSemester.getId());
+                        student.getId(), activity.getScoreType(), semester.getId());
                 return;
             }
 
             StudentScore score = scoreOpt.get();
 
-            // Tính lại tổng điểm từ tất cả ActivityParticipation COMPLETED
+            // Tính lại tổng điểm từ tất cả ActivityParticipation COMPLETED trong cùng
+            // semester
+            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
                     .stream()
-                    .filter(p -> p.getRegistration().getStudent().getId().equals(student.getId())
-                            && p.getRegistration().getActivity().getScoreType().equals(activity.getScoreType())
-                            && p.getParticipationType().equals(ParticipationType.COMPLETED))
+                    .filter(p -> {
+                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
+                            return false;
+                        }
+                        if (!p.getRegistration().getActivity().getScoreType().equals(activity.getScoreType())) {
+                            return false;
+                        }
+                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
+                            return false;
+                        }
+                        // Filter theo semester
+                        Semester pSemester = semesterHelperService.getSemesterForActivity(
+                                p.getRegistration().getActivity());
+                        return pSemester != null && pSemester.getId().equals(semester.getId());
+                    })
                     .collect(java.util.stream.Collectors.toList());
 
             BigDecimal totalFromParticipations = allParticipations.stream()
@@ -563,29 +578,36 @@ public class MiniGameServiceImpl implements MiniGameService {
                 return;
             }
 
-            Semester currentSemester = semesterRepository.findAll().stream()
-                    .filter(Semester::isOpen)
-                    .findFirst()
-                    .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+            // ✅ USE: SemesterHelperService to find semester based on activity timing
+            Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-            if (currentSemester == null) {
+            if (semester == null) {
                 logger.warn("No semester found for score update");
                 return;
             }
 
             Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(student.getId(), currentSemester.getId(), scoreType);
+                    .findByStudentIdAndSemesterIdAndScoreType(student.getId(), semester.getId(), scoreType);
 
             if (scoreOpt.isEmpty()) {
-                logger.warn("No {} score record found for student {}", scoreType, student.getId());
+                logger.warn("No {} score record found for student {} in semester {}",
+                        scoreType, student.getId(), semester.getId());
                 return;
             }
 
             StudentScore score = scoreOpt.get();
 
-            // Lấy tất cả participations của student cho scoreType này
+            // Lấy tất cả participations của student cho scoreType này trong semester này
+            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
             List<ActivityParticipation> allParticipations = participationRepository
-                    .findByStudentIdAndScoreType(student.getId(), scoreType);
+                    .findByStudentIdAndScoreType(student.getId(), scoreType)
+                    .stream()
+                    .filter(p -> {
+                        Semester pSemester = semesterHelperService.getSemesterForActivity(
+                                p.getRegistration().getActivity());
+                        return pSemester != null && pSemester.getId().equals(semester.getId());
+                    })
+                    .collect(Collectors.toList());
 
             // Tính tổng điểm từ tất cả participations (trừ participation đang xóa)
             BigDecimal totalFromParticipations = allParticipations.stream()
@@ -615,8 +637,26 @@ public class MiniGameServiceImpl implements MiniGameService {
             score.setScore(total);
             studentScoreRepository.save(score);
 
-            logger.info("Removed participation score, updated {} score: {} -> {} for student {}",
-                    scoreType, oldScore, total, student.getId());
+            // ✅ Tạo history để ghi lại việc xóa participation
+            User systemUser = userRepository.findAll().stream()
+                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
+                            || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
+                    .findFirst()
+                    .orElse(null);
+
+            ScoreHistory history = new ScoreHistory();
+            history.setScore(score);
+            history.setOldScore(oldScore);
+            history.setNewScore(total);
+            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
+            history.setChangeDate(LocalDateTime.now());
+            history.setReason("Removed minigame participation (re-attempt). Activity: " + activity.getName() +
+                            ". Milestone preserved: " + milestonePoints);
+            history.setActivityId(activity.getId());
+            scoreHistoryRepository.save(history);
+
+            logger.info("Removed participation score, updated {} score: {} -> {} for student {} in semester {}",
+                    scoreType, oldScore, total, student.getId(), semester.getId());
         } catch (Exception e) {
             logger.error("Failed to remove participation score: {}", e.getMessage(), e);
         }
@@ -761,7 +801,8 @@ public class MiniGameServiceImpl implements MiniGameService {
                 for (Map<String, Object> questionData : questions) {
                     MiniGameQuizQuestion question = new MiniGameQuizQuestion();
                     question.setQuestionText((String) questionData.get("questionText"));
-                    // Normalize imageUrl to relative path for storage (extract from full URL if needed)
+                    // Normalize imageUrl to relative path for storage (extract from full URL if
+                    // needed)
                     String imageUrl = (String) questionData.get("imageUrl");
                     if (imageUrl != null && !imageUrl.trim().isEmpty()) {
                         imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);

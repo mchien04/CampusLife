@@ -14,6 +14,7 @@ import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.TaskSubmissionService;
+import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.util.UrlUtils;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -45,6 +46,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
+    private final SemesterHelperService semesterHelperService;
 
     @Override
     @Transactional
@@ -271,44 +273,72 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                                 participation.setParticipationType(ParticipationType.COMPLETED);
                                 activityParticipationRepository.save(participation);
 
-                                // Cộng dồn lại điểm StudentScore theo scoreType của activity
-                                // Lấy tất cả participation COMPLETED cùng student và scoreType
-                                java.util.List<ActivityParticipation> allParts = activityParticipationRepository
-                                        .findByStudentIdAndScoreType(student.getId(), activity.getScoreType());
+                                // ✅ USE: SemesterHelperService to find semester based on activity timing
+                                Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-                                java.math.BigDecimal total = allParts.stream()
-                                        .filter(p -> p.getParticipationType() == ParticipationType.COMPLETED)
-                                        .map(p -> p.getPointsEarned() != null ? p.getPointsEarned()
-                                                : java.math.BigDecimal.ZERO)
-                                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+                                if (semester != null) {
+                                    // Cộng dồn lại điểm StudentScore theo scoreType của activity
+                                    // ✅ UPDATED: Filter theo semester để đảm bảo tính đúng
+                                    java.util.List<ActivityParticipation> allParts = activityParticipationRepository
+                                            .findByStudentIdAndScoreType(student.getId(), activity.getScoreType())
+                                            .stream()
+                                            .filter(p -> {
+                                                Semester pSemester = semesterHelperService.getSemesterForActivity(
+                                                        p.getRegistration().getActivity());
+                                                return pSemester != null && pSemester.getId().equals(semester.getId());
+                                            })
+                                            .collect(java.util.stream.Collectors.toList());
 
-                                // Cập nhật bản ghi StudentScore tương ứng ở học kỳ hiện tại (đang mở)
-                                Optional<Semester> currentSemester = semesterRepository.findAll().stream()
-                                        .filter(Semester::isOpen)
-                                        .findFirst();
-                                if (currentSemester.isPresent()) {
+                                    java.math.BigDecimal totalFromParticipations = allParts.stream()
+                                            .filter(p -> p.getParticipationType() == ParticipationType.COMPLETED)
+                                            .map(p -> p.getPointsEarned() != null ? p.getPointsEarned()
+                                                    : java.math.BigDecimal.ZERO)
+                                            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+                                    // Cập nhật bản ghi StudentScore
                                     Optional<StudentScore> scoreOpt = studentScoreRepository
                                             .findByStudentIdAndSemesterIdAndScoreType(
                                                     student.getId(),
-                                                    currentSemester.get().getId(),
+                                                    semester.getId(),
                                                     activity.getScoreType());
                                     if (scoreOpt.isPresent()) {
                                         StudentScore agg = scoreOpt.get();
-                                        java.math.BigDecimal oldTotal = agg.getScore();
+                                        java.math.BigDecimal oldTotal = agg.getScore() != null ? agg.getScore() : java.math.BigDecimal.ZERO;
+
+                                        // ✅ QUAN TRỌNG: Bảo toàn điểm milestone từ series
+                                        // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
+                                        java.math.BigDecimal oldParticipationScore = allParts.stream()
+                                                .filter(p -> p.getParticipationType() == ParticipationType.COMPLETED)
+                                                .filter(p -> !p.getId().equals(participation.getId()))
+                                                .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : java.math.BigDecimal.ZERO)
+                                                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+                                        // Điểm milestone = điểm hiện tại - điểm từ participations cũ
+                                        java.math.BigDecimal milestonePoints = oldTotal.subtract(oldParticipationScore);
+                                        if (milestonePoints.compareTo(java.math.BigDecimal.ZERO) < 0) {
+                                            milestonePoints = java.math.BigDecimal.ZERO;
+                                        }
+
+                                        // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone
+                                        java.math.BigDecimal total = totalFromParticipations.add(milestonePoints);
+
                                         agg.setScore(total);
                                         studentScoreRepository.save(agg);
 
                                         // Lưu lịch sử nếu thay đổi
-                                        if (oldTotal == null || oldTotal.compareTo(total) != 0) {
+                                        if (oldTotal.compareTo(total) != 0) {
                                             ScoreHistory hist = new ScoreHistory();
                                             hist.setScore(agg);
                                             hist.setOldScore(oldTotal);
                                             hist.setNewScore(total);
                                             hist.setChangedBy(graderOpt.get());
                                             hist.setChangeDate(LocalDateTime.now());
-                                            hist.setReason("Auto update from graded submission and completion");
+                                            hist.setReason("Auto update from graded submission: " + task.getName() + " (milestone preserved: " + milestonePoints + ")");
                                             hist.setActivityId(activity.getId());
                                             scoreHistoryRepository.save(hist);
+
+                                            logger.info("Updated score for student {} from graded submission: {} -> {} (participation: {}, milestone: {})",
+                                                    student.getId(), oldTotal, total, totalFromParticipations, milestonePoints);
                                         }
                                     }
                                 }
@@ -443,30 +473,34 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             ActivityTask task = submission.getTask();
+            Activity activity = task.getActivity();
             Student student = submission.getStudent();
 
-            logger.info("Task: {}, Student: {}, Grader: {}", task.getId(), student.getId(),
+            logger.info("Task: {}, Activity: {}, Student: {}, Grader: {}",
+                    task.getId(), activity.getId(), student.getId(),
                     submission.getGrader() != null ? submission.getGrader().getId() : "null");
 
-            // Lấy học kỳ hiện tại
-            Optional<Semester> currentSemester = semesterRepository.findAll().stream()
-                    .filter(s -> s.isOpen())
-                    .findFirst();
-            if (currentSemester.isEmpty()) {
-                logger.warn("No open semester found for score creation");
+            // Use SemesterHelperService to find semester based on activity timing
+            Semester semester = semesterHelperService.getSemesterForActivity(activity);
+
+            if (semester == null) {
+                logger.warn("No semester found for task submission {} score creation", submission.getId());
                 return;
             }
+
+            logger.debug("Using semester {} for activity {} (startDate: {})",
+                    semester.getId(), activity.getId(), activity.getStartDate());
 
             // Tìm bản ghi điểm tổng hợp theo scoreType của activity
             Optional<StudentScore> scoreOpt = studentScoreRepository
                     .findByStudentIdAndSemesterIdAndScoreType(
                             student.getId(),
-                            currentSemester.get().getId(),
+                            semester.getId(),
                             task.getActivity().getScoreType());
 
             if (scoreOpt.isEmpty()) {
                 logger.warn("No aggregate score record found for student {} scoreType {} in semester {}",
-                        student.getId(), task.getActivity().getScoreType(), currentSemester.get().getId());
+                        student.getId(), task.getActivity().getScoreType(), semester.getId());
                 return;
             }
 
@@ -494,7 +528,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             history.setNewScore(newScore);
             history.setChangedBy(grader);
             history.setChangeDate(LocalDateTime.now());
-            history.setReason("Added points from task submission: " + task.getName());
+            history.setReason("Added " + pointsToAdd + " points from task submission '" + task.getName() +
+                            "' (Activity: " + activity.getName() + ", Semester: " + semester.getName() + ")");
             history.setActivityId(activityId);
 
             scoreHistoryRepository.save(history);
