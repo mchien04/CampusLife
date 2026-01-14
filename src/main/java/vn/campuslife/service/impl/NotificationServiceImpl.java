@@ -11,19 +11,15 @@ import vn.campuslife.entity.Notification;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.NotificationStatus;
 import vn.campuslife.enumeration.NotificationType;
+import vn.campuslife.model.DeviceToken;
 import vn.campuslife.model.NotificationDetailResponse;
 import vn.campuslife.model.Response;
-import vn.campuslife.repository.NotificationRepository;
-import vn.campuslife.repository.UserRepository;
-import vn.campuslife.repository.StudentRepository;
-import vn.campuslife.repository.StudentClassRepository;
+import vn.campuslife.repository.*;
+import vn.campuslife.service.FcmService;
 import vn.campuslife.service.NotificationService;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +30,8 @@ public class NotificationServiceImpl implements NotificationService {
     private final StudentRepository studentRepository;
     private final StudentClassRepository studentClassRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final FcmService fcmService;
+    private final DeviceTokenRepository deviceTokenRepository;
 
     @Override
     @Transactional
@@ -53,6 +51,7 @@ public class NotificationServiceImpl implements NotificationService {
             notification.setActionUrl(actionUrl);
             notification.setStatus(NotificationStatus.UNREAD);
 
+
             if (metadata != null && !metadata.isEmpty()) {
                 try {
                     // Convert metadata to JSON string using ObjectMapper
@@ -62,8 +61,25 @@ public class NotificationServiceImpl implements NotificationService {
                     notification.setMetadata(metadata.toString());
                 }
             }
-
             notificationRepository.save(notification);
+
+            Map<String, String> data = new HashMap<>();
+            data.put("notificationId", notification.getId().toString());
+            data.put("type", notification.getType().name());
+            if (actionUrl != null) {
+                data.put("actionUrl", actionUrl);
+            }
+
+            List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
+
+            for (DeviceToken dt : tokens) {
+                fcmService.send(
+                        dt.getToken(),
+                        notification.getTitle(),
+                        notification.getContent(),
+                        data
+                );
+            }
             return new Response(true, "Notification sent successfully", notification);
         } catch (Exception e) {
             return new Response(false, "Failed to send notification: " + e.getMessage(), null);
@@ -72,41 +88,63 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public Response sendBulkNotification(List<Long> userIds, String title, String content, NotificationType type,
-            String actionUrl, Map<String, Object> metadata) {
+    public Response sendBulkNotification(
+            List<Long> userIds,
+            String title,
+            String content,
+            NotificationType type,
+            String actionUrl,
+            Map<String, Object> metadata
+    ) {
         try {
-            List<Notification> notifications = new ArrayList<>();
+            List<Notification> savedNotifications = new ArrayList<>();
+
             for (Long userId : userIds) {
                 Optional<User> userOpt = userRepository.findById(userId);
-                if (userOpt.isPresent()) {
-                    Notification notification = new Notification();
-                    notification.setUser(userOpt.get());
-                    notification.setTitle(title);
-                    notification.setContent(content);
-                    notification.setType(type);
-                    notification.setActionUrl(actionUrl);
-                    notification.setStatus(NotificationStatus.UNREAD);
+                if (userOpt.isEmpty()) continue;
 
-                    if (metadata != null && !metadata.isEmpty()) {
-                        try {
-                            // Convert metadata to JSON string using ObjectMapper
-                            notification.setMetadata(objectMapper.writeValueAsString(metadata));
-                        } catch (Exception e) {
-                            // Fallback to toString if JSON conversion fails
-                            notification.setMetadata(metadata.toString());
-                        }
-                    }
+                // 1️⃣ TẠO & SAVE TRƯỚC
+                Notification notification = new Notification();
+                notification.setUser(userOpt.get());
+                notification.setTitle(title);
+                notification.setContent(content);
+                notification.setType(type);
+                notification.setActionUrl(actionUrl);
+                notification.setStatus(NotificationStatus.UNREAD);
 
-                    notifications.add(notification);
+                if (metadata != null && !metadata.isEmpty()) {
+                    notification.setMetadata(objectMapper.writeValueAsString(metadata));
+                }
+
+                notification = notificationRepository.save(notification);
+                savedNotifications.add(notification);
+
+                Map<String, String> data = new HashMap<>();
+                data.put("notificationId", notification.getId().toString());
+                data.put("type", notification.getType().name());
+                if (actionUrl != null) {
+                    data.put("actionUrl", actionUrl);
+                }
+                List<DeviceToken> tokens =
+                        deviceTokenRepository.findAllByUserId(userId);
+
+                for (DeviceToken dt : tokens) {
+                    fcmService.send(
+                            dt.getToken(),
+                            notification.getTitle(),
+                            notification.getContent(),
+                            data
+                    );
                 }
             }
 
-            notificationRepository.saveAll(notifications);
-            return new Response(true, "Bulk notification sent successfully", notifications);
+            return new Response(true, "Bulk notification sent successfully", savedNotifications);
+
         } catch (Exception e) {
             return new Response(false, "Failed to send bulk notification: " + e.getMessage(), null);
         }
     }
+
 
     @Override
     @Transactional
@@ -114,6 +152,7 @@ public class NotificationServiceImpl implements NotificationService {
             String actionUrl, Map<String, Object> metadata) {
         try {
             List<Long> userIds = studentRepository.findUserIdsByDepartmentId(departmentId);
+
             return sendBulkNotification(userIds, title, content, type, actionUrl, metadata);
         } catch (Exception e) {
             return new Response(false, "Failed to send notification to department: " + e.getMessage(), null);
