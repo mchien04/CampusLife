@@ -28,4 +28,9 @@ public interface AcademicService {
     Response deleteSemester(Long id);
 
     Response toggleSemesterOpen(Long id, boolean open);
+
+    /**
+     * Initialize scores for all students in a semester (manual trigger)
+     */
+    Response initializeScoresForSemester(Long semesterId);
 }

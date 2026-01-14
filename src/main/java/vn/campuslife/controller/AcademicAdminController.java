@@ -81,4 +81,10 @@ public class AcademicAdminController {
         Response r = academicService.toggleSemesterOpen(id, open);
         return ResponseEntity.status(r.isStatus() ? 200 : 404).body(r);
     }
+
+    @PostMapping("/semesters/{id}/initialize-scores")
+    public ResponseEntity<Response> initializeScoresForSemester(@PathVariable Long id) {
+        Response r = academicService.initializeScoresForSemester(id);
+        return ResponseEntity.status(r.isStatus() ? 200 : 500).body(r);
+    }
 }

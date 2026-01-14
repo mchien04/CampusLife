@@ -10,18 +10,29 @@ import vn.campuslife.model.SemesterRequest;
 import vn.campuslife.repository.AcademicYearRepository;
 import vn.campuslife.repository.SemesterRepository;
 import vn.campuslife.service.AcademicService;
+import vn.campuslife.service.StudentScoreInitService;
+import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
+@Slf4j
 public class AcademicServiceImpl implements AcademicService {
 
     private final AcademicYearRepository yearRepo;
     private final SemesterRepository semRepo;
+    private final StudentScoreInitService studentScoreInitService;
 
-    public AcademicServiceImpl(AcademicYearRepository yearRepo, SemesterRepository semRepo) {
+    public AcademicServiceImpl(
+            AcademicYearRepository yearRepo,
+            SemesterRepository semRepo,
+            StudentScoreInitService studentScoreInitService) {
         this.yearRepo = yearRepo;
         this.semRepo = semRepo;
+        this.studentScoreInitService = studentScoreInitService;
     }
 
     @Override
@@ -100,6 +111,20 @@ public class AcademicServiceImpl implements AcademicService {
         if (request.getOpen() != null)
             s.setOpen(request.getOpen());
         Semester saved = semRepo.save(s);
+
+        // Auto-initialize scores for all students if semester is opened
+        if (saved.isOpen()) {
+            try {
+                studentScoreInitService.initializeScoresForAllStudents(saved);
+                log.info("Auto-initialized scores for all students in new semester {}", saved.getId());
+            } catch (Exception e) {
+                // Log error but don't fail semester creation
+                // Admin can call manual API if needed
+                log.error("Failed to auto-initialize scores for new semester {}: {}",
+                        saved.getId(), e.getMessage(), e);
+            }
+        }
+
         return new Response(true, "Semester created", saved);
     }
 
@@ -138,5 +163,31 @@ public class AcademicServiceImpl implements AcademicService {
             Semester saved = semRepo.save(s);
             return new Response(true, open ? "Semester opened" : "Semester closed", saved);
         }).orElseGet(() -> new Response(false, "Semester not found", null));
+    }
+
+    @Override
+    @Transactional
+    public Response initializeScoresForSemester(Long semesterId) {
+        Optional<Semester> semesterOpt = semRepo.findById(semesterId);
+        if (semesterOpt.isEmpty()) {
+            return new Response(false, "Semester not found", null);
+        }
+
+        Semester semester = semesterOpt.get();
+
+        try {
+            studentScoreInitService.initializeScoresForAllStudents(semester);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("semesterId", semester.getId());
+            result.put("semesterName", semester.getName());
+            result.put("message", "Scores initialized successfully for all students");
+
+            return new Response(true, "Scores initialized successfully", result);
+        } catch (Exception e) {
+            log.error("Failed to initialize scores for semester {}: {}",
+                    semesterId, e.getMessage(), e);
+            return new Response(false, "Failed to initialize scores: " + e.getMessage(), null);
+        }
     }
 }
