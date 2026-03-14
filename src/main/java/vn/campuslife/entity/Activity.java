@@ -68,6 +68,9 @@ public class Activity {
     @Comment("Yêu cầu nộp minh chứng")
     private boolean requiresSubmission = false;
 
+    @Column(nullable = false)
+    private boolean hasPreparation = false;
+
     /** Điểm tối đa sinh viên có thể đạt được. */
     @Comment("Điểm tối đa")
     private BigDecimal maxPoints;

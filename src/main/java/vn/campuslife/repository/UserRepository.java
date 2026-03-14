@@ -3,7 +3,9 @@ package vn.campuslife.repository;
 import vn.campuslife.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import vn.campuslife.enumeration.Role;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -13,4 +15,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
 
     Optional<User> findByUsernameAndIsDeletedFalse(String username);
+
+    List<User> findAllByRoleInAndIsDeletedFalse(List<Role> roles);
 }
