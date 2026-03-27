@@ -1,11 +1,13 @@
 package vn.campuslife.model.preparation;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -15,7 +17,8 @@ public class CreatePreparationTaskRequest {
     private Long activityId;
 
     @NotNull(message = "Assignee ID is required")
-    private Long assigneeId;
+    @JsonAlias("assigneeId")
+    private Long ownerId;
 
     @NotBlank(message = "Title is required")
     private String title;
@@ -23,4 +26,8 @@ public class CreatePreparationTaskRequest {
     private String description;
 
     private LocalDateTime deadline;
+
+    private BigDecimal budgetLimit;
+
+    private Boolean isFinancial;
 }

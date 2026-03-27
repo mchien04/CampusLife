@@ -11,17 +11,12 @@ import java.math.BigDecimal;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateExpenseRequest {
-    private Long taskId;
-
-    @NotNull(message = "Category ID is required")
-    private Long categoryId;
+public class CreateFundAdvanceRequest {
+    @NotNull(message = "Student ID is required")
+    private Long studentId;
 
     @NotNull(message = "Amount is required")
     @Positive(message = "Amount must be > 0")
     private BigDecimal amount;
-
-    private String description;
-
-    private String evidenceUrl;
 }
+

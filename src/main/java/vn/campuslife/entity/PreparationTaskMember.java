@@ -6,18 +6,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-import vn.campuslife.enumeration.ExpenseStatus;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "preparation_expenses")
+@Table(name = "preparation_task_members", uniqueConstraints = @UniqueConstraint(columnNames = { "task_id", "student_id" }))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class Expense {
+public class PreparationTaskMember {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -27,25 +25,10 @@ public class Expense {
     private PreparationTask task;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", nullable = false)
-    private BudgetCategory category;
-
-    @Column(precision = 19, scale = 2, nullable = false)
-    private BigDecimal amount;
-
-    @Column(columnDefinition = "TEXT")
-    private String description;
-
-    private String evidenceUrl;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by_id", nullable = false)
-    private Student createdBy;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
-    private ExpenseStatus status = ExpenseStatus.PENDING_LEADER;
+    @JoinColumn(name = "student_id", nullable = false)
+    private Student student;
 
     @CreatedDate
     private LocalDateTime createdAt;
 }
+

@@ -27,7 +27,7 @@ public class PreparationSecurity {
         if (studentId == null) {
             return false;
         }
-        return preparationTaskRepository.findByIdAndAssigneeId(taskId, studentId).isPresent();
+        return preparationTaskRepository.findByIdAndOwnerId(taskId, studentId).isPresent();
     }
 
     private Long getStudentId(Authentication authentication) {

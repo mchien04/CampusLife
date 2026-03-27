@@ -5,7 +5,395 @@ Module Chuẩn bị Sự kiện hỗ trợ:
 - Bật/tắt chế độ chuẩn bị cho từng Activity (`hasPreparation`).
 - Quản lý danh sách sinh viên thuộc BTC (Organizer) theo từng Activity.
 - Giao việc chuẩn bị theo từng Activity (PreparationTask) và cho phép người được giao tự cập nhật trạng thái.
-- Quản lý ngân sách (Budget) và các khoản chi (Expense) theo Activity, có luồng duyệt chi phí.
+- Quản lý tài chính theo mô hình ngân sách theo hạng mục và duyệt chi phí 2 cấp (Leader → Admin/Manager).
+
+## 1.1. Cập nhật mới (Tài chính v2 - Ngân sách theo hạng mục + duyệt 2 cấp)
+
+### 1.1.1. Tóm tắt thay đổi
+- Thay mô hình `Budget (1-1 Activity) + Expense.approved (Boolean|null)` bằng `ActivityBudget + BudgetCategory + ExpenseStatus`.
+- Bổ sung cơ chế `FundAdvance` (tạm ứng) và tự động trừ tạm ứng khi Expense được duyệt cấp cuối.
+- Bổ sung `AuditLog` để lưu mọi thay đổi liên quan tài chính.
+- Nâng cấp `PreparationTask` để hỗ trợ Leader/Member và kiểm soát hạn mức chi theo Task.
+
+### 1.1.2. Entity/Enum mới và Entity đã nâng cấp
+
+#### ActivityBudget (1-1 Activity)
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+@Entity
+@Table(name = "activity_budgets")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class ActivityBudget {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "activity_id", unique = true, nullable = false)
+    private Activity activity;
+
+    @Column(name = "total_amount", precision = 19, scale = 2, nullable = false)
+    private BigDecimal totalAmount;
+
+    @OneToMany(mappedBy = "activityBudget", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<BudgetCategory> categories = new LinkedHashSet<>();
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### BudgetCategory (hạng mục ngân sách)
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "budget_categories", uniqueConstraints = @UniqueConstraint(columnNames = { "activity_budget_id", "name" }))
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class BudgetCategory {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "activity_budget_id", nullable = false)
+    private ActivityBudget activityBudget;
+
+    @Column(nullable = false, length = 100)
+    private String name;
+
+    @Column(name = "allocated_amount", precision = 19, scale = 2, nullable = false)
+    private BigDecimal allocatedAmount = BigDecimal.ZERO;
+
+    @Column(name = "used_amount", precision = 19, scale = 2, nullable = false)
+    private BigDecimal usedAmount = BigDecimal.ZERO;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### PreparationTask (Task) - nâng cấp (Leader + hạn mức)
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import vn.campuslife.enumeration.PreparationTaskStatus;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "preparation_tasks")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class PreparationTask {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "activity_id", nullable = false)
+    private Activity activity;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assignee_id", nullable = false)
+    private Student owner;
+
+    @Column(nullable = false)
+    private String title;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    private LocalDateTime deadline;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal budgetLimit;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal allocatedAmount = BigDecimal.ZERO;
+
+    @Column(nullable = false)
+    private boolean isFinancial = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PreparationTaskStatus status = PreparationTaskStatus.PENDING;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### PreparationTaskMember (Member trong Task)
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "preparation_task_members", uniqueConstraints = @UniqueConstraint(columnNames = { "task_id", "student_id" }))
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class PreparationTaskMember {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "task_id", nullable = false)
+    private PreparationTask task;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "student_id", nullable = false)
+    private Student student;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### FundAdvance (tạm ứng)
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import vn.campuslife.enumeration.FundAdvanceStatus;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "fund_advances")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class FundAdvance {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "task_id", nullable = false)
+    private PreparationTask task;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "student_id", nullable = false)
+    private Student student;
+
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal amount;
+
+    @Column(name = "remaining_amount", precision = 19, scale = 2, nullable = false)
+    private BigDecimal remainingAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private FundAdvanceStatus status = FundAdvanceStatus.HOLDING;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### Expense (chi phí) - bảng mới `preparation_expenses`
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import vn.campuslife.enumeration.ExpenseStatus;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "preparation_expenses")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class Expense {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "task_id", nullable = false)
+    private PreparationTask task;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private BudgetCategory category;
+
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal amount;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    private String evidenceUrl;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id", nullable = false)
+    private Student createdBy;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private ExpenseStatus status = ExpenseStatus.PENDING_LEADER;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### AuditLog (ghi nhận thay đổi tài chính)
+```java
+package vn.campuslife.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "audit_logs")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EntityListeners(AuditingEntityListener.class)
+public class AuditLog {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "actor_user_id", nullable = false)
+    private User actor;
+
+    @Column(nullable = false, length = 50)
+    private String action;
+
+    @Column(nullable = false, length = 50)
+    private String entityType;
+
+    @Column(nullable = false)
+    private Long entityId;
+
+    @Column(columnDefinition = "TEXT")
+    private String detail;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+}
+```
+
+#### Enum trạng thái
+```java
+package vn.campuslife.enumeration;
+
+public enum ExpenseStatus {
+    PENDING_LEADER,
+    PENDING_ADMIN,
+    APPROVED,
+    REJECTED
+}
+```
+
+```java
+package vn.campuslife.enumeration;
+
+public enum FundAdvanceStatus {
+    HOLDING,
+    SETTLED
+}
+```
+
+### 1.1.3. Phân quyền và luồng duyệt 2 cấp
+- MEMBER (thuộc Task): tạo Expense + upload evidence
+- LEADER (owner của Task): duyệt cấp 1 (`PENDING_LEADER → PENDING_ADMIN` hoặc `REJECTED`)
+- ADMIN/MANAGER: duyệt cấp cuối (`PENDING_ADMIN → APPROVED/REJECTED`)
+
+Khi APPROVED cấp cuối (trong 1 transaction):
+- Trừ `FundAdvance.remainingAmount` theo task + member (FIFO theo thời gian tạo)
+- Cộng `BudgetCategory.usedAmount`
+- Ghi `AuditLog`
+- Gửi Notification:
+  - Có expense chờ duyệt → notify đúng role (LEADER/ADMIN)
+  - Ngân sách sắp cạn (<= 10% category) → notify LEADER + ADMIN
+
+### 1.1.4. API v2 (tài chính)
+Các endpoint chính:
+- `PUT /api/preparation/activities/{activityId}/budget` (ADMIN/MANAGER)
+- `PUT /api/preparation/tasks/{taskId}/allocation` (ADMIN/MANAGER)
+- `POST /api/preparation/tasks/{taskId}/fund-advances` (ADMIN/MANAGER)
+- `POST /api/preparation/tasks/{taskId}/members/{studentId}` (ADMIN/MANAGER hoặc LEADER)
+- `POST /api/preparation/tasks/{taskId}/expenses/evidence` (MEMBER)
+- `POST /api/preparation/tasks/{taskId}/expenses` (MEMBER)
+- `PUT /api/preparation/expenses/{expenseId}/leader-decision` (LEADER)
+- `PUT /api/preparation/expenses/{expenseId}/admin-decision` (ADMIN/MANAGER)
+- `GET /api/preparation/activities/{activityId}/expenses?status=...` (ADMIN/MANAGER hoặc Organizer)
+- `GET /api/preparation/activities/{activityId}/financial-report` (ADMIN/MANAGER hoặc Organizer)
 
 ## 2. Entity & quan hệ dữ liệu
 

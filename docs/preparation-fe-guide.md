@@ -1,66 +1,68 @@
-# Hướng dẫn Frontend (TypeScript) - Module Chuẩn bị Sự kiện (Preparation)
+# Hướng dẫn Frontend (TypeScript) - Module Chuẩn bị Sự kiện (Preparation) - Tài chính v2
 
-## 1. Mục tiêu UI/UX theo role
+## 1. Tổng quan thay đổi (v2)
+Module tài chính Preparation đã nâng cấp theo mô hình:
+- `ActivityBudget` (1-1 với Activity) và nhiều `BudgetCategory` (Marketing, Hậu cần...)
+- `PreparationTask` có `ownerId` (Leader), `budgetLimit`, `allocatedAmount`, `isFinancial`
+- `FundAdvance` lưu vết tạm ứng theo `taskId + studentId` và trừ dần khi chi phí được duyệt cấp cuối
+- `Expense` duyệt 2 cấp với `status`: `PENDING_LEADER → PENDING_ADMIN → APPROVED` hoặc `REJECTED`
+- `AuditLog` ghi lại các thay đổi tài chính
 
-### 1.1. Sinh viên BTC (Organizer) - Web
-Đề xuất layout trong trang chi tiết Activity:
-- Tab "Nhiệm vụ"
-  - Hiển thị list `PreparationTask` của Activity
-  - Click vào item -> mở modal/inline action đổi trạng thái `PENDING/ACCEPTED/COMPLETED`
-- Tab "Tài chính"
-  - Chỉ hiển thị nếu activity có Budget (dashboard trả `budget != null`)
-  - Hiển thị:
-    - Tổng ngân sách
-    - Đã chi (chỉ APPROVED)
-    - Còn lại
-  - Nút "+ Thêm chi phí"
-    - Form: số tiền, nội dung, nút "Chụp ảnh hóa đơn"
-    - Sau khi chụp/chọn ảnh:
-      - Nén ảnh (client) trước khi upload
-      - Hiển thị thumbnail để xác nhận
-    - Flow submit:
-      1) upload ảnh -> nhận `evidenceUrl`
-      2) createExpense với amount/description/evidenceUrl
-    - UI hiển thị trạng thái: `WAITING_APPROVAL` sau khi gửi
+Lưu ý: API/DTO tài chính v1 (Budget/Expense.approved) đã được thay thế bởi v2.
 
-### 1.2. Admin/Manager - Web Dashboard
-Đề xuất 1 màn hình "Preparation Management":
-- Bảng Activity có Preparation bật:
-  - Cột: tên activity, số task pending, số expense waiting approval, remaining budget
-  - Click row -> mở trang chi tiết preparation của activity
-- Trang chi tiết:
-  - Panel "Task"
-    - Bảng: task title, assignee, status, deadline
-  - Panel "Chi phí"
-    - Filter trạng thái: ALL / WAITING_APPROVAL / APPROVED / REJECTED
-    - Table: amount, description, reportedBy, createdAt, status, evidence
-    - Cột "Minh chứng":
-      - icon kính lúp/ảnh -> mở modal phóng to (img src = evidenceUrl)
-      - Nút hành động: "Duyệt" / "Từ chối" (chỉ hiện khi WAITING_APPROVAL)
+## 2. UI/UX theo role
 
-## 2. Quy ước trạng thái chi phí (FE)
-Backend lưu `Expense.approved: Boolean | null`:
-- `null` => `WAITING_APPROVAL`
-- `true` => `APPROVED`
-- `false` => `REJECTED`
+### 2.1. MEMBER (thuộc Task)
+Màn hình trong trang Activity → tab “Tài chính” (hoặc trang con theo Task):
+- Chọn Task (task `isFinancial=true`)
+- Chọn Category trong ActivityBudget
+- Upload ảnh hóa đơn (MultipartFile) → lấy `evidenceUrl`
+- Tạo Expense (`PENDING_LEADER`)
+- Xem trạng thái Expense và lịch sử của chính mình (có thể filter theo Activity)
 
-FE nên map thành enum để UI rõ ràng:
+### 2.2. LEADER (owner của Task)
+Trong trang Task:
+- Danh sách Expense đang `PENDING_LEADER`
+- Xem minh chứng (evidenceUrl) và duyệt:
+  - Approve: chuyển `PENDING_ADMIN`
+  - Reject: chuyển `REJECTED`
 
-```ts
-export type ExpenseApprovalState = 'WAITING_APPROVAL' | 'APPROVED' | 'REJECTED';
+### 2.3. ADMIN/MANAGER
+Trang quản trị Preparation Finance:
+- Khởi tạo ActivityBudget + Categories (và cập nhật allocated theo từng category)
+- Cấp phát `allocatedAmount` cho Task
+- Tạo FundAdvance (tạm ứng) cho member theo task
+- Duyệt cấp cuối (`PENDING_ADMIN → APPROVED/REJECTED`)
+- Xem Financial Report (chi theo category + task vượt budget)
 
-export function mapApproval(approved: boolean | null | undefined): ExpenseApprovalState {
-  if (approved === true) return 'APPROVED';
-  if (approved === false) return 'REJECTED';
-  return 'WAITING_APPROVAL';
-}
-```
+## 3. Luồng nghiệp vụ (để FE implement đúng)
 
-Lưu ý nghiệp vụ: `remaining` được tính dựa trên `APPROVED` בלבד, nên các khoản `WAITING_APPROVAL` chưa trừ ngân sách.
+### 3.1. Duyệt chi phí 2 cấp
+1) MEMBER tạo Expense → `PENDING_LEADER` và gửi notification cho LEADER
+2) LEADER duyệt:
+   - Approved → `PENDING_ADMIN` và gửi notification cho ADMIN/MANAGER
+   - Rejected → `REJECTED` và notify MEMBER
+3) ADMIN/MANAGER duyệt cấp cuối:
+   - Approved → `APPROVED` và thực hiện atomically trong transaction:
+     - Trừ `FundAdvance.remainingAmount` (FIFO theo createdAt) của member theo task
+     - Cộng `BudgetCategory.usedAmount`
+     - Ghi `AuditLog`
+     - Notify MEMBER + cảnh báo “ngân sách sắp cạn” nếu category còn lại <= 10%
+   - Rejected → `REJECTED` và notify MEMBER
 
-## 3. API contract & types TypeScript
-Backend trả chuẩn:
+### 3.2. Ràng buộc ngân sách (quan trọng)
+- `sum(categories.allocatedAmount) <= activityBudget.totalAmount`
+- `category.allocatedAmount >= category.usedAmount`
+- `sum(task.allocatedAmount theo activity) <= activityBudget.totalAmount`
+- Khi duyệt cấp cuối:
+  - Không vượt `task.allocatedAmount`
+  - Không vượt `task.budgetLimit` (nếu có)
+  - Không vượt `category.allocatedAmount - category.usedAmount`
+  - Không vượt tổng FundAdvance còn lại của member theo task
 
+## 4. API contract & types TypeScript
+
+### 4.1. Wrapper response
 ```ts
 export type ApiResponse<T> = {
   status: boolean;
@@ -69,92 +71,158 @@ export type ApiResponse<T> = {
 };
 ```
 
-### 3.1. DTO types
-
+### 4.2. Enum types
 ```ts
 export type PreparationTaskStatus = 'PENDING' | 'ACCEPTED' | 'COMPLETED';
+export type ExpenseStatus = 'PENDING_LEADER' | 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED';
+export type FundAdvanceStatus = 'HOLDING' | 'SETTLED';
+```
+
+### 4.3. DTO types (API trả về)
+```ts
+export type UploadResultDto = { url: string };
 
 export type PreparationTaskDto = {
   id: number;
   activityId: number;
-  assigneeId: number;
-  assigneeName: string | null;
+  ownerId: number;
+  ownerName: string | null;
   title: string;
   description: string | null;
   deadline: string | null;
+  budgetLimit: string | null;
+  allocatedAmount: string;
+  isFinancial: boolean;
   status: PreparationTaskStatus;
-};
-
-export type BudgetDto = {
-  id: number;
-  activityId: number | null;
-  totalAmount: string;
-  spentAmount: string;
-  remainingAmount: string;
-  description: string | null;
 };
 
 export type PreparationDashboardDto = {
   activityId: number;
   hasPreparation: boolean;
   tasks: PreparationTaskDto[];
-  budget: BudgetDto | null;
+  budget: null;
   financeMessage: string | null;
+};
+
+export type BudgetCategoryDto = {
+  id: number;
+  name: string;
+  allocatedAmount: string;
+  usedAmount: string;
+  remainingAmount: string;
+  usedPercent: number;
+};
+
+export type ActivityBudgetDto = {
+  id: number;
+  activityId: number;
+  totalAmount: string;
+  categories: BudgetCategoryDto[];
 };
 
 export type ExpenseDto = {
   id: number;
-  activityId: number;
-  budgetId: number;
+  activityId: number | null;
+  taskId: number | null;
+  categoryId: number | null;
+  categoryName: string | null;
   amount: string;
   description: string | null;
   evidenceUrl: string | null;
-  reportedById: number;
-  reportedByName: string | null;
-  approved: boolean | null;
+  status: ExpenseStatus;
+  createdById: number | null;
+  createdByName: string | null;
   createdAt: string;
 };
 
-export type UploadResultDto = { url: string };
+export type FundAdvanceDto = {
+  id: number;
+  taskId: number;
+  studentId: number;
+  studentName: string | null;
+  amount: string;
+  remainingAmount: string;
+  status: FundAdvanceStatus;
+  createdAt: string;
+};
+
+export type TaskOverBudgetDto = {
+  taskId: number;
+  title: string;
+  budgetLimit: string | null;
+  allocatedAmount: string;
+  approvedSpent: string;
+};
+
+export type FinancialReportDto = {
+  activityId: number;
+  totalBudget: string;
+  categories: BudgetCategoryDto[];
+  overBudgetTasks: TaskOverBudgetDto[];
+};
 ```
 
-Ghi chú: `amount/totalAmount/...` là `BigDecimal` nên backend trả thường là string. FE nên dùng formatter (Intl) và chỉ convert number khi thật cần thiết.
+### 4.4. Request types (FE gửi lên)
+```ts
+export type ApproveExpenseRequest = { approved: boolean };
 
-## 4. Endpoint usage theo role (gợi ý)
+export type UpsertBudgetCategoryRequest = {
+  name: string;
+  allocatedAmount: string;
+};
 
-### 4.1. Organizer
-- Dashboard:
-  - `GET /api/preparation/activities/{activityId}/dashboard`
-- Update task status của mình:
-  - `PUT /api/preparation/tasks/{taskId}/status`
-  - body: `{ status: 'ACCEPTED' }`
+export type UpsertActivityBudgetRequest = {
+  totalAmount: string;
+  categories: UpsertBudgetCategoryRequest[];
+};
+
+export type AllocateTaskAmountRequest = {
+  allocatedAmount: string;
+};
+
+export type CreateFundAdvanceRequest = {
+  studentId: number;
+  amount: string;
+};
+
+export type CreateExpenseRequest = {
+  categoryId: number;
+  amount: string;
+  description?: string | null;
+  evidenceUrl?: string | null;
+};
+```
+
+## 5. Endpoint usage theo role
+
+### 5.1. Common
+- `GET /api/preparation/activities/{activityId}/dashboard` (tasks + hasPreparation)
+- `GET /api/preparation/activities/{activityId}/financial-report`
+- `GET /api/preparation/activities/{activityId}/expenses?status=PENDING_LEADER|PENDING_ADMIN|APPROVED|REJECTED` (status optional)
+
+### 5.2. MEMBER
 - Upload hóa đơn:
-  - `POST /api/preparation/activities/{activityId}/expenses/evidence` (multipart)
+  - `POST /api/preparation/tasks/{taskId}/expenses/evidence` (multipart)
 - Tạo expense:
-  - `POST /api/preparation/activities/{activityId}/expenses`
-  - body: `{ amount, description, evidenceUrl }`
-- Xem danh sách expense:
-  - `GET /api/preparation/activities/{activityId}/expenses?status=ALL|PENDING|APPROVED|REJECTED`
+  - `POST /api/preparation/tasks/{taskId}/expenses`
 
-### 4.2. Admin/Manager
-- Toggle:
-  - `PUT /api/preparation/activities/{activityId}/toggle?enabled=true`
-- Add/Remove organizer:
-  - `POST/DELETE /api/preparation/activities/{activityId}/organizers/{studentId}`
-- Upsert budget:
+### 5.3. LEADER
+- Thêm member vào task:
+  - `POST /api/preparation/tasks/{taskId}/members/{studentId}`
+- Duyệt cấp 1:
+  - `PUT /api/preparation/expenses/{expenseId}/leader-decision`
+
+### 5.4. ADMIN/MANAGER
+- Upsert activity budget + categories:
   - `PUT /api/preparation/activities/{activityId}/budget`
-  - body: `{ totalAmount, description }`
-- Assign task:
-  - `POST /api/preparation/activities/{activityId}/tasks`
-  - body: `{ assigneeId, title, description, deadline }`
-- List expense + approve/reject:
-  - `GET /api/preparation/activities/{activityId}/expenses?...`
-  - `PUT /api/preparation/expenses/{expenseId}/approval`
-    - body: `{ approved: true }` hoặc `{ approved: false }`
+- Allocate amount cho task:
+  - `PUT /api/preparation/tasks/{taskId}/allocation`
+- Tạo fund advance:
+  - `POST /api/preparation/tasks/{taskId}/fund-advances`
+- Duyệt cấp cuối:
+  - `PUT /api/preparation/expenses/{expenseId}/admin-decision`
 
-## 5. Gợi ý triển khai client (TypeScript)
-
-### 5.1. API client tối thiểu (fetch)
+## 6. Gợi ý client code (fetch)
 
 ```ts
 async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -165,89 +233,66 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       'Content-Type': init?.body instanceof FormData ? undefined : 'application/json',
     },
   });
-
   const data = (await res.json()) as ApiResponse<T>;
   if (!data.status) throw new Error(data.message || 'Request failed');
   return data.body;
 }
-```
 
-Khi upload `FormData`, không set `Content-Type` thủ công (browser sẽ tự set boundary).
-
-### 5.2. Upload ảnh hóa đơn + tạo expense
-
-```ts
-export async function uploadEvidence(activityId: number, file: File): Promise<string> {
+export async function uploadExpenseEvidence(taskId: number, file: File): Promise<string> {
   const fd = new FormData();
   fd.append('file', file);
-  const body = await apiFetch<UploadResultDto>(`/api/preparation/activities/${activityId}/expenses/evidence`, {
+  const body = await apiFetch<UploadResultDto>(`/api/preparation/tasks/${taskId}/expenses/evidence`, {
     method: 'POST',
     body: fd,
   });
   return body.url;
 }
 
-export async function createExpense(activityId: number, payload: { amount: string; description?: string; evidenceUrl?: string; }) {
-  return apiFetch<ExpenseDto>(`/api/preparation/activities/${activityId}/expenses`, {
+export async function createExpense(taskId: number, payload: CreateExpenseRequest) {
+  return apiFetch<ExpenseDto>(`/api/preparation/tasks/${taskId}/expenses`, {
     method: 'POST',
     body: JSON.stringify({
+      categoryId: payload.categoryId,
       amount: payload.amount,
       description: payload.description ?? null,
       evidenceUrl: payload.evidenceUrl ?? null,
     }),
   });
 }
+
+export async function leaderDecision(expenseId: number, approved: boolean) {
+  return apiFetch<ExpenseDto>(`/api/preparation/expenses/${expenseId}/leader-decision`, {
+    method: 'PUT',
+    body: JSON.stringify({ approved } satisfies ApproveExpenseRequest),
+  });
+}
+
+export async function adminDecision(expenseId: number, approved: boolean) {
+  return apiFetch<ExpenseDto>(`/api/preparation/expenses/${expenseId}/admin-decision`, {
+    method: 'PUT',
+    body: JSON.stringify({ approved } satisfies ApproveExpenseRequest),
+  });
+}
 ```
 
-## 6. Nén ảnh hóa đơn (khuyến nghị)
-
-### 6.1. Nén ảnh phía Client (không dùng thư viện)
-Mục tiêu:
-- Giới hạn chiều rộng tối đa (vd 1280px)
-- Chất lượng JPEG ~0.7–0.8
-- Output ~200KB–800KB (tùy hóa đơn)
-
+## 7. Nén ảnh hóa đơn (khuyến nghị)
 ```ts
 export async function compressImage(file: File, opts?: { maxWidth?: number; quality?: number }) {
   const maxWidth = opts?.maxWidth ?? 1280;
   const quality = opts?.quality ?? 0.75;
-
   const imageBitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxWidth / imageBitmap.width);
   const targetW = Math.round(imageBitmap.width * scale);
   const targetH = Math.round(imageBitmap.height * scale);
-
   const canvas = document.createElement('canvas');
   canvas.width = targetW;
   canvas.height = targetH;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas not supported');
   ctx.drawImage(imageBitmap, 0, 0, targetW, targetH);
-
   const blob: Blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      b => (b ? resolve(b) : reject(new Error('Failed to compress image'))),
-      'image/jpeg',
-      quality
-    );
+    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('Failed to compress image'))), 'image/jpeg', quality);
   });
-
   return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
 }
 ```
-
-Flow đề xuất trong UI:
-- User chọn/chụp ảnh -> `compressImage` -> hiển thị thumbnail -> upload.
-
-### 6.2. Nén ảnh phía Server
-Hiện backend đang lưu local theo FileUploadService, chưa có bước nén server-side. Nếu muốn đồng nhất và đảm bảo tiết kiệm dung lượng ngay cả khi client không nén, có thể bổ sung thêm nén server-side (đề xuất làm sau).
-
-## 7. Gợi ý đảm bảo “cùng theme”
-- Giữ nguyên kiểu response `{status,message,body}` và toast theo `message`.
-- Quy ước màu trạng thái dùng chung:
-  - WAITING_APPROVAL: warning
-  - APPROVED: success
-  - REJECTED: danger
-  - Task COMPLETED: success
-- Dùng cùng format tiền tệ và ngày giờ trong toàn dự án (Intl.NumberFormat + Intl.DateTimeFormat).
-

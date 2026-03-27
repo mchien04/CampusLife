@@ -5,8 +5,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.Expense;
+import vn.campuslife.enumeration.ExpenseStatus;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Repository
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
@@ -14,14 +16,22 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
     @Query("""
             select coalesce(sum(e.amount), 0)
             from Expense e
-            where e.budget.id = :budgetId
-              and e.approved = true
+            where e.category.id = :categoryId
+              and e.status = 'APPROVED'
             """)
-    BigDecimal sumApprovedAmountByBudgetId(@Param("budgetId") Long budgetId);
+    BigDecimal sumApprovedAmountByCategoryId(@Param("categoryId") Long categoryId);
 
-    java.util.List<Expense> findByBudgetActivityIdOrderByCreatedAtDesc(Long activityId);
+    @Query("""
+            select coalesce(sum(e.amount), 0)
+            from Expense e
+            where e.task.id = :taskId
+              and e.status = 'APPROVED'
+            """)
+    BigDecimal sumApprovedAmountByTaskId(@Param("taskId") Long taskId);
 
-    java.util.List<Expense> findByBudgetActivityIdAndApprovedOrderByCreatedAtDesc(Long activityId, Boolean approved);
+    List<Expense> findByTaskIdOrderByCreatedAtDesc(Long taskId);
 
-    java.util.List<Expense> findByBudgetActivityIdAndApprovedIsNullOrderByCreatedAtDesc(Long activityId);
+    List<Expense> findByTaskActivityIdOrderByCreatedAtDesc(Long activityId);
+
+    List<Expense> findByTaskActivityIdAndStatusOrderByCreatedAtDesc(Long activityId, ExpenseStatus status);
 }

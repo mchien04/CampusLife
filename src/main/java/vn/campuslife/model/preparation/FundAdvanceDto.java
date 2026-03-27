@@ -3,7 +3,7 @@ package vn.campuslife.model.preparation;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import vn.campuslife.enumeration.ExpenseStatus;
+import vn.campuslife.enumeration.FundAdvanceStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -11,17 +11,14 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ExpenseDto {
+public class FundAdvanceDto {
     private Long id;
-    private Long activityId;
     private Long taskId;
-    private Long categoryId;
-    private String categoryName;
+    private Long studentId;
+    private String studentName;
     private BigDecimal amount;
-    private String description;
-    private String evidenceUrl;
-    private ExpenseStatus status;
-    private Long createdById;
-    private String createdByName;
+    private BigDecimal remainingAmount;
+    private FundAdvanceStatus status;
     private LocalDateTime createdAt;
 }
+
