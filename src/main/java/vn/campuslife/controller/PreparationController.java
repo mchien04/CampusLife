@@ -8,6 +8,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.service.PreparationService;
 
@@ -123,5 +124,11 @@ public class PreparationController {
     public ResponseEntity<Response> uploadEvidence(@PathVariable Long activityId, @RequestParam("file") MultipartFile file) {
         UploadResultDto dto = preparationService.uploadExpenseEvidence(file);
         return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
+    @GetMapping("/stats/{id}")
+    public ResponseEntity<TaskStatsRespone> getStats(@PathVariable Long id) {
+        TaskStatsRespone stats = preparationService.getStudentStats(id);
+        return ResponseEntity.ok(stats);
     }
 }

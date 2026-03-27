@@ -9,6 +9,7 @@ import vn.campuslife.enumeration.NotificationType;
 import vn.campuslife.enumeration.PreparationTaskStatus;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.exception.*;
+import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.FileUploadService;
@@ -32,13 +33,18 @@ public class PreparationServiceImpl implements PreparationService {
     private final UserRepository userRepository;
     private final FileUploadService fileUploadService;
     private final NotificationService notificationService;
-
+    private final PreparationTaskRepository taskRepository;
     @Override
     @Transactional
     public void togglePreparation(Long activityId, boolean enabled) {
         Activity activity = getActiveActivity(activityId);
         activity.setHasPreparation(enabled);
         activityRepository.save(activity);
+    }
+
+    @Override
+    public TaskStatsRespone getStudentStats(Long studentId) {
+        return taskRepository.getStatsByStudentId(studentId);
     }
 
     @Override

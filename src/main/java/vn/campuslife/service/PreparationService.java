@@ -2,11 +2,12 @@ package vn.campuslife.service;
 
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.enumeration.PreparationTaskStatus;
+import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 
 public interface PreparationService {
     void togglePreparation(Long activityId, boolean enabled);
-
+    TaskStatsRespone getStudentStats(Long studentId);
     PreparationDashboardDto getPreparationDashboard(Long activityId);
 
     java.util.List<Long> listMyPreparationActivityIds(String username);
