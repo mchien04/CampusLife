@@ -13,7 +13,6 @@ public class PreparationDashboardDto {
     private Long activityId;
     private boolean hasPreparation;
     private List<PreparationTaskDto> tasks;
-    private BudgetDto budget;
+    private ActivityBudgetDto activityBudget;
     private String financeMessage;
 }
-

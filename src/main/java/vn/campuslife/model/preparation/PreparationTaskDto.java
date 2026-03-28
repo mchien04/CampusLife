@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vn.campuslife.enumeration.PreparationTaskStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -13,11 +14,12 @@ import java.time.LocalDateTime;
 public class PreparationTaskDto {
     private Long id;
     private Long activityId;
-    private Long assigneeId;
-    private String assigneeName;
+    private Long ownerId;
+    private String ownerName;
     private String title;
     private String description;
     private LocalDateTime deadline;
+    private BigDecimal allocatedAmount;
+    private Boolean isFinancial;
     private PreparationTaskStatus status;
 }
-
