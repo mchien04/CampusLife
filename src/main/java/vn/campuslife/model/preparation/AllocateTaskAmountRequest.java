@@ -1,19 +1,20 @@
 package vn.campuslife.model.preparation;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.math.BigDecimal;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class AllocateTaskAmountRequest {
-    @NotNull(message = "Allocated amount is required")
-    @PositiveOrZero(message = "Allocated amount must be >= 0")
-    private BigDecimal allocatedAmount;
-}
+    @NotNull(message = "Category ID is required")
+    private Long categoryId;
 
+    @NotBlank(message = "Allocated amount is required")
+    @Pattern(regexp = "^\\d+(\\.\\d{1,2})?$", message = "Allocated amount must be a non-negative number")
+    private String allocatedAmount;
+}

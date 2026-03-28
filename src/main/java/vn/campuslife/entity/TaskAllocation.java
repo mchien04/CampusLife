@@ -11,26 +11,28 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "budgets")
+@Table(name = "task_allocations", uniqueConstraints = @UniqueConstraint(columnNames = { "task_id", "category_id" }))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EntityListeners(AuditingEntityListener.class)
-public class Budget {
+public class TaskAllocation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "activity_id", unique = true)
-    private Activity activity;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "task_id", nullable = false)
+    private PreparationTask task;
 
-    @Column(name = "total_amount", precision = 19, scale = 2, nullable = false)
-    private BigDecimal totalAmount;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    private BudgetCategory category;
 
-    @Column(columnDefinition = "TEXT")
-    private String description;
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal amount = BigDecimal.ZERO;
 
     @CreatedDate
     private LocalDateTime createdAt;
 }
+

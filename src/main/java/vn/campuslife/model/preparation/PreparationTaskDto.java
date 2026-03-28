@@ -19,7 +19,6 @@ public class PreparationTaskDto {
     private String title;
     private String description;
     private LocalDateTime deadline;
-    private BigDecimal budgetLimit;
     private BigDecimal allocatedAmount;
     private Boolean isFinancial;
     private PreparationTaskStatus status;

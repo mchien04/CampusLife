@@ -3,7 +3,7 @@
 ## 1. Tổng quan thay đổi (v2)
 Module tài chính Preparation đã nâng cấp theo mô hình:
 - `ActivityBudget` (1-1 với Activity) và nhiều `BudgetCategory` (Marketing, Hậu cần...)
-- `PreparationTask` có `ownerId` (Leader), `budgetLimit`, `allocatedAmount`, `isFinancial`
+- `PreparationTask` có `ownerId` (Leader), `allocatedAmount`, `isFinancial`
 - `FundAdvance` lưu vết tạm ứng theo `taskId + studentId` và trừ dần khi chi phí được duyệt cấp cuối
 - `Expense` duyệt 2 cấp với `status`: `PENDING_LEADER → PENDING_ADMIN → APPROVED` hoặc `REJECTED`
 - `AuditLog` ghi lại các thay đổi tài chính
@@ -56,7 +56,6 @@ Trang quản trị Preparation Finance:
 - `sum(task.allocatedAmount theo activity) <= activityBudget.totalAmount`
 - Khi duyệt cấp cuối:
   - Không vượt `task.allocatedAmount`
-  - Không vượt `task.budgetLimit` (nếu có)
   - Không vượt `category.allocatedAmount - category.usedAmount`
   - Không vượt tổng FundAdvance còn lại của member theo task
 
@@ -73,9 +72,11 @@ export type ApiResponse<T> = {
 
 ### 4.2. Enum types
 ```ts
-export type PreparationTaskStatus = 'PENDING' | 'ACCEPTED' | 'COMPLETED';
+export type PreparationTaskStatus = 'PENDING' | 'ACCEPTED' | 'COMPLETION_REQUESTED' | 'COMPLETED';
 export type ExpenseStatus = 'PENDING_LEADER' | 'PENDING_ADMIN' | 'APPROVED' | 'REJECTED';
-export type FundAdvanceStatus = 'HOLDING' | 'SETTLED';
+export type FundAdvanceStatus = 'REQUESTED' | 'HOLDING' | 'SETTLED' | 'REJECTED';
+export type PreparationTaskMemberRole = 'LEADER' | 'MEMBER';
+export type AllocationAdjustmentStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 ```
 
 ### 4.3. DTO types (API trả về)
@@ -90,10 +91,15 @@ export type PreparationTaskDto = {
   title: string;
   description: string | null;
   deadline: string | null;
-  budgetLimit: string | null;
   allocatedAmount: string;
   isFinancial: boolean;
   status: PreparationTaskStatus;
+};
+
+export type PreparationTaskMemberDto = {
+  studentId: number;
+  studentName: string | null;
+  role: PreparationTaskMemberRole;
 };
 
 export type PreparationDashboardDto = {
@@ -108,6 +114,8 @@ export type BudgetCategoryDto = {
   id: number;
   name: string;
   allocatedAmount: string;
+  allocatedToTasksAmount: string;
+  availableToAllocateAmount: string;
   usedAmount: string;
   remainingAmount: string;
   usedPercent: number;
@@ -140,18 +148,49 @@ export type FundAdvanceDto = {
   taskId: number;
   studentId: number;
   studentName: string | null;
+  requestedById: number | null;
+  requestedByName: string | null;
   amount: string;
   remainingAmount: string;
   status: FundAdvanceStatus;
   createdAt: string;
+  decidedAt: string | null;
 };
 
 export type TaskOverBudgetDto = {
   taskId: number;
   title: string;
-  budgetLimit: string | null;
   allocatedAmount: string;
   approvedSpent: string;
+};
+
+export type AllocationSourceSuggestionDto = {
+  categoryId: number;
+  categoryName: string;
+  availableToAllocateAmount: string;
+};
+
+export type OverBudgetInfoDto = {
+  taskId: number;
+  requiredAdditionalAmount: string;
+  currentAllocatedAmount: string;
+  committedAmount: string;
+  suggestedSources: AllocationSourceSuggestionDto[];
+};
+
+export type AllocationAdjustmentRequestDto = {
+  id: number;
+  activityId: number;
+  taskId: number;
+  amount: string;
+  status: AllocationAdjustmentStatus;
+  requestedById: number | null;
+  requestedByName: string | null;
+  preferredCategoryId: number | null;
+  preferredCategoryName: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedById: number | null;
 };
 
 export type FinancialReportDto = {
@@ -177,6 +216,7 @@ export type UpsertActivityBudgetRequest = {
 };
 
 export type AllocateTaskAmountRequest = {
+  categoryId: number;
   allocatedAmount: string;
 };
 
@@ -190,6 +230,16 @@ export type CreateExpenseRequest = {
   amount: string;
   description?: string | null;
   evidenceUrl?: string | null;
+};
+
+export type CreateAllocationAdjustmentRequest = {
+  amount: string;
+  preferredCategoryId?: number | null;
+};
+
+export type AdminDecisionAllocationAdjustmentRequest = {
+  approved: boolean;
+  categoryId?: number | null;
 };
 ```
 

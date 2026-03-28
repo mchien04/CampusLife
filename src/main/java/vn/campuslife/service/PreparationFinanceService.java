@@ -6,11 +6,17 @@ import vn.campuslife.enumeration.ExpenseStatus;
 public interface PreparationFinanceService {
     ActivityBudgetDto upsertActivityBudget(Long activityId, UpsertActivityBudgetRequest request);
 
+    ActivityBudgetDto getActivityBudget(Long activityId);
+
     PreparationTaskDto allocateTaskAmount(Long taskId, AllocateTaskAmountRequest request);
 
     void addTaskMember(Long taskId, Long studentId);
 
-    FundAdvanceDto createFundAdvance(Long taskId, CreateFundAdvanceRequest request);
+    FundAdvanceDto requestFundAdvance(Long taskId, CreateFundAdvanceRequest request, String username);
+
+    FundAdvanceDto adminDecisionFundAdvance(Long fundAdvanceId, boolean approved, String username);
+
+    java.util.List<FundAdvanceDto> listFundAdvancesByTask(Long taskId);
 
     ExpenseDto createExpense(CreateExpenseRequest request, String username);
 
@@ -19,6 +25,18 @@ public interface PreparationFinanceService {
     ExpenseDto adminDecision(Long expenseId, boolean approved, String username);
 
     java.util.List<ExpenseDto> listExpensesByActivity(Long activityId, ExpenseStatus status);
+
+    AllocationAdjustmentRequestDto createAllocationAdjustmentRequest(Long taskId, CreateAllocationAdjustmentRequest request, String username);
+
+    java.util.List<AllocationAdjustmentRequestDto> listAllocationAdjustmentRequests(Long activityId, vn.campuslife.enumeration.AllocationAdjustmentStatus status);
+
+    AllocationAdjustmentRequestDto adminDecisionAllocationAdjustment(Long requestId, boolean approved, Long categoryId, String username);
+
+    java.util.List<FundAdvanceDebtDto> listFundAdvanceDebts(Long activityId, Long studentId);
+
+    FinanceOverviewReportDto getFinanceOverviewReport(Long activityId);
+
+    CashFlowReportDto getCashFlowReport(Long activityId);
 
     FinancialReportDto getFinancialReport(Long activityId);
 }

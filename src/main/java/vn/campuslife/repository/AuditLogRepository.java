@@ -6,5 +6,5 @@ import vn.campuslife.entity.AuditLog;
 
 @Repository
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
+    boolean existsByActionAndEntityTypeAndEntityId(String action, String entityType, Long entityId);
 }
-

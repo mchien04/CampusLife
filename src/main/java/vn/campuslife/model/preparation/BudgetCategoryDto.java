@@ -13,8 +13,9 @@ public class BudgetCategoryDto {
     private Long id;
     private String name;
     private BigDecimal allocatedAmount;
+    private BigDecimal allocatedToTasksAmount;
+    private BigDecimal availableToAllocateAmount;
     private BigDecimal usedAmount;
     private BigDecimal remainingAmount;
     private Double usedPercent;
 }
-

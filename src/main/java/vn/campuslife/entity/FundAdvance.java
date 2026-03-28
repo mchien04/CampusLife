@@ -30,6 +30,10 @@ public class FundAdvance {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "requested_by_id")
+    private Student requestedBy;
+
     @Column(precision = 19, scale = 2, nullable = false)
     private BigDecimal amount;
 
@@ -38,9 +42,14 @@ public class FundAdvance {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private FundAdvanceStatus status = FundAdvanceStatus.HOLDING;
+    private FundAdvanceStatus status = FundAdvanceStatus.REQUESTED;
 
     @CreatedDate
     private LocalDateTime createdAt;
-}
 
+    private LocalDateTime decidedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "decided_by_id")
+    private User decidedBy;
+}

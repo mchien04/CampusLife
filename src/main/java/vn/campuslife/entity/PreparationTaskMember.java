@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import vn.campuslife.enumeration.PreparationTaskMemberRole;
 
 import java.time.LocalDateTime;
 
@@ -28,7 +29,10 @@ public class PreparationTaskMember {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PreparationTaskMemberRole role = PreparationTaskMemberRole.MEMBER;
+
     @CreatedDate
     private LocalDateTime createdAt;
 }
-

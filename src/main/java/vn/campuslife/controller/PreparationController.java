@@ -11,6 +11,8 @@ import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.service.PreparationService;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/preparation")
 @RequiredArgsConstructor
@@ -69,7 +71,6 @@ public class PreparationController {
                 req.getTitle(),
                 req.getDescription(),
                 req.getDeadline(),
-                req.getBudgetLimit(),
                 req.getIsFinancial()));
         return ResponseEntity.ok(Response.success("OK", dto));
     }
@@ -83,6 +84,65 @@ public class PreparationController {
         PreparationTaskDto dto = preparationService.updateMyTaskStatus(taskId, req.getStatus(),
                 authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
+    @GetMapping("/tasks/{taskId}/members")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> listTaskMembers(@PathVariable Long taskId) {
+        List<PreparationTaskMemberDto> members = preparationService.listTaskMembers(taskId);
+        return ResponseEntity.ok(Response.success("OK", members));
+    }
+
+    @DeleteMapping("/tasks/{taskId}/members/{studentId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> removeTaskMember(@PathVariable Long taskId, @PathVariable Long studentId) {
+        preparationService.removeTaskMember(taskId, studentId);
+        return ResponseEntity.ok(Response.success("OK"));
+    }
+
+    @PostMapping("/tasks/{taskId}/leaders/{studentId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> promoteLeader(@PathVariable Long taskId, @PathVariable Long studentId) {
+        preparationService.promoteTaskLeader(taskId, studentId);
+        return ResponseEntity.ok(Response.success("OK"));
+    }
+
+    @DeleteMapping("/tasks/{taskId}/leaders/{studentId}")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> demoteLeader(@PathVariable Long taskId, @PathVariable Long studentId) {
+        preparationService.demoteTaskLeader(taskId, studentId);
+        return ResponseEntity.ok(Response.success("OK"));
+    }
+
+    @PutMapping("/tasks/{taskId}/accept")
+    @PreAuthorize("@preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> acceptTask(@PathVariable Long taskId, Authentication authentication) {
+        PreparationTaskDto dto = preparationService.acceptTask(taskId, authentication.getName());
+        return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
+    @PutMapping("/tasks/{taskId}/request-complete")
+    @PreAuthorize("@preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> requestComplete(@PathVariable Long taskId, Authentication authentication) {
+        PreparationTaskDto dto = preparationService.requestCompleteTask(taskId, authentication.getName());
+        return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
+    @PutMapping("/tasks/{taskId}/complete-decision")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> completeDecision(
+            @PathVariable Long taskId,
+            @RequestBody @Valid ApproveTaskCompletionRequest request) {
+        PreparationTaskDto dto = preparationService.adminCompleteDecision(taskId,
+                Boolean.TRUE.equals(request.getApproved()));
+        return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
+    @GetMapping("/activities/{activityId}/workload-warnings")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    public ResponseEntity<Response> getWorkloadWarnings(@PathVariable Long activityId) {
+        List<WorkloadWarningDto> warnings = preparationService.getWorkloadWarnings(activityId);
+        return ResponseEntity.ok(Response.success("OK", warnings));
     }
 
     @GetMapping("/stats/{id}")

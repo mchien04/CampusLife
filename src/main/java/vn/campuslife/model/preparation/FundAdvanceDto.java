@@ -16,9 +16,11 @@ public class FundAdvanceDto {
     private Long taskId;
     private Long studentId;
     private String studentName;
+    private Long requestedById;
+    private String requestedByName;
     private BigDecimal amount;
     private BigDecimal remainingAmount;
     private FundAdvanceStatus status;
     private LocalDateTime createdAt;
+    private LocalDateTime decidedAt;
 }
-

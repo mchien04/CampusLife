@@ -39,9 +39,6 @@ public class PreparationTask {
     private LocalDateTime deadline;
 
     @Column(precision = 19, scale = 2)
-    private BigDecimal budgetLimit;
-
-    @Column(precision = 19, scale = 2)
     private BigDecimal allocatedAmount = BigDecimal.ZERO;
 
     @Column(nullable = false)

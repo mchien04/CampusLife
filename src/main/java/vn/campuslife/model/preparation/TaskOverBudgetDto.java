@@ -12,8 +12,6 @@ import java.math.BigDecimal;
 public class TaskOverBudgetDto {
     private Long taskId;
     private String title;
-    private BigDecimal budgetLimit;
     private BigDecimal allocatedAmount;
     private BigDecimal approvedSpent;
 }
-

@@ -5,6 +5,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import vn.campuslife.entity.Expense;
 import vn.campuslife.entity.PreparationTask;
+import vn.campuslife.enumeration.PreparationTaskMemberRole;
 import vn.campuslife.repository.ExpenseRepository;
 import vn.campuslife.repository.PreparationTaskMemberRepository;
 import vn.campuslife.repository.PreparationTaskRepository;
@@ -23,6 +24,13 @@ public class PreparationFinanceSecurity {
         if (studentId == null) {
             return false;
         }
+        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
+                taskId,
+                studentId,
+                PreparationTaskMemberRole.LEADER);
+        if (isLeader) {
+            return true;
+        }
         return preparationTaskRepository.findById(taskId)
                 .map(PreparationTask::getOwner)
                 .map(o -> o.getId().equals(studentId))
@@ -34,11 +42,18 @@ public class PreparationFinanceSecurity {
         if (studentId == null) {
             return false;
         }
-        boolean isLeader = preparationTaskRepository.findById(taskId)
+        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
+                taskId,
+                studentId,
+                PreparationTaskMemberRole.LEADER);
+        if (isLeader) {
+            return true;
+        }
+        boolean isOwner = preparationTaskRepository.findById(taskId)
                 .map(PreparationTask::getOwner)
                 .map(o -> o.getId().equals(studentId))
                 .orElse(false);
-        if (isLeader) {
+        if (isOwner) {
             return true;
         }
         return preparationTaskMemberRepository.existsByTaskIdAndStudentId(taskId, studentId);
@@ -51,8 +66,8 @@ public class PreparationFinanceSecurity {
         }
         return expenseRepository.findById(expenseId)
                 .map(Expense::getTask)
-                .map(PreparationTask::getOwner)
-                .map(o -> o.getId().equals(studentId))
+                .map(PreparationTask::getId)
+                .map(taskId -> isTaskLeader(taskId, authentication))
                 .orElse(false);
     }
 
@@ -67,4 +82,3 @@ public class PreparationFinanceSecurity {
         }
     }
 }
-

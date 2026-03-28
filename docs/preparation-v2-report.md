@@ -16,7 +16,7 @@
 - Tạm ứng:
   - v2 bổ sung `FundAdvance` để theo dõi tạm ứng theo (Task, Student), trừ dần khi chi phí APPROVED cấp cuối.
 - Task tài chính:
-  - v2 nâng cấp `PreparationTask` có `owner (Leader)`, `budgetLimit`, `allocatedAmount`, `isFinancial`.
+  - v2 nâng cấp `PreparationTask` có `owner (Leader)`, `allocatedAmount`, `isFinancial`.
 - Audit:
   - v2 bổ sung `AuditLog` lưu ai thay đổi, thay đổi gì, lúc nào.
 
@@ -52,7 +52,6 @@
 - `sum(task.allocatedAmount theo activity) <= activityBudget.totalAmount`
 - Khi APPROVED cấp cuối:
   - Không vượt `task.allocatedAmount`
-  - Không vượt `task.budgetLimit` (nếu có)
   - Không vượt `category.remaining = allocated - used`
   - Không vượt tổng `FundAdvance.remainingAmount` của member theo task
   - Trừ FundAdvance theo thứ tự tạo (FIFO) và cập nhật `FundAdvance.status` sang SETTLED nếu còn lại = 0
@@ -79,4 +78,3 @@
   - TS types/enum cho toàn bộ DTO/Request của v2
   - Luồng nghiệp vụ theo role
   - Ví dụ gọi API (fetch + upload evidence)
-

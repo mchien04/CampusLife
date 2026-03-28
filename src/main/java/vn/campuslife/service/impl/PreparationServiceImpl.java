@@ -5,7 +5,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.NotificationType;
+import vn.campuslife.enumeration.PreparationTaskMemberRole;
 import vn.campuslife.enumeration.PreparationTaskStatus;
+import vn.campuslife.enumeration.WorkloadWarningType;
 import vn.campuslife.exception.*;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
@@ -13,6 +15,9 @@ import vn.campuslife.repository.*;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationService;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -25,7 +30,10 @@ public class PreparationServiceImpl implements PreparationService {
     private final ActivityOrganizerRepository activityOrganizerRepository;
     private final PreparationTaskRepository preparationTaskRepository;
     private final PreparationTaskRepository taskRepository;
+    private final PreparationTaskMemberRepository preparationTaskMemberRepository;
     private final NotificationService notificationService;
+    private final ActivityBudgetRepository activityBudgetRepository;
+    private final TaskAllocationRepository taskAllocationRepository;
 
     @Override
     @Transactional
@@ -53,7 +61,10 @@ public class PreparationServiceImpl implements PreparationService {
                 .map(this::toTaskDto)
                 .toList();
 
-        return new PreparationDashboardDto(activityId, true, tasks, null, null);
+        return activityBudgetRepository.findByActivityId(activityId)
+                .map(budget -> new PreparationDashboardDto(activityId, true, tasks, toActivityBudgetDto(budget), null))
+                .orElseGet(
+                        () -> new PreparationDashboardDto(activityId, true, tasks, null, "No ActivityBudget assigned"));
     }
 
     @Override
@@ -90,10 +101,17 @@ public class PreparationServiceImpl implements PreparationService {
         task.setTitle(request.getTitle());
         task.setDescription(request.getDescription());
         task.setDeadline(request.getDeadline());
-        task.setBudgetLimit(request.getBudgetLimit());
         task.setFinancial(Boolean.TRUE.equals(request.getIsFinancial()));
         task.setStatus(PreparationTaskStatus.PENDING);
         PreparationTask saved = preparationTaskRepository.save(task);
+
+        if (!preparationTaskMemberRepository.existsByTaskIdAndStudentId(saved.getId(), assignee.getId())) {
+            PreparationTaskMember leader = new PreparationTaskMember();
+            leader.setTask(saved);
+            leader.setStudent(assignee);
+            leader.setRole(PreparationTaskMemberRole.LEADER);
+            preparationTaskMemberRepository.save(leader);
+        }
 
         return toTaskDto(saved);
     }
@@ -101,15 +119,179 @@ public class PreparationServiceImpl implements PreparationService {
     @Override
     @Transactional
     public PreparationTaskDto updateMyTaskStatus(Long taskId, PreparationTaskStatus status, String username) {
-        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+        if (status == PreparationTaskStatus.ACCEPTED) {
+            return acceptTask(taskId, username);
+        }
+        if (status == PreparationTaskStatus.COMPLETION_REQUESTED) {
+            return requestCompleteTask(taskId, username);
+        }
+        throw new BadRequestException("Status update is not supported");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PreparationTaskMemberDto> listTaskMembers(Long taskId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        return preparationTaskMemberRepository.findByTaskIdOrderByRoleAscCreatedAtAsc(taskId).stream()
+                .map(m -> new PreparationTaskMemberDto(
+                        m.getStudent() != null ? m.getStudent().getId() : null,
+                        m.getStudent() != null ? m.getStudent().getFullName() : null,
+                        m.getRole()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public void removeTaskMember(Long taskId, Long studentId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        PreparationTaskMember member = preparationTaskMemberRepository.findByTaskIdAndStudentId(taskId, studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task member not found"));
+        if (member.getRole() == PreparationTaskMemberRole.LEADER && task.isFinancial()) {
+            long leaderCount = preparationTaskMemberRepository.countByTaskIdAndRole(taskId,
+                    PreparationTaskMemberRole.LEADER);
+            if (leaderCount <= 1) {
+                throw new BadRequestException("Financial task must have at least one leader");
+            }
+        }
+        preparationTaskMemberRepository.delete(member);
+    }
+
+    @Override
+    @Transactional
+    public void promoteTaskLeader(Long taskId, Long studentId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        Long activityId = task.getActivity() != null ? task.getActivity().getId() : null;
+        if (activityId == null) {
+            throw new BadRequestException("Task has no activity");
+        }
+        if (!activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, studentId)) {
+            throw new BadRequestException("Student is not an organizer of this activity");
+        }
+        Student student = studentRepository.findByIdAndIsDeletedFalse(studentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
 
-        PreparationTask task = preparationTaskRepository.findByIdAndOwnerId(taskId, student.getId())
-                .orElseThrow(() -> new ForbiddenException("You are not allowed to update this task"));
+        PreparationTaskMember member = preparationTaskMemberRepository.findByTaskIdAndStudentId(taskId, studentId)
+                .orElseGet(() -> {
+                    PreparationTaskMember created = new PreparationTaskMember();
+                    created.setTask(task);
+                    created.setStudent(student);
+                    return created;
+                });
+        member.setRole(PreparationTaskMemberRole.LEADER);
+        preparationTaskMemberRepository.save(member);
+    }
 
-        task.setStatus(status);
-        PreparationTask saved = preparationTaskRepository.save(task);
-        return toTaskDto(saved);
+    @Override
+    @Transactional
+    public void demoteTaskLeader(Long taskId, Long studentId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        PreparationTaskMember member = preparationTaskMemberRepository.findByTaskIdAndStudentId(taskId, studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task member not found"));
+        if (member.getRole() != PreparationTaskMemberRole.LEADER) {
+            return;
+        }
+        if (task.isFinancial()) {
+            long leaderCount = preparationTaskMemberRepository.countByTaskIdAndRole(taskId,
+                    PreparationTaskMemberRole.LEADER);
+            if (leaderCount <= 1) {
+                throw new BadRequestException("Financial task must have at least one leader");
+            }
+        }
+        member.setRole(PreparationTaskMemberRole.MEMBER);
+        preparationTaskMemberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto acceptTask(Long taskId, String username) {
+        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
+                taskId,
+                student.getId(),
+                PreparationTaskMemberRole.LEADER);
+        boolean isOwner = task.getOwner() != null && task.getOwner().getId().equals(student.getId());
+        if (!isLeader && !isOwner) {
+            throw new ForbiddenException("Leader permission required");
+        }
+        if (task.getStatus() != PreparationTaskStatus.PENDING) {
+            throw new BadRequestException("Task is not pending");
+        }
+        task.setStatus(PreparationTaskStatus.ACCEPTED);
+        return toTaskDto(preparationTaskRepository.save(task));
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto requestCompleteTask(Long taskId, String username) {
+        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
+                taskId,
+                student.getId(),
+                PreparationTaskMemberRole.LEADER);
+        boolean isOwner = task.getOwner() != null && task.getOwner().getId().equals(student.getId());
+        if (!isLeader && !isOwner) {
+            throw new ForbiddenException("Leader permission required");
+        }
+        if (task.getStatus() != PreparationTaskStatus.ACCEPTED) {
+            throw new BadRequestException("Task must be accepted before requesting completion");
+        }
+        task.setStatus(PreparationTaskStatus.COMPLETION_REQUESTED);
+        return toTaskDto(preparationTaskRepository.save(task));
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto adminCompleteDecision(Long taskId, boolean approved) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        if (task.getStatus() != PreparationTaskStatus.COMPLETION_REQUESTED) {
+            throw new BadRequestException("Task is not pending completion approval");
+        }
+        task.setStatus(approved ? PreparationTaskStatus.COMPLETED : PreparationTaskStatus.ACCEPTED);
+        return toTaskDto(preparationTaskRepository.save(task));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WorkloadWarningDto> getWorkloadWarnings(Long activityId) {
+        Activity activity = getActiveActivity(activityId);
+        if (!activity.isHasPreparation()) {
+            throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
+        }
+
+        Map<Long, Long> countByStudentId = preparationTaskMemberRepository.countTasksByStudentInActivity(activityId)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        PreparationTaskMemberRepository.StudentTaskCountView::getStudentId,
+                        PreparationTaskMemberRepository.StudentTaskCountView::getTaskCount));
+
+        return activityOrganizerRepository.findByActivityId(activityId).stream()
+                .map(ao -> ao.getStudent())
+                .filter(s -> s != null && s.getId() != null)
+                .map(s -> {
+                    long count = countByStudentId.getOrDefault(s.getId(), 0L);
+                    if (count > 3) {
+                        return new WorkloadWarningDto(s.getId(), s.getFullName(), count,
+                                WorkloadWarningType.OVERLOADED);
+                    }
+                    if (count == 0) {
+                        return new WorkloadWarningDto(s.getId(), s.getFullName(), count,
+                                WorkloadWarningType.UNASSIGNED);
+                    }
+                    return null;
+                })
+                .filter(v -> v != null)
+                .toList();
     }
 
     @Override
@@ -177,9 +359,44 @@ public class PreparationServiceImpl implements PreparationService {
                 task.getTitle(),
                 task.getDescription(),
                 task.getDeadline(),
-                task.getBudgetLimit(),
                 task.getAllocatedAmount(),
                 task.isFinancial(),
                 task.getStatus());
+    }
+
+    private ActivityBudgetDto toActivityBudgetDto(ActivityBudget budget) {
+        Map<Long, BigDecimal> allocatedToTasksByCategory = taskAllocationRepository
+                .sumAllocatedToTasksByActivity(budget.getActivity().getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        TaskAllocationRepository.CategoryAllocationSumView::getCategoryId,
+                        TaskAllocationRepository.CategoryAllocationSumView::getAllocatedToTasksAmount));
+        List<BudgetCategoryDto> categories = budget.getCategories().stream()
+                .sorted(Comparator.comparing(BudgetCategory::getId, Comparator.nullsLast(Long::compareTo)))
+                .map(c -> {
+                    BigDecimal allocated = zeroIfNull(c.getAllocatedAmount());
+                    BigDecimal allocatedToTasks = allocatedToTasksByCategory.getOrDefault(c.getId(), BigDecimal.ZERO);
+                    BigDecimal availableToAllocate = allocated.subtract(allocatedToTasks);
+                    BigDecimal used = zeroIfNull(c.getUsedAmount());
+                    BigDecimal remaining = allocated.subtract(used);
+                    Double percent = allocated.compareTo(BigDecimal.ZERO) > 0
+                            ? used.multiply(BigDecimal.valueOf(100))
+                                    .divide(allocated, 2, RoundingMode.HALF_UP)
+                                    .doubleValue()
+                            : 0.0;
+                    return new BudgetCategoryDto(c.getId(), c.getName(), allocated, allocatedToTasks,
+                            availableToAllocate,
+                            used, remaining, percent);
+                })
+                .toList();
+        return new ActivityBudgetDto(
+                budget.getId(),
+                budget.getActivity() != null ? budget.getActivity().getId() : null,
+                budget.getTotalAmount(),
+                categories);
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }

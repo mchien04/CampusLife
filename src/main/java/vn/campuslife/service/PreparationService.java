@@ -15,6 +15,22 @@ public interface PreparationService {
 
     PreparationTaskDto updateMyTaskStatus(Long taskId, PreparationTaskStatus status, String username);
 
+    java.util.List<PreparationTaskMemberDto> listTaskMembers(Long taskId);
+
+    void removeTaskMember(Long taskId, Long studentId);
+
+    void promoteTaskLeader(Long taskId, Long studentId);
+
+    void demoteTaskLeader(Long taskId, Long studentId);
+
+    PreparationTaskDto acceptTask(Long taskId, String username);
+
+    PreparationTaskDto requestCompleteTask(Long taskId, String username);
+
+    PreparationTaskDto adminCompleteDecision(Long taskId, boolean approved);
+
+    java.util.List<WorkloadWarningDto> getWorkloadWarnings(Long activityId);
+
     void addOrganizer(Long activityId, Long studentId);
 
     void removeOrganizer(Long activityId, Long studentId);

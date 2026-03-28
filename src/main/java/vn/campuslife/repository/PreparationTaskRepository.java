@@ -20,7 +20,7 @@ public interface PreparationTaskRepository extends JpaRepository<PreparationTask
     @Query("SELECT new vn.campuslife.model.TaskStatsRespone(" +
             "COUNT(t), " +
             "SUM(CASE WHEN t.status = 'COMPLETED' THEN 1L ELSE 0L END), " +
-            "SUM(CASE WHEN t.status = 'PENDING' THEN 1L ELSE 0L END)) " +
+            "SUM(CASE WHEN t.status <> 'COMPLETED' THEN 1L ELSE 0L END)) " +
             "FROM PreparationTask t WHERE t.owner.id = :studentId")
     TaskStatsRespone getStatsByStudentId(@Param("studentId") Long studentId);
 

@@ -3,7 +3,9 @@ package vn.campuslife.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
@@ -17,6 +19,8 @@ import java.util.Set;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(exclude = { "activity", "categories" })
+@ToString(exclude = { "activity", "categories" })
 @EntityListeners(AuditingEntityListener.class)
 public class ActivityBudget {
     @Id
@@ -36,4 +40,3 @@ public class ActivityBudget {
     @CreatedDate
     private LocalDateTime createdAt;
 }
-
