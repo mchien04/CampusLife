@@ -49,6 +49,8 @@
         "allocatedAmount": 2000000,
         "allocatedToTasksAmount": 0,
         "availableToAllocateAmount": 2000000,
+        "cashOutsideAmount": 0,
+        "cashAvailableAmount": 2000000,
         "usedAmount": 0,
         "remainingAmount": 2000000,
         "usedPercent": 0
@@ -59,6 +61,8 @@
         "allocatedAmount": 1500000,
         "allocatedToTasksAmount": 0,
         "availableToAllocateAmount": 1500000,
+        "cashOutsideAmount": 0,
+        "cashAvailableAmount": 1500000,
         "usedAmount": 0,
         "remainingAmount": 1500000,
         "usedPercent": 0
@@ -69,6 +73,8 @@
         "allocatedAmount": 1500000,
         "allocatedToTasksAmount": 0,
         "availableToAllocateAmount": 1500000,
+        "cashOutsideAmount": 0,
+        "cashAvailableAmount": 1500000,
         "usedAmount": 0,
         "remainingAmount": 1500000,
         "usedPercent": 0
@@ -115,6 +121,8 @@ Trả về ActivityBudget + danh sách BudgetCategory để FE hiển thị danh
         "allocatedAmount": 1500000,
         "allocatedToTasksAmount": 300000,
         "availableToAllocateAmount": 1200000,
+        "cashOutsideAmount": 200000,
+        "cashAvailableAmount": 1100000,
         "usedAmount": 200000,
         "remainingAmount": 1300000,
         "usedPercent": 13.33

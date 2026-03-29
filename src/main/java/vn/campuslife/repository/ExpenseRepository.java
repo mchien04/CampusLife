@@ -34,6 +34,15 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
             select coalesce(sum(e.amount), 0)
             from Expense e
             where e.task.id = :taskId
+              and e.category.id = :categoryId
+              and e.status = 'APPROVED'
+            """)
+    BigDecimal sumApprovedAmountByTaskIdAndCategoryId(@Param("taskId") Long taskId, @Param("categoryId") Long categoryId);
+
+    @Query("""
+            select coalesce(sum(e.amount), 0)
+            from Expense e
+            where e.task.id = :taskId
               and e.status in :statuses
             """)
     BigDecimal sumAmountByTaskIdAndStatusIn(@Param("taskId") Long taskId, @Param("statuses") Set<ExpenseStatus> statuses);
@@ -47,6 +56,15 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
     default BigDecimal sumCommittedAmountByTaskId(Long taskId) {
         return sumAmountByTaskIdAndStatusIn(taskId, Set.of(ExpenseStatus.PENDING_LEADER, ExpenseStatus.PENDING_ADMIN, ExpenseStatus.APPROVED));
     }
+
+    @Query("""
+            select coalesce(sum(e.amount), 0)
+            from Expense e
+            where e.task.id = :taskId
+              and e.category.id = :categoryId
+              and e.status in ('PENDING_LEADER','PENDING_ADMIN','APPROVED')
+            """)
+    BigDecimal sumCommittedAmountByTaskIdAndCategoryId(@Param("taskId") Long taskId, @Param("categoryId") Long categoryId);
 
     @Query("""
             select coalesce(sum(e.amount), 0)

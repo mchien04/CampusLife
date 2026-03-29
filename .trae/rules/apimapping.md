@@ -1,3 +1,6 @@
+---
+alwaysApply: false
+---
 ## Rule: API-First Documentation
 
 Khi viết bất kỳ chức năng nào, phải tuân theo cấu trúc sau:

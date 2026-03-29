@@ -116,6 +116,8 @@ export type BudgetCategoryDto = {
   allocatedAmount: string;
   allocatedToTasksAmount: string;
   availableToAllocateAmount: string;
+  cashOutsideAmount: string;
+  cashAvailableAmount: string;
   usedAmount: string;
   remainingAmount: string;
   usedPercent: number;
@@ -146,6 +148,8 @@ export type ExpenseDto = {
 export type FundAdvanceDto = {
   id: number;
   taskId: number;
+  categoryId: number | null;
+  categoryName: string | null;
   studentId: number;
   studentName: string | null;
   requestedById: number | null;
@@ -168,6 +172,14 @@ export type AllocationSourceSuggestionDto = {
   categoryId: number;
   categoryName: string;
   availableToAllocateAmount: string;
+};
+
+export type FundAdvanceSourceSuggestionDto = {
+  categoryId: number;
+  categoryName: string | null;
+  allocationRemainingAmount: string;
+  cashAvailableAmount: string;
+  maxAdvanceAmount: string;
 };
 
 export type OverBudgetInfoDto = {
@@ -222,6 +234,7 @@ export type AllocateTaskAmountRequest = {
 
 export type CreateFundAdvanceRequest = {
   studentId: number;
+  categoryId: number;
   amount: string;
 };
 

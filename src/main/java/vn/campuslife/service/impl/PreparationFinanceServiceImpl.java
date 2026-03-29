@@ -270,6 +270,10 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
 
         BigDecimal amount = parsePositiveAmount(request.getAmount(), "amount");
 
+        BudgetCategory category = budgetCategoryRepository
+                .findByIdAndActivityBudgetActivityId(request.getCategoryId(), activityId)
+                .orElseThrow(() -> new BadRequestException("Invalid category for this activity"));
+
         boolean hasUnsettled = fundAdvanceRepository
                 .existsByTaskActivityIdAndStudentIdAndStatusInAndRemainingAmountGreaterThan(
                         activityId,
@@ -280,8 +284,34 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             throw new BadRequestException("Student has unsettled fund advance in this activity");
         }
 
+        TaskAllocation allocation = taskAllocationRepository.findByTaskIdAndCategoryId(taskId, category.getId())
+                .orElse(null);
+        BigDecimal allocationAmount = allocation != null ? zeroIfNull(allocation.getAmount()) : BigDecimal.ZERO;
+        BigDecimal approvedInTaskCategory = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId,
+                category.getId());
+        BigDecimal holdingInTaskCategory = fundAdvanceRepository
+                .findByTaskIdOrderByCreatedAtDesc(taskId)
+                .stream()
+                .filter(fa -> fa.getStatus() == FundAdvanceStatus.HOLDING)
+                .filter(fa -> fa.getCategory() != null && category.getId().equals(fa.getCategory().getId()))
+                .map(FundAdvance::getRemainingAmount)
+                .filter(v -> v != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (approvedInTaskCategory.add(holdingInTaskCategory).add(amount).compareTo(allocationAmount) > 0) {
+            throw new InsufficientBudgetException("Insufficient task allocation in selected category for fund advance");
+        }
+
+        BigDecimal holdingInCategory = fundAdvanceRepository.sumHoldingByCategoryId(category.getId());
+        BigDecimal cashAvailable = zeroIfNull(category.getAllocatedAmount())
+                .subtract(zeroIfNull(category.getUsedAmount()))
+                .subtract(zeroIfNull(holdingInCategory));
+        if (cashAvailable.compareTo(amount) < 0) {
+            throw new InsufficientBudgetException("Insufficient wallet cash remaining for fund advance");
+        }
+
         FundAdvance advance = new FundAdvance();
         advance.setTask(task);
+        advance.setCategory(category);
         advance.setStudent(student);
         advance.setRequestedBy(requester);
         advance.setAmount(amount);
@@ -326,6 +356,17 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         }
 
         if (approved) {
+            BudgetCategory category = advance.getCategory();
+            if (category == null || category.getId() == null) {
+                throw new BadRequestException("FundAdvance has no category");
+            }
+            BigDecimal holdingInCategory = fundAdvanceRepository.sumHoldingByCategoryId(category.getId());
+            BigDecimal cashAvailable = zeroIfNull(category.getAllocatedAmount())
+                    .subtract(zeroIfNull(category.getUsedAmount()))
+                    .subtract(zeroIfNull(holdingInCategory));
+            if (cashAvailable.compareTo(zeroIfNull(advance.getAmount())) < 0) {
+                throw new InsufficientBudgetException("Insufficient wallet cash remaining for fund advance");
+            }
             advance.setStatus(FundAdvanceStatus.HOLDING);
             advance.setRemainingAmount(zeroIfNull(advance.getAmount()));
         } else {
@@ -337,6 +378,92 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         FundAdvance saved = fundAdvanceRepository.save(advance);
         writeAudit(actor, "ADMIN_DECISION_FUND_ADVANCE", "FundAdvance", saved.getId(), "approved=" + approved);
         return toFundAdvanceDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public FundAdvanceDto adminReturnFundAdvance(Long fundAdvanceId, String username) {
+        User actor = userRepository.findByUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        FundAdvance advance = fundAdvanceRepository.findById(fundAdvanceId)
+                .orElseThrow(() -> new ResourceNotFoundException("FundAdvance not found"));
+        if (advance.getStatus() != FundAdvanceStatus.HOLDING) {
+            throw new BadRequestException("FundAdvance is not holding");
+        }
+        requirePreparationEnabledForTask(advance.getTask());
+        advance.setRemainingAmount(BigDecimal.ZERO);
+        advance.setStatus(FundAdvanceStatus.SETTLED);
+        advance.setDecidedAt(java.time.LocalDateTime.now());
+        advance.setDecidedBy(actor);
+        FundAdvance saved = fundAdvanceRepository.save(advance);
+        writeAudit(actor, "RETURN_FUND_ADVANCE", "FundAdvance", saved.getId(), "returned=true");
+        return toFundAdvanceDto(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FundAdvanceSourceSuggestionDto> suggestFundAdvanceSources(Long taskId, String amount) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        requirePreparationEnabledForTask(task);
+        if (!task.isFinancial()) {
+            throw new BadRequestException("Task is not financial");
+        }
+        if (task.getActivity() == null || task.getActivity().getId() == null) {
+            throw new BadRequestException("Task has no activity");
+        }
+        BigDecimal target = amount == null || amount.isBlank() ? null : parsePositiveAmount(amount, "amount");
+
+        Long activityId = task.getActivity().getId();
+        ActivityBudget budget = activityBudgetRepository.findByActivityId(activityId)
+                .orElseThrow(() -> new BadRequestException("No ActivityBudget assigned"));
+
+        List<TaskAllocation> allocations = taskAllocationRepository.findByTaskIdOrderByCreatedAtAsc(taskId);
+        if (allocations.isEmpty()) {
+            return List.of();
+        }
+
+        return allocations.stream()
+                .map(a -> {
+                    BudgetCategory c = a.getCategory();
+                    if (c == null || c.getId() == null) {
+                        return null;
+                    }
+                    BudgetCategory category = budgetCategoryRepository
+                            .findByIdAndActivityBudgetActivityId(c.getId(), activityId)
+                            .orElse(null);
+                    if (category == null) {
+                        return null;
+                    }
+
+                    BigDecimal allocationAmount = zeroIfNull(a.getAmount());
+                    BigDecimal approved = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId, category.getId());
+                    BigDecimal holdingInTaskCategory = fundAdvanceRepository.sumHoldingByTaskIdAndCategoryId(taskId, category.getId());
+                    BigDecimal allocationRemaining = allocationAmount.subtract(zeroIfNull(approved)).subtract(zeroIfNull(holdingInTaskCategory));
+                    if (allocationRemaining.compareTo(BigDecimal.ZERO) < 0) {
+                        allocationRemaining = BigDecimal.ZERO;
+                    }
+
+                    BigDecimal holdingInCategory = fundAdvanceRepository.sumHoldingByCategoryId(category.getId());
+                    BigDecimal remaining = zeroIfNull(category.getAllocatedAmount()).subtract(zeroIfNull(category.getUsedAmount()));
+                    BigDecimal cashAvailable = remaining.subtract(zeroIfNull(holdingInCategory));
+                    if (cashAvailable.compareTo(BigDecimal.ZERO) < 0) {
+                        cashAvailable = BigDecimal.ZERO;
+                    }
+
+                    BigDecimal max = allocationRemaining.min(cashAvailable);
+                    return new FundAdvanceSourceSuggestionDto(
+                            category.getId(),
+                            category.getName(),
+                            allocationRemaining,
+                            cashAvailable,
+                            max);
+                })
+                .filter(v -> v != null)
+                .filter(v -> v.getMaxAdvanceAmount().compareTo(BigDecimal.ZERO) > 0)
+                .filter(v -> target == null || v.getMaxAdvanceAmount().compareTo(target) >= 0)
+                .sorted(Comparator.comparing(FundAdvanceSourceSuggestionDto::getMaxAdvanceAmount).reversed())
+                .toList();
     }
 
     @Override
@@ -530,12 +657,13 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             throw new InsufficientBudgetException("Insufficient category budget remaining");
         }
 
-        ensureSufficientFundAdvance(task.getId(), expense.getCreatedBy().getId(), expense.getAmount());
+        ensureSufficientFundAdvance(task.getId(), expense.getCreatedBy().getId(), category.getId(),
+                expense.getAmount());
 
         expense.setStatus(ExpenseStatus.APPROVED);
         Expense saved = expenseRepository.save(expense);
 
-        deductFromFundAdvances(task.getId(), expense.getCreatedBy().getId(), expense.getAmount());
+        deductFromFundAdvances(task.getId(), expense.getCreatedBy().getId(), category.getId(), expense.getAmount());
         category.setUsedAmount(zeroIfNull(category.getUsedAmount()).add(zeroIfNull(expense.getAmount())));
         budgetCategoryRepository.save(category);
 
@@ -679,6 +807,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         ActivityBudget budget = activityBudgetRepository.findByActivityId(activityId)
                 .orElseThrow(() -> new BadRequestException("No ActivityBudget assigned"));
 
+        Map<Long, BigDecimal> holdingByCategoryId = fundAdvanceRepository.sumHoldingByCategoryInActivity(activityId)
+                .stream()
+                .collect(Collectors.toMap(
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getCategoryId,
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getHoldingAmount));
+
         List<BudgetCategoryDto> categories = budget.getCategories().stream()
                 .sorted(Comparator.comparing(BudgetCategory::getId, Comparator.nullsLast(Long::compareTo)))
                 .map(c -> {
@@ -687,6 +821,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                     BigDecimal availableToAllocate = allocated.subtract(allocatedToTasks);
                     BigDecimal used = zeroIfNull(c.getUsedAmount());
                     BigDecimal remaining = allocated.subtract(used);
+                    BigDecimal cashOutside = holdingByCategoryId.getOrDefault(c.getId(), BigDecimal.ZERO);
+                    BigDecimal cashAvailable = remaining.subtract(cashOutside);
                     Double percent = allocated.compareTo(BigDecimal.ZERO) > 0
                             ? used.multiply(BigDecimal.valueOf(100))
                                     .divide(allocated, 2, RoundingMode.HALF_UP)
@@ -694,6 +830,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                             : 0.0;
                     return new BudgetCategoryDto(c.getId(), c.getName(), allocated, allocatedToTasks,
                             availableToAllocate,
+                            cashOutside,
+                            cashAvailable,
                             used, remaining, percent);
                 })
                 .toList();
@@ -912,6 +1050,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                 .collect(Collectors.toMap(
                         TaskAllocationRepository.CategoryAllocationSumView::getCategoryId,
                         TaskAllocationRepository.CategoryAllocationSumView::getAllocatedToTasksAmount));
+        Map<Long, BigDecimal> holdingByCategoryId = fundAdvanceRepository
+                .sumHoldingByCategoryInActivity(budget.getActivity().getId())
+                .stream()
+                .collect(Collectors.toMap(
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getCategoryId,
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getHoldingAmount));
         List<BudgetCategoryDto> cats = budget.getCategories().stream()
                 .sorted(Comparator.comparing(BudgetCategory::getId, Comparator.nullsLast(Long::compareTo)))
                 .map(c -> {
@@ -920,6 +1064,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                     BigDecimal availableToAllocate = allocated.subtract(allocatedToTasks);
                     BigDecimal used = zeroIfNull(c.getUsedAmount());
                     BigDecimal remaining = allocated.subtract(used);
+                    BigDecimal cashOutside = holdingByCategoryId.getOrDefault(c.getId(), BigDecimal.ZERO);
+                    BigDecimal cashAvailable = remaining.subtract(cashOutside);
                     Double percent = allocated.compareTo(BigDecimal.ZERO) > 0
                             ? used.multiply(BigDecimal.valueOf(100))
                                     .divide(allocated, 2, RoundingMode.HALF_UP)
@@ -927,6 +1073,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                             : 0.0;
                     return new BudgetCategoryDto(c.getId(), c.getName(), allocated, allocatedToTasks,
                             availableToAllocate,
+                            cashOutside,
+                            cashAvailable,
                             used, remaining, percent);
                 })
                 .toList();
@@ -972,9 +1120,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
     private FundAdvanceDto toFundAdvanceDto(FundAdvance advance) {
         Student s = advance.getStudent();
         Student requester = advance.getRequestedBy();
+        BudgetCategory c = advance.getCategory();
         return new FundAdvanceDto(
                 advance.getId(),
                 advance.getTask() != null ? advance.getTask().getId() : null,
+                c != null ? c.getId() : null,
+                c != null ? c.getName() : null,
                 s != null ? s.getId() : null,
                 s != null ? s.getFullName() : null,
                 requester != null ? requester.getId() : null,
@@ -986,10 +1137,14 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                 advance.getDecidedAt());
     }
 
-    private void ensureSufficientFundAdvance(Long taskId, Long studentId, BigDecimal amount) {
+    private void ensureSufficientFundAdvance(Long taskId, Long studentId, Long categoryId, BigDecimal amount) {
         List<FundAdvance> holding = fundAdvanceRepository.findByTaskIdAndStudentIdAndStatusOrderByCreatedAtAsc(taskId,
                 studentId, FundAdvanceStatus.HOLDING);
-        BigDecimal totalRemaining = holding.stream()
+        List<FundAdvance> filtered = holding.stream()
+                .filter(fa -> fa.getCategory() == null
+                        || (fa.getCategory().getId() != null && fa.getCategory().getId().equals(categoryId)))
+                .toList();
+        BigDecimal totalRemaining = filtered.stream()
                 .map(FundAdvance::getRemainingAmount)
                 .filter(v -> v != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -998,12 +1153,19 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         }
     }
 
-    private void deductFromFundAdvances(Long taskId, Long studentId, BigDecimal amount) {
+    private void deductFromFundAdvances(Long taskId, Long studentId, Long categoryId, BigDecimal amount) {
         BigDecimal left = zeroIfNull(amount);
         List<FundAdvance> holding = fundAdvanceRepository.findByTaskIdAndStudentIdAndStatusOrderByCreatedAtAsc(taskId,
                 studentId, FundAdvanceStatus.HOLDING);
+        List<FundAdvance> preferred = holding.stream()
+                .filter(fa -> fa.getCategory() != null && fa.getCategory().getId() != null
+                        && fa.getCategory().getId().equals(categoryId))
+                .toList();
+        List<FundAdvance> fallback = holding.stream()
+                .filter(fa -> fa.getCategory() == null)
+                .toList();
 
-        for (FundAdvance fa : holding) {
+        for (FundAdvance fa : java.util.stream.Stream.concat(preferred.stream(), fallback.stream()).toList()) {
             if (left.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
@@ -1092,9 +1254,11 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         if (allocated.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
+        BigDecimal holding = fundAdvanceRepository.sumHoldingByCategoryId(category.getId());
         BigDecimal remaining = allocated.subtract(zeroIfNull(category.getUsedAmount()));
+        BigDecimal cashAvailable = remaining.subtract(zeroIfNull(holding));
         BigDecimal threshold = allocated.multiply(new BigDecimal("0.10"));
-        if (remaining.compareTo(threshold) > 0) {
+        if (cashAvailable.compareTo(threshold) > 0) {
             return;
         }
         if (auditLogRepository.existsByActionAndEntityTypeAndEntityId(AUDIT_CATEGORY_LOW_10, "BudgetCategory",
@@ -1103,12 +1267,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         }
 
         String title = "Ngân sách sắp cạn";
-        String content = "Hạng mục: " + category.getName() + " | Còn lại: " + remaining;
+        String content = "Hạng mục: " + category.getName() + " | Còn lại: " + cashAvailable;
         Map<String, Object> metadata = Map.of(
                 "activityId", task.getActivity() != null ? task.getActivity().getId() : null,
                 "taskId", task.getId(),
                 "categoryId", category.getId(),
-                "remaining", remaining);
+                "remaining", cashAvailable);
 
         List<Long> leaderUserIds = preparationTaskMemberRepository.findByTaskIdOrderByRoleAscCreatedAtAsc(task.getId())
                 .stream()
@@ -1129,7 +1293,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             notificationService.sendBulkNotification(userIds, title, content, NotificationType.GENERAL, null, metadata);
         }
         writeAudit(actor, AUDIT_CATEGORY_LOW_10, "BudgetCategory", category.getId(),
-                "allocated=" + allocated + ",used=" + zeroIfNull(category.getUsedAmount()) + ",remaining=" + remaining);
+                "allocated=" + allocated + ",used=" + zeroIfNull(category.getUsedAmount()) + ",holding=" + holding
+                        + ",remaining=" + cashAvailable);
     }
 
     private void notifyTaskThresholdIfNeeded(User actor, PreparationTask task, BigDecimal newApprovedSpent) {

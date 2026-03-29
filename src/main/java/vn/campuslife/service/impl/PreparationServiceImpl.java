@@ -34,6 +34,7 @@ public class PreparationServiceImpl implements PreparationService {
     private final NotificationService notificationService;
     private final ActivityBudgetRepository activityBudgetRepository;
     private final TaskAllocationRepository taskAllocationRepository;
+    private final FundAdvanceRepository fundAdvanceRepository;
 
     @Override
     @Transactional
@@ -371,6 +372,12 @@ public class PreparationServiceImpl implements PreparationService {
                 .collect(java.util.stream.Collectors.toMap(
                         TaskAllocationRepository.CategoryAllocationSumView::getCategoryId,
                         TaskAllocationRepository.CategoryAllocationSumView::getAllocatedToTasksAmount));
+        Map<Long, BigDecimal> holdingByCategoryId = fundAdvanceRepository
+                .sumHoldingByCategoryInActivity(budget.getActivity().getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getCategoryId,
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getHoldingAmount));
         List<BudgetCategoryDto> categories = budget.getCategories().stream()
                 .sorted(Comparator.comparing(BudgetCategory::getId, Comparator.nullsLast(Long::compareTo)))
                 .map(c -> {
@@ -379,6 +386,8 @@ public class PreparationServiceImpl implements PreparationService {
                     BigDecimal availableToAllocate = allocated.subtract(allocatedToTasks);
                     BigDecimal used = zeroIfNull(c.getUsedAmount());
                     BigDecimal remaining = allocated.subtract(used);
+                    BigDecimal cashOutside = holdingByCategoryId.getOrDefault(c.getId(), BigDecimal.ZERO);
+                    BigDecimal cashAvailable = remaining.subtract(cashOutside);
                     Double percent = allocated.compareTo(BigDecimal.ZERO) > 0
                             ? used.multiply(BigDecimal.valueOf(100))
                                     .divide(allocated, 2, RoundingMode.HALF_UP)
@@ -386,6 +395,8 @@ public class PreparationServiceImpl implements PreparationService {
                             : 0.0;
                     return new BudgetCategoryDto(c.getId(), c.getName(), allocated, allocatedToTasks,
                             availableToAllocate,
+                            cashOutside,
+                            cashAvailable,
                             used, remaining, percent);
                 })
                 .toList();

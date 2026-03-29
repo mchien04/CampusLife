@@ -32,6 +32,7 @@ Ràng buộc “dứt điểm kỳ trước”: **không cho tạo yêu cầu �
 ```json
 {
   "studentId": "long - ID sinh viên nhận ứng",
+  "categoryId": "long - ID ví nguồn (BudgetCategory)",
   "amount": "string - số tiền > 0"
 }
 ```
@@ -45,6 +46,8 @@ Ràng buộc “dứt điểm kỳ trước”: **không cho tạo yêu cầu �
   "body": {
     "id": 1,
     "taskId": 10,
+    "categoryId": 13,
+    "categoryName": "Khác",
     "studentId": 100,
     "studentName": "Nguyen Van A",
     "requestedById": 200,
@@ -61,6 +64,47 @@ Ràng buộc “dứt điểm kỳ trước”: **không cho tạo yêu cầu �
   - 400: task không tài chính / student không thuộc organizer hoặc không thuộc task / còn nợ HOLDING trong activity
   - 403: không đủ quyền leader
   - 404: task hoặc student không tồn tại
+
+## 2.1. Gợi ý nguồn ví để ứng theo allocation
+
+### 1. Mô tả nghiệp vụ
+Trả về danh sách ví (BudgetCategory) có thể dùng để ứng, dựa trên:
+- Số allocation còn lại của task theo ví (allocation - approvedExpense - holding của task/ví)
+- Tiền mặt còn trong ví (remaining - holding của toàn ví)
+`maxAdvanceAmount = min(allocationRemainingAmount, cashAvailableAmount)`
+
+### 2. API Endpoint
+- **Method:** GET
+- **Path:** /api/preparation/tasks/{taskId}/fund-advance-source-suggestions
+- **Authentication:** Required (Leader của task)
+
+### 3. Request
+- **Path Parameters:**
+  - taskId: long - ID task
+- **Query Parameters:**
+  - amount: string - optional, lọc những ví có `maxAdvanceAmount >= amount`
+- **Request Body:** none
+
+### 4. Response
+- **Success (200):**
+```json
+{
+  "status": true,
+  "message": "OK",
+  "body": [
+    {
+      "categoryId": 13,
+      "categoryName": "Khác",
+      "allocationRemainingAmount": 500000,
+      "cashAvailableAmount": 300000,
+      "maxAdvanceAmount": 300000
+    }
+  ]
+}
+```
+- **Error Responses:**
+  - 400: task không tài chính hoặc amount không hợp lệ
+  - 403/404: tương tự API request ứng
 
 ## 3. Admin duyệt yêu cầu ứng
 
@@ -91,7 +135,31 @@ Admin/Manager duyệt yêu cầu ứng:
   - 400: fund advance không ở trạng thái REQUESTED / còn nợ HOLDING trong activity
   - 404: fund advance không tồn tại
 
-## 4. Report “tiền ngoài ví” (nợ tạm ứng) theo activity/student
+## 4. Hoàn ứng (nộp lại tiền thừa)
+
+### 1. Mô tả nghiệp vụ
+Khi member nộp lại tiền thừa, Admin/Manager ghi nhận hoàn ứng:
+- Chỉ áp dụng khi `status = HOLDING`
+- Set `remainingAmount = 0`, chuyển `SETTLED`
+
+### 2. API Endpoint
+- **Method:** PUT
+- **Path:** /api/preparation/fund-advances/{fundAdvanceId}/return
+- **Authentication:** Required (ADMIN/MANAGER)
+
+### 3. Request
+- **Path Parameters:**
+  - fundAdvanceId: long - ID fund advance
+- **Query Parameters:** none
+- **Request Body:** none
+
+### 4. Response
+- **Success (200):** Trả `FundAdvanceDto`
+- **Error Responses:**
+  - 400: fund advance không ở trạng thái HOLDING
+  - 404: fund advance không tồn tại
+
+## 5. Report “tiền ngoài ví” (nợ tạm ứng) theo activity/student
 
 ### 1. Mô tả nghiệp vụ
 Trả về danh sách sinh viên đang giữ tiền ứng chưa quyết toán trong activity (tổng `remainingAmount` của các khoản `HOLDING`).
@@ -123,4 +191,3 @@ Trả về danh sách sinh viên đang giữ tiền ứng chưa quyết toán tr
   - 400: preparation chưa bật
   - 403: không đủ quyền
   - 404: activity/student không tồn tại
-

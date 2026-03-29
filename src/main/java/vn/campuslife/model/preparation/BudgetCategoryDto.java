@@ -15,6 +15,8 @@ public class BudgetCategoryDto {
     private BigDecimal allocatedAmount;
     private BigDecimal allocatedToTasksAmount;
     private BigDecimal availableToAllocateAmount;
+    private BigDecimal cashOutsideAmount;
+    private BigDecimal cashAvailableAmount;
     private BigDecimal usedAmount;
     private BigDecimal remainingAmount;
     private Double usedPercent;
