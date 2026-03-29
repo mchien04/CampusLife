@@ -115,7 +115,7 @@ public class PreparationController {
     }
 
     @PutMapping("/tasks/{taskId}/accept")
-    @PreAuthorize("@preparationSecurity.isAssignee(#taskId, authentication)")
+    @PreAuthorize("@preparationSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> acceptTask(@PathVariable Long taskId, Authentication authentication) {
         PreparationTaskDto dto = preparationService.acceptTask(taskId, authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));

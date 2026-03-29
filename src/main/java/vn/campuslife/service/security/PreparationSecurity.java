@@ -40,6 +40,17 @@ public class PreparationSecurity {
         return preparationTaskRepository.findByIdAndOwnerId(taskId, studentId).isPresent();
     }
 
+    public boolean isTaskMember(Long taskId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        if (preparationTaskRepository.findByIdAndOwnerId(taskId, studentId).isPresent()) {
+            return true;
+        }
+        return preparationTaskMemberRepository.existsByTaskIdAndStudentId(taskId, studentId);
+    }
+
     private Long getStudentId(Authentication authentication) {
         if (authentication == null) {
             return null;

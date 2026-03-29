@@ -356,7 +356,7 @@ export type TogglePreparationRequest = { enabled: boolean };
 - Gợi ý nguồn ví để ứng:
   - `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...`
 - Nhận task / yêu cầu hoàn thành:
-  - `PUT /api/preparation/tasks/{taskId}/accept`
+  - `PUT /api/preparation/tasks/{taskId}/accept` (member/leader)
   - `PUT /api/preparation/tasks/{taskId}/request-complete`
   - `PUT /api/preparation/tasks/{taskId}/status` (update status chung)
 

@@ -200,7 +200,7 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
 
 #### 3.8. Workflow trạng thái task
 - API:
-  - `PUT /api/preparation/tasks/{taskId}/accept`
+  - `PUT /api/preparation/tasks/{taskId}/accept` (member/leader)
   - `PUT /api/preparation/tasks/{taskId}/request-complete`
   - `PUT /api/preparation/tasks/{taskId}/complete-decision` (admin)
 - UI:
