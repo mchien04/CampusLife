@@ -106,13 +106,16 @@ public class PreparationServiceImpl implements PreparationService {
         task.setStatus(PreparationTaskStatus.PENDING);
         PreparationTask saved = preparationTaskRepository.save(task);
 
-        if (!preparationTaskMemberRepository.existsByTaskIdAndStudentId(saved.getId(), assignee.getId())) {
-            PreparationTaskMember leader = new PreparationTaskMember();
-            leader.setTask(saved);
-            leader.setStudent(assignee);
-            leader.setRole(PreparationTaskMemberRole.LEADER);
-            preparationTaskMemberRepository.save(leader);
-        }
+        PreparationTaskMember leader = preparationTaskMemberRepository
+                .findByTaskIdAndStudentId(saved.getId(), assignee.getId())
+                .orElseGet(() -> {
+                    PreparationTaskMember created = new PreparationTaskMember();
+                    created.setTask(saved);
+                    created.setStudent(assignee);
+                    return created;
+                });
+        leader.setRole(PreparationTaskMemberRole.LEADER);
+        preparationTaskMemberRepository.save(leader);
 
         return toTaskDto(saved);
     }

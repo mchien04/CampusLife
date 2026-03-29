@@ -4,7 +4,7 @@
 Module tài chính Preparation đã nâng cấp theo mô hình:
 - `ActivityBudget` (1-1 với Activity) và nhiều `BudgetCategory` (Marketing, Hậu cần...)
 - `PreparationTask` có `ownerId` (Leader), `allocatedAmount`, `isFinancial`
-- `FundAdvance` lưu vết tạm ứng theo `taskId + studentId` và trừ dần khi chi phí được duyệt cấp cuối
+- `FundAdvance` 2 bước `REQUESTED → HOLDING/REJECTED`, gắn ví nguồn (`categoryId`) và trừ dần khi chi phí được duyệt cấp cuối
 - `Expense` duyệt 2 cấp với `status`: `PENDING_LEADER → PENDING_ADMIN → APPROVED` hoặc `REJECTED`
 - `AuditLog` ghi lại các thay đổi tài chính
 
@@ -26,12 +26,14 @@ Trong trang Task:
 - Xem minh chứng (evidenceUrl) và duyệt:
   - Approve: chuyển `PENDING_ADMIN`
   - Reject: chuyển `REJECTED`
+- Tạo yêu cầu ứng (FundAdvance REQUESTED) theo ví nguồn
+- Nhận task / yêu cầu hoàn thành task (workflow)
 
 ### 2.3. ADMIN/MANAGER
 Trang quản trị Preparation Finance:
 - Khởi tạo ActivityBudget + Categories (và cập nhật allocated theo từng category)
-- Cấp phát `allocatedAmount` cho Task
-- Tạo FundAdvance (tạm ứng) cho member theo task
+- Cấp phát `allocatedAmount` cho Task theo ví (TaskAllocation)
+- Duyệt FundAdvance (REQUESTED → HOLDING/REJECTED) và hoàn ứng (HOLDING → SETTLED)
 - Duyệt cấp cuối (`PENDING_ADMIN → APPROVED/REJECTED`)
 - Xem Financial Report (chi theo category + task vượt budget)
 
@@ -44,10 +46,10 @@ Trang quản trị Preparation Finance:
    - Rejected → `REJECTED` và notify MEMBER
 3) ADMIN/MANAGER duyệt cấp cuối:
    - Approved → `APPROVED` và thực hiện atomically trong transaction:
-     - Trừ `FundAdvance.remainingAmount` (FIFO theo createdAt) của member theo task
+     - Trừ `FundAdvance.remainingAmount` (FIFO theo createdAt) của member theo task và theo ví (`categoryId`)
      - Cộng `BudgetCategory.usedAmount`
      - Ghi `AuditLog`
-     - Notify MEMBER + cảnh báo “ngân sách sắp cạn” nếu category còn lại <= 10%
+     - Notify MEMBER + cảnh báo “ví sắp cạn” theo `cashAvailableAmount` nếu <= 10%
    - Rejected → `REJECTED` và notify MEMBER
 
 ### 3.2. Ràng buộc ngân sách (quan trọng)
@@ -57,7 +59,8 @@ Trang quản trị Preparation Finance:
 - Khi duyệt cấp cuối:
   - Không vượt `task.allocatedAmount`
   - Không vượt `category.allocatedAmount - category.usedAmount`
-  - Không vượt tổng FundAdvance còn lại của member theo task
+  - Không vượt `category.cashAvailableAmount` (để ứng)
+  - Không vượt tổng FundAdvance còn lại của member theo task và theo ví
 
 ## 4. API contract & types TypeScript
 
@@ -77,6 +80,7 @@ export type ExpenseStatus = 'PENDING_LEADER' | 'PENDING_ADMIN' | 'APPROVED' | 'R
 export type FundAdvanceStatus = 'REQUESTED' | 'HOLDING' | 'SETTLED' | 'REJECTED';
 export type PreparationTaskMemberRole = 'LEADER' | 'MEMBER';
 export type AllocationAdjustmentStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type WorkloadWarningType = 'OVERLOADED' | 'UNASSIGNED';
 ```
 
 ### 4.3. DTO types (API trả về)
@@ -100,6 +104,11 @@ export type PreparationTaskMemberDto = {
   studentId: number;
   studentName: string | null;
   role: PreparationTaskMemberRole;
+};
+
+export type OrganizerDto = {
+  studentId: number;
+  fullName: string | null;
 };
 
 export type PreparationDashboardDto = {
@@ -182,6 +191,54 @@ export type FundAdvanceSourceSuggestionDto = {
   maxAdvanceAmount: string;
 };
 
+export type FundAdvanceDebtDto = {
+  studentId: number;
+  studentName: string | null;
+  holdingAmount: string;
+};
+
+export type InvoiceStatusSummaryDto = {
+  status: ExpenseStatus;
+  count: number;
+  totalAmount: string;
+};
+
+export type TaskSpendStatusDto = {
+  taskId: number;
+  title: string | null;
+  allocatedAmount: string;
+  committedAmount: string;
+  approvedSpent: string;
+  usedPercent: number;
+};
+
+export type FinanceOverviewReportDto = {
+  activityId: number;
+  totalBudget: string;
+  totalAllocatedToTasks: string;
+  totalApprovedSpent: string;
+  varianceAllocatedVsApproved: string;
+  wallets: BudgetCategoryDto[];
+  tasks: TaskSpendStatusDto[];
+};
+
+export type CashFlowReportDto = {
+  activityId: number;
+  totalBudget: string;
+  approvedSpent: string;
+  cashOutsideWallet: string;
+  cashInsideWallet: string;
+  advanceDebts: FundAdvanceDebtDto[];
+  invoiceStatusSummary: InvoiceStatusSummaryDto[];
+};
+
+export type WorkloadWarningDto = {
+  studentId: number;
+  studentName: string | null;
+  taskCount: number;
+  type: WorkloadWarningType;
+};
+
 export type OverBudgetInfoDto = {
   taskId: number;
   requiredAdditionalAmount: string;
@@ -216,6 +273,8 @@ export type FinancialReportDto = {
 ### 4.4. Request types (FE gửi lên)
 ```ts
 export type ApproveExpenseRequest = { approved: boolean };
+
+export type ApproveFundAdvanceRequest = { approved: boolean };
 
 export type UpsertBudgetCategoryRequest = {
   name: string;
@@ -254,36 +313,78 @@ export type AdminDecisionAllocationAdjustmentRequest = {
   approved: boolean;
   categoryId?: number | null;
 };
+
+export type ApproveTaskCompletionRequest = { approved: boolean };
+
+export type TogglePreparationRequest = { enabled: boolean };
 ```
 
 ## 5. Endpoint usage theo role
 
 ### 5.1. Common
+- `PUT /api/preparation/activities/{activityId}/toggle?enabled=true|false`
 - `GET /api/preparation/activities/{activityId}/dashboard` (tasks + hasPreparation)
+- `GET /api/preparation/my/activity-ids`
+- `GET /api/preparation/activities/{activityId}/organizers`
 - `GET /api/preparation/activities/{activityId}/financial-report`
 - `GET /api/preparation/activities/{activityId}/expenses?status=PENDING_LEADER|PENDING_ADMIN|APPROVED|REJECTED` (status optional)
+- `GET /api/preparation/activities/{activityId}/budget`
+- `GET /api/preparation/activities/{activityId}/workload-warnings`
+- `GET /api/preparation/activities/{activityId}/reports/finance-overview`
+- `GET /api/preparation/activities/{activityId}/reports/cash-flow`
 
 ### 5.2. MEMBER
 - Upload hóa đơn:
   - `POST /api/preparation/tasks/{taskId}/expenses/evidence` (multipart)
 - Tạo expense:
   - `POST /api/preparation/tasks/{taskId}/expenses`
+- Xin bổ sung allocate:
+  - `POST /api/preparation/tasks/{taskId}/allocation-adjustments`
 
 ### 5.3. LEADER
 - Thêm member vào task:
   - `POST /api/preparation/tasks/{taskId}/members/{studentId}`
+- Xem member theo task:
+  - `GET /api/preparation/tasks/{taskId}/members`
+- Gán/thu hồi leader:
+  - `POST /api/preparation/tasks/{taskId}/leaders/{studentId}`
+  - `DELETE /api/preparation/tasks/{taskId}/leaders/{studentId}`
 - Duyệt cấp 1:
   - `PUT /api/preparation/expenses/{expenseId}/leader-decision`
+- Request ứng:
+  - `POST /api/preparation/tasks/{taskId}/fund-advances`
+- Gợi ý nguồn ví để ứng:
+  - `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...`
+- Nhận task / yêu cầu hoàn thành:
+  - `PUT /api/preparation/tasks/{taskId}/accept`
+  - `PUT /api/preparation/tasks/{taskId}/request-complete`
+  - `PUT /api/preparation/tasks/{taskId}/status` (update status chung)
 
 ### 5.4. ADMIN/MANAGER
 - Upsert activity budget + categories:
   - `PUT /api/preparation/activities/{activityId}/budget`
+- Quản lý organizer:
+  - `POST /api/preparation/activities/{activityId}/organizers/{studentId}`
+  - `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}`
+- Tạo task:
+  - `POST /api/preparation/activities/{activityId}/tasks`
 - Allocate amount cho task:
   - `PUT /api/preparation/tasks/{taskId}/allocation`
-- Tạo fund advance:
-  - `POST /api/preparation/tasks/{taskId}/fund-advances`
+- Duyệt/từ chối fund advance:
+  - `PUT /api/preparation/fund-advances/{fundAdvanceId}/admin-decision`
+- Hoàn ứng:
+  - `PUT /api/preparation/fund-advances/{fundAdvanceId}/return`
+- Danh sách fund advance theo task:
+  - `GET /api/preparation/tasks/{taskId}/fund-advances`
+- Nợ tạm ứng theo activity/student:
+  - `GET /api/preparation/activities/{activityId}/fund-advance-debts?studentId=...`
 - Duyệt cấp cuối:
   - `PUT /api/preparation/expenses/{expenseId}/admin-decision`
+- Danh sách/duyệt request bổ sung allocate:
+  - `GET /api/preparation/activities/{activityId}/allocation-adjustments?status=...`
+  - `PUT /api/preparation/allocation-adjustments/{requestId}/admin-decision`
+- Duyệt hoàn thành task:
+  - `PUT /api/preparation/tasks/{taskId}/complete-decision`
 
 ## 6. Gợi ý client code (fetch)
 
