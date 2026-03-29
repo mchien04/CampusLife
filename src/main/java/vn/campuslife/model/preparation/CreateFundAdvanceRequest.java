@@ -14,8 +14,10 @@ public class CreateFundAdvanceRequest {
     @NotNull(message = "Student ID is required")
     private Long studentId;
 
+    @NotNull(message = "Category ID is required")
+    private Long categoryId;
+
     @NotBlank(message = "Amount is required")
     @Pattern(regexp = "^\\d+(\\.\\d{1,2})?$", message = "Amount must be a positive number")
     private String amount;
 }
-

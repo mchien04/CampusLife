@@ -16,7 +16,11 @@ public interface PreparationFinanceService {
 
     FundAdvanceDto adminDecisionFundAdvance(Long fundAdvanceId, boolean approved, String username);
 
+    FundAdvanceDto adminReturnFundAdvance(Long fundAdvanceId, String username);
+
     java.util.List<FundAdvanceDto> listFundAdvancesByTask(Long taskId);
+
+    java.util.List<FundAdvanceSourceSuggestionDto> suggestFundAdvanceSources(Long taskId, String amount);
 
     ExpenseDto createExpense(CreateExpenseRequest request, String username);
 

@@ -111,10 +111,28 @@ public class PreparationFinanceController {
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
+    @PutMapping("/fund-advances/{fundAdvanceId}/return")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> adminReturnFundAdvance(
+            @PathVariable Long fundAdvanceId,
+            Authentication authentication) {
+        FundAdvanceDto dto = financeService.adminReturnFundAdvance(fundAdvanceId, authentication.getName());
+        return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
     @GetMapping("/tasks/{taskId}/fund-advances")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
     public ResponseEntity<Response> listFundAdvances(@PathVariable Long taskId) {
         List<FundAdvanceDto> dtos = financeService.listFundAdvancesByTask(taskId);
+        return ResponseEntity.ok(Response.success("OK", dtos));
+    }
+
+    @GetMapping("/tasks/{taskId}/fund-advance-source-suggestions")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
+    public ResponseEntity<Response> suggestFundAdvanceSources(
+            @PathVariable Long taskId,
+            @RequestParam(required = false) String amount) {
+        List<FundAdvanceSourceSuggestionDto> dtos = financeService.suggestFundAdvanceSources(taskId, amount);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 

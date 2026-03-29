@@ -14,6 +14,8 @@ import java.time.LocalDateTime;
 public class FundAdvanceDto {
     private Long id;
     private Long taskId;
+    private Long categoryId;
+    private String categoryName;
     private Long studentId;
     private String studentName;
     private Long requestedById;
