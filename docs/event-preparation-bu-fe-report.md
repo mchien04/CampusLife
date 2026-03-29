@@ -50,6 +50,13 @@ FE dùng theo [preparation-fe-guide.md](file:///d:/2025-2026%20HKI/TLCN/campusli
 - DTO:
   - `PreparationDashboardDto`
 
+**Màn hình “My Preparation Activities” (Student)**
+- Mục đích: lấy danh sách activityId mà user đang là organizer (để FE filter/quick access).
+- API:
+  - `GET /api/preparation/my/activity-ids`
+- DTO:
+  - `number[]` (list activityId)
+
 ### 2.2. Admin/Manager: “Finance Admin Panel”
 Các tab khuyến nghị:
 1) **Budget setup** (ActivityBudget + ví)
@@ -73,6 +80,26 @@ Trong Task:
 3) Theo dõi trạng thái expense của mình
 
 ## 3. Chức năng & API theo Phase
+
+### Phase 0 — Bật/Tắt Preparation + Quản lý Organizer
+
+#### 3.0. Bật/tắt Preparation cho Activity
+- Mục đích: bật cờ `hasPreparation` để mở toàn bộ module.
+- API:
+  - `PUT /api/preparation/activities/{activityId}/toggle?enabled=true|false`
+- UI:
+  - Admin/Manager toggle switch trên màn quản trị activity.
+
+#### 3.0. Quản lý Organizer của Activity
+- Mục đích: xác định BTC/Organizer để phân quyền cho toàn bộ nghiệp vụ.
+- API:
+  - `GET /api/preparation/activities/{activityId}/organizers`
+  - `POST /api/preparation/activities/{activityId}/organizers/{studentId}`
+  - `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}`
+- DTO:
+  - `OrganizerDto[]` (list organizers)
+- UI:
+  - Admin tab “Organizers”: list + add/remove.
 
 ### Phase 1 — Siết quyền truy cập & các nghiệp vụ finance cơ bản
 
@@ -134,6 +161,26 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
 
 ### Phase 3 — Task member/leader + workflow + workload
 
+#### 3.5. Tạo task chuẩn bị (admin)
+- Mục đích: tạo task cho activity và gán leader/assignee ban đầu.
+- API:
+  - `POST /api/preparation/activities/{activityId}/tasks`
+- DTO:
+  - Request: `CreatePreparationTaskRequest` (ownerId/title/description/deadline/isFinancial)
+  - Response: `PreparationTaskDto`
+- UI:
+  - Admin tạo task form + chọn assignee.
+
+#### 3.5. Update status task (assignee)
+- Mục đích: cập nhật status task theo quyền “assignee” (cơ chế chung).
+- API:
+  - `PUT /api/preparation/tasks/{taskId}/status` (body `{status}`)
+- DTO:
+  - Request: `UpdatePreparationTaskStatusRequest`
+  - Response: `PreparationTaskDto`
+- UI:
+  - Nút đổi trạng thái (nếu FE dùng luồng status chung; ngoài ra còn workflow accept/request-complete ở mục 3.8).
+
 #### 3.6. Xem members theo task
 - API:
   - `GET /api/preparation/tasks/{taskId}/members`
@@ -153,7 +200,7 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
 
 #### 3.8. Workflow trạng thái task
 - API:
-  - `PUT /api/preparation/tasks/{taskId}/accept`
+  - `PUT /api/preparation/tasks/{taskId}/accept` (member/leader)
   - `PUT /api/preparation/tasks/{taskId}/request-complete`
   - `PUT /api/preparation/tasks/{taskId}/complete-decision` (admin)
 - UI:
@@ -289,6 +336,13 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
   - Notification bell đọc từ module notification hiện có (không nằm trong phạm vi tài liệu phase).
   - Trong các bảng report nên hiển thị cảnh báo bằng màu sắc (đồng bộ threshold).
 
+#### 3.21. (Optional) Thống kê cá nhân (student stats)
+- Mục đích: endpoint thống kê theo studentId (nằm trong PreparationController, không thuộc nhóm finance v2).
+- API:
+  - `GET /api/preparation/stats/{id}`
+- DTO:
+  - `TaskStatsRespone` (model chung, không nằm trong preparation-fe-guide)
+
 ## 4. Checklist UI theo luồng end-to-end (đề xuất)
 
 ### 4.1. Setup ban đầu (Admin)
@@ -306,12 +360,17 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
 ## 5. Mapping nhanh: “chức năng → API”
 
 - **Dashboard**: `GET /activities/{id}/dashboard`
+- **Toggle preparation**: `PUT /activities/{id}/toggle?enabled=...`
+- **Organizers**: `GET/POST/DELETE /activities/{id}/organizers`
 - **Budget setup**: `PUT /activities/{id}/budget`, `GET /activities/{id}/budget`
+- **My activity ids**: `GET /my/activity-ids`
 - **Task members/leader**: `GET/POST/DELETE` members/leaders (Phase 3)
+- **Task create/status**: `POST /activities/{id}/tasks`, `PUT /tasks/{id}/status`
 - **Allocate**: `PUT /tasks/{taskId}/allocation`
 - **Expense**: upload evidence, create, leader decision, admin decision, list by activity
 - **OverBudget**: 409 trả `OverBudgetInfoDto`, tạo allocation adjustment request
 - **Allocation adjustment**: create + list + admin decision
 - **Fund advance**: request (leader) + suggest sources + admin decision + return + debts report
 - **Reports**: finance-overview, cash-flow
+- **Stats (optional)**: `GET /stats/{id}`
 

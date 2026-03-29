@@ -106,13 +106,16 @@ public class PreparationServiceImpl implements PreparationService {
         task.setStatus(PreparationTaskStatus.PENDING);
         PreparationTask saved = preparationTaskRepository.save(task);
 
-        if (!preparationTaskMemberRepository.existsByTaskIdAndStudentId(saved.getId(), assignee.getId())) {
-            PreparationTaskMember leader = new PreparationTaskMember();
-            leader.setTask(saved);
-            leader.setStudent(assignee);
-            leader.setRole(PreparationTaskMemberRole.LEADER);
-            preparationTaskMemberRepository.save(leader);
-        }
+        PreparationTaskMember leader = preparationTaskMemberRepository
+                .findByTaskIdAndStudentId(saved.getId(), assignee.getId())
+                .orElseGet(() -> {
+                    PreparationTaskMember created = new PreparationTaskMember();
+                    created.setTask(saved);
+                    created.setStudent(assignee);
+                    return created;
+                });
+        leader.setRole(PreparationTaskMemberRole.LEADER);
+        preparationTaskMemberRepository.save(leader);
 
         return toTaskDto(saved);
     }
@@ -213,13 +216,10 @@ public class PreparationServiceImpl implements PreparationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
         PreparationTask task = preparationTaskRepository.findById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
-        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
-                taskId,
-                student.getId(),
-                PreparationTaskMemberRole.LEADER);
         boolean isOwner = task.getOwner() != null && task.getOwner().getId().equals(student.getId());
-        if (!isLeader && !isOwner) {
-            throw new ForbiddenException("Leader permission required");
+        boolean isMember = preparationTaskMemberRepository.existsByTaskIdAndStudentId(taskId, student.getId());
+        if (!isOwner && !isMember) {
+            throw new ForbiddenException("Task member permission required");
         }
         if (task.getStatus() != PreparationTaskStatus.PENDING) {
             throw new BadRequestException("Task is not pending");
