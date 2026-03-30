@@ -6,10 +6,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import vn.campuslife.entity.PreparationTask;
+import vn.campuslife.entity.Student;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.service.PreparationService;
+import vn.campuslife.service.StudentService;
+
+import java.util.List;
 
 import java.util.List;
 
@@ -20,6 +26,7 @@ public class PreparationController {
 
     private final PreparationService preparationService;
 
+    private final StudentService userService;
     @PutMapping("/activities/{activityId}/toggle")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> togglePreparation(@PathVariable Long activityId, @RequestParam boolean enabled) {
@@ -144,10 +151,24 @@ public class PreparationController {
         List<WorkloadWarningDto> warnings = preparationService.getWorkloadWarnings(activityId);
         return ResponseEntity.ok(Response.success("OK", warnings));
     }
-
+    //new
     @GetMapping("/stats/{id}")
     public ResponseEntity<TaskStatsRespone> getStats(@PathVariable Long id) {
         TaskStatsRespone stats = preparationService.getStudentStats(id);
         return ResponseEntity.ok(stats);
+    }
+    @GetMapping("/detail/{id}")
+    public ResponseEntity<Response> getTaskDetail(@PathVariable("id") Long id) {
+        PreparationTaskDto taskDto = preparationService.getTaskDetail(id);
+        return ResponseEntity.ok(Response.success("Lấy chi tiết thành công", taskDto));
+    }
+    @GetMapping("/my/activities/tasks")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<Response> getMyTasks(
+            @RequestParam Long activityId,
+            Authentication authentication) {
+        Long userId = userService.getStudentIdByUsername(authentication.getName());
+        List<PreparationTaskDto> tasks = preparationService.getPreparationTasks(activityId, userId);
+        return ResponseEntity.ok(Response.success("Lấy danh sách công việc thành công", tasks));
     }
 }

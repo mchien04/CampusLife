@@ -23,6 +23,8 @@ public interface PreparationTaskRepository extends JpaRepository<PreparationTask
             "SUM(CASE WHEN t.status <> 'COMPLETED' THEN 1L ELSE 0L END)) " +
             "FROM PreparationTask t WHERE t.owner.id = :studentId")
     TaskStatsRespone getStatsByStudentId(@Param("studentId") Long studentId);
+    List<PreparationTask> findByActivityIdAndAssigneeIdOrderByDeadlineAscIdAsc(Long activityId, Long assigneeId);
+    Optional<PreparationTask> findById(Long id);
 
     @Query("""
             select coalesce(sum(t.allocatedAmount), 0)
@@ -30,4 +32,5 @@ public interface PreparationTaskRepository extends JpaRepository<PreparationTask
             where t.activity.id = :activityId
             """)
     BigDecimal sumAllocatedAmountByActivityId(@Param("activityId") Long activityId);
+
 }

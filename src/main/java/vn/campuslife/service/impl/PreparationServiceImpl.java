@@ -1,5 +1,6 @@
 package vn.campuslife.service.impl;
 
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,11 +44,31 @@ public class PreparationServiceImpl implements PreparationService {
         activity.setHasPreparation(enabled);
         activityRepository.save(activity);
     }
-
+    //new
     @Override
     public TaskStatsRespone getStudentStats(Long studentId) {
         return taskRepository.getStatsByStudentId(studentId);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PreparationTaskDto getTaskDetail(Long id) {
+        PreparationTask task = preparationTaskRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy công việc với ID: " + id));
+
+        return this.toTaskDto(task);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PreparationTaskDto> getPreparationTasks(Long activityId, Long userId) {
+        List<PreparationTask> tasks = preparationTaskRepository
+                .findByActivityIdAndAssigneeIdOrderByDeadlineAscIdAsc(activityId, userId);
+        return tasks.stream()
+                .map(this::toTaskDto)
+                .toList();
+    }
+
 
     @Override
     @Transactional(readOnly = true)
