@@ -26,6 +26,7 @@ import vn.campuslife.service.PreparationFinanceService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -437,15 +438,19 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                     }
 
                     BigDecimal allocationAmount = zeroIfNull(a.getAmount());
-                    BigDecimal approved = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId, category.getId());
-                    BigDecimal holdingInTaskCategory = fundAdvanceRepository.sumHoldingByTaskIdAndCategoryId(taskId, category.getId());
-                    BigDecimal allocationRemaining = allocationAmount.subtract(zeroIfNull(approved)).subtract(zeroIfNull(holdingInTaskCategory));
+                    BigDecimal approved = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId,
+                            category.getId());
+                    BigDecimal holdingInTaskCategory = fundAdvanceRepository.sumHoldingByTaskIdAndCategoryId(taskId,
+                            category.getId());
+                    BigDecimal allocationRemaining = allocationAmount.subtract(zeroIfNull(approved))
+                            .subtract(zeroIfNull(holdingInTaskCategory));
                     if (allocationRemaining.compareTo(BigDecimal.ZERO) < 0) {
                         allocationRemaining = BigDecimal.ZERO;
                     }
 
                     BigDecimal holdingInCategory = fundAdvanceRepository.sumHoldingByCategoryId(category.getId());
-                    BigDecimal remaining = zeroIfNull(category.getAllocatedAmount()).subtract(zeroIfNull(category.getUsedAmount()));
+                    BigDecimal remaining = zeroIfNull(category.getAllocatedAmount())
+                            .subtract(zeroIfNull(category.getUsedAmount()));
                     BigDecimal cashAvailable = remaining.subtract(zeroIfNull(holdingInCategory));
                     if (cashAvailable.compareTo(BigDecimal.ZERO) < 0) {
                         cashAvailable = BigDecimal.ZERO;
@@ -623,8 +628,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         if (expense.getTask() != null) {
             requirePreparationEnabledForTask(expense.getTask());
         }
-        if (expense.getStatus() != ExpenseStatus.PENDING_ADMIN) {
-            throw new BadRequestException("Expense is not pending admin approval");
+        if (expense.getStatus() != ExpenseStatus.PENDING_ADMIN && expense.getStatus() != ExpenseStatus.PENDING_LEADER) {
+            throw new BadRequestException("Expense is not pending approval");
         }
         if (expense.getTask() == null || expense.getTask().getActivity() == null) {
             throw new BadRequestException("Expense has no activity");
@@ -633,10 +638,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             throw new BadRequestException("Expense has no category");
         }
 
+        boolean overrideLeader = expense.getStatus() == ExpenseStatus.PENDING_LEADER;
         if (!approved) {
             expense.setStatus(ExpenseStatus.REJECTED);
             Expense saved = expenseRepository.save(expense);
-            writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(), "approved=false");
+            writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(),
+                    "approved=false,overrideLeader=" + overrideLeader);
             notifyCreatorForDecision(saved);
             return toExpenseDto(saved);
         }
@@ -667,7 +674,7 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         category.setUsedAmount(zeroIfNull(category.getUsedAmount()).add(zeroIfNull(expense.getAmount())));
         budgetCategoryRepository.save(category);
 
-        writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(), "approved=true");
+        writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(), "approved=true,overrideLeader=" + overrideLeader);
 
         notifyCreatorForDecision(saved);
         notifyBudgetLowIfNeeded(actor, task, category);
@@ -713,19 +720,13 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         }
 
         BigDecimal amount = parsePositiveAmount(request.getAmount(), "amount");
-        BudgetCategory preferred = null;
-        if (request.getPreferredCategoryId() != null) {
-            preferred = budgetCategoryRepository.findByIdAndActivityBudgetActivityId(
-                    request.getPreferredCategoryId(),
-                    task.getActivity().getId())
-                    .orElseThrow(() -> new BadRequestException("Invalid category for this activity"));
-        }
 
         AllocationAdjustmentRequest entity = new AllocationAdjustmentRequest();
         entity.setTask(task);
         entity.setRequestedBy(creator);
         entity.setAmount(amount);
-        entity.setPreferredCategory(preferred);
+        entity.setDescription(request.getDescription());
+        entity.setPreferredCategory(null);
         entity.setStatus(AllocationAdjustmentStatus.PENDING);
         AllocationAdjustmentRequest saved = allocationAdjustmentRequestRepository.save(entity);
         writeAudit(null, "CREATE_ALLOCATION_ADJUSTMENT", "AllocationAdjustmentRequest", saved.getId(),
@@ -794,6 +795,182 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         writeAudit(actor, "ADMIN_DECISION_ALLOCATION_ADJUSTMENT", "AllocationAdjustmentRequest", saved.getId(),
                 "approved=true,categoryId=" + category.getId() + ",amount=" + req.getAmount());
         return toAllocationAdjustmentDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public AllocationAdjustmentRequestDto adminDecisionAllocationAdjustmentMulti(Long requestId,
+            List<AllocationAdjustmentSourceRequest> sources, String username) {
+        User actor = userRepository.findByUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        AllocationAdjustmentRequest req = allocationAdjustmentRequestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Allocation adjustment request not found"));
+        if (req.getStatus() != AllocationAdjustmentStatus.PENDING) {
+            throw new BadRequestException("Request is not pending");
+        }
+        if (req.getTask() == null) {
+            throw new BadRequestException("Request has no task");
+        }
+        if (sources == null || sources.isEmpty()) {
+            throw new BadRequestException("Sources are required");
+        }
+        PreparationTask task = req.getTask();
+        requirePreparationEnabledForTask(task);
+        if (task.getActivity() == null || task.getActivity().getId() == null) {
+            throw new BadRequestException("Task has no activity");
+        }
+        Long activityId = task.getActivity().getId();
+
+        Map<Long, BigDecimal> deltaByCategoryId = new HashMap<>();
+        for (AllocationAdjustmentSourceRequest s : sources) {
+            if (s == null || s.getCategoryId() == null) {
+                throw new BadRequestException("Category ID is required");
+            }
+            BigDecimal delta = parsePositiveAmount(s.getAmount(), "amount");
+            deltaByCategoryId.merge(s.getCategoryId(), delta, BigDecimal::add);
+        }
+        BigDecimal requested = zeroIfNull(req.getAmount());
+        BigDecimal totalDelta = deltaByCategoryId.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalDelta.compareTo(requested) != 0) {
+            throw new BadRequestException("Total allocation amount must equal requested amount");
+        }
+
+        for (Map.Entry<Long, BigDecimal> e : deltaByCategoryId.entrySet()) {
+            BudgetCategory category = budgetCategoryRepository
+                    .findByIdAndActivityBudgetActivityId(e.getKey(), activityId)
+                    .orElseThrow(() -> new BadRequestException("Invalid category for this activity"));
+            applyAllocationDelta(task, category, e.getValue());
+        }
+
+        req.setStatus(AllocationAdjustmentStatus.APPROVED);
+        req.setDecidedAt(java.time.LocalDateTime.now());
+        req.setDecidedBy(actor);
+        AllocationAdjustmentRequest saved = allocationAdjustmentRequestRepository.save(req);
+        writeAudit(actor, "ADMIN_DECISION_ALLOCATION_ADJUSTMENT", "AllocationAdjustmentRequest", saved.getId(),
+                "approved=true,multiSource=true,amount=" + req.getAmount());
+        return toAllocationAdjustmentDto(saved);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AllocationSourceSuggestionDto> suggestAllocationAdjustmentSources(Long requestId) {
+        AllocationAdjustmentRequest req = allocationAdjustmentRequestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Allocation adjustment request not found"));
+        if (req.getTask() == null) {
+            throw new BadRequestException("Request has no task");
+        }
+        PreparationTask task = req.getTask();
+        requirePreparationEnabledForTask(task);
+        if (task.getActivity() == null || task.getActivity().getId() == null) {
+            throw new BadRequestException("Task has no activity");
+        }
+        Long activityId = task.getActivity().getId();
+        ActivityBudget budget = activityBudgetRepository.findByActivityId(activityId)
+                .orElseThrow(() -> new BadRequestException("No ActivityBudget assigned"));
+
+        BigDecimal needed = zeroIfNull(req.getAmount());
+        ActivityBudgetDto budgetDto = toActivityBudgetDto(budget);
+
+        return budgetDto.getCategories().stream()
+                .map(c -> new AllocationSourceSuggestionDto(c.getId(), c.getName(),
+                        zeroIfNull(c.getAvailableToAllocateAmount())))
+                .filter(s -> s.getAvailableToAllocateAmount().compareTo(BigDecimal.ZERO) > 0)
+                .filter(s -> needed.compareTo(BigDecimal.ZERO) <= 0
+                        || s.getAvailableToAllocateAmount().compareTo(needed) >= 0)
+                .sorted(Comparator.comparing(AllocationSourceSuggestionDto::getAvailableToAllocateAmount).reversed())
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AllocationAdjustmentSourcePlanDto> planAllocationAdjustmentSources(Long requestId) {
+        AllocationAdjustmentRequest req = allocationAdjustmentRequestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Allocation adjustment request not found"));
+        if (req.getTask() == null) {
+            throw new BadRequestException("Request has no task");
+        }
+        PreparationTask task = req.getTask();
+        requirePreparationEnabledForTask(task);
+        if (task.getActivity() == null || task.getActivity().getId() == null) {
+            throw new BadRequestException("Task has no activity");
+        }
+        Long activityId = task.getActivity().getId();
+        ActivityBudget budget = activityBudgetRepository.findByActivityId(activityId)
+                .orElseThrow(() -> new BadRequestException("No ActivityBudget assigned"));
+
+        BigDecimal needed = zeroIfNull(req.getAmount());
+        if (needed.compareTo(BigDecimal.ZERO) <= 0) {
+            return List.of();
+        }
+
+        ActivityBudgetDto budgetDto = toActivityBudgetDto(budget);
+        Map<Long, BudgetCategoryDto> byId = budgetDto.getCategories().stream()
+                .filter(c -> c.getId() != null)
+                .collect(Collectors.toMap(BudgetCategoryDto::getId, c -> c));
+
+        List<BudgetCategoryDto> ordered = budgetDto.getCategories().stream()
+                .filter(c -> c.getId() != null)
+                .filter(c -> zeroIfNull(c.getAvailableToAllocateAmount()).compareTo(BigDecimal.ZERO) > 0)
+                .sorted(Comparator.comparing(BudgetCategoryDto::getAvailableToAllocateAmount).reversed())
+                .toList();
+
+        BigDecimal remaining = needed;
+        List<AllocationAdjustmentSourcePlanDto> plan = new java.util.ArrayList<>();
+        for (BudgetCategoryDto c : ordered) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            BigDecimal available = zeroIfNull(c.getAvailableToAllocateAmount());
+            BigDecimal take = available.min(remaining);
+            if (take.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            plan.add(new AllocationAdjustmentSourcePlanDto(c.getId(), c.getName(), take));
+            remaining = remaining.subtract(take);
+        }
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            throw new InsufficientBudgetException("Insufficient available budget to allocate");
+        }
+        return plan;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TaskAllocationSourceDto> listTaskAllocationSources(Long taskId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        requirePreparationEnabledForTask(task);
+        if (!task.isFinancial()) {
+            throw new BadRequestException("Task is not financial");
+        }
+        List<TaskAllocation> allocations = taskAllocationRepository.findByTaskIdOrderByCreatedAtAsc(taskId);
+        if (allocations.isEmpty()) {
+            return List.of();
+        }
+        return allocations.stream()
+                .map(a -> {
+                    BudgetCategory c = a.getCategory();
+                    if (c == null || c.getId() == null) {
+                        return null;
+                    }
+                    BigDecimal allocated = zeroIfNull(a.getAmount());
+                    BigDecimal approved = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId, c.getId());
+                    BigDecimal holding = fundAdvanceRepository.sumHoldingByTaskIdAndCategoryId(taskId, c.getId());
+                    BigDecimal remaining = allocated.subtract(zeroIfNull(approved)).subtract(zeroIfNull(holding));
+                    if (remaining.compareTo(BigDecimal.ZERO) < 0) {
+                        remaining = BigDecimal.ZERO;
+                    }
+                    return new TaskAllocationSourceDto(
+                            c.getId(),
+                            c.getName(),
+                            allocated,
+                            zeroIfNull(holding),
+                            zeroIfNull(approved),
+                            remaining);
+                })
+                .filter(v -> v != null)
+                .sorted(Comparator.comparing(TaskAllocationSourceDto::getAllocatedAmount).reversed())
+                .toList();
     }
 
     @Override
@@ -1439,18 +1616,16 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
     private AllocationAdjustmentRequestDto toAllocationAdjustmentDto(AllocationAdjustmentRequest req) {
         PreparationTask task = req.getTask();
         Student requestedBy = req.getRequestedBy();
-        BudgetCategory preferred = req.getPreferredCategory();
         Long activityId = task != null && task.getActivity() != null ? task.getActivity().getId() : null;
         return new AllocationAdjustmentRequestDto(
                 req.getId(),
                 activityId,
                 task != null ? task.getId() : null,
                 req.getAmount(),
+                req.getDescription(),
                 req.getStatus(),
                 requestedBy != null ? requestedBy.getId() : null,
                 requestedBy != null ? requestedBy.getFullName() : null,
-                preferred != null ? preferred.getId() : null,
-                preferred != null ? preferred.getName() : null,
                 req.getCreatedAt(),
                 req.getDecidedAt(),
                 req.getDecidedBy() != null ? req.getDecidedBy().getId() : null);

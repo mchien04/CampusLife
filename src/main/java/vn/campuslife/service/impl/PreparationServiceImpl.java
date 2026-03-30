@@ -44,7 +44,8 @@ public class PreparationServiceImpl implements PreparationService {
         activity.setHasPreparation(enabled);
         activityRepository.save(activity);
     }
-    //new
+
+    // new
     @Override
     public TaskStatsRespone getStudentStats(Long studentId) {
         return taskRepository.getStatsByStudentId(studentId);
@@ -61,14 +62,71 @@ public class PreparationServiceImpl implements PreparationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PreparationTaskDto> getPreparationTasks(Long activityId, Long userId) {
-        List<PreparationTask> tasks = preparationTaskRepository
-                .findByActivityIdAndAssigneeIdOrderByDeadlineAscIdAsc(activityId, userId);
-        return tasks.stream()
-                .map(this::toTaskDto)
+    public List<MyPreparationTaskDto> getPreparationTasks(Long activityId, String username) {
+        Activity activity = getActiveActivity(activityId);
+        if (!activity.isHasPreparation()) {
+            throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
+        }
+        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        if (!activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, student.getId())) {
+            throw new ForbiddenException("Organizer permission required");
+        }
+
+        List<PreparationTaskMember> memberships = preparationTaskMemberRepository
+                .findByStudentIdAndActivityIdOrderByTaskDeadlineAscIdAsc(student.getId(), activityId);
+
+        java.util.Map<Long, PreparationTaskMemberRole> roleByTaskId = memberships.stream()
+                .filter(m -> m.getTask() != null && m.getTask().getId() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        m -> m.getTask().getId(),
+                        PreparationTaskMember::getRole,
+                        (a, b) -> a));
+
+        List<PreparationTask> ownerTasks = preparationTaskRepository.findByActivityIdAndOwnerIdOrderByDeadlineAscIdAsc(
+                activityId,
+                student.getId());
+        for (PreparationTask t : ownerTasks) {
+            if (t != null && t.getId() != null) {
+                roleByTaskId.putIfAbsent(t.getId(), PreparationTaskMemberRole.LEADER);
+            }
+        }
+
+        java.util.Map<Long, PreparationTask> taskById = new java.util.HashMap<>();
+        for (PreparationTaskMember m : memberships) {
+            if (m.getTask() != null && m.getTask().getId() != null) {
+                taskById.put(m.getTask().getId(), m.getTask());
+            }
+        }
+        for (PreparationTask t : ownerTasks) {
+            if (t != null && t.getId() != null) {
+                taskById.putIfAbsent(t.getId(), t);
+            }
+        }
+
+        return taskById.values().stream()
+                .sorted(java.util.Comparator.comparing(PreparationTask::getDeadline,
+                        java.util.Comparator.nullsLast(java.time.LocalDateTime::compareTo))
+                        .thenComparing(PreparationTask::getId))
+                .map(t -> {
+                    PreparationTaskDto dto = toTaskDto(t);
+                    PreparationTaskMemberRole role = roleByTaskId.getOrDefault(t.getId(),
+                            PreparationTaskMemberRole.MEMBER);
+                    return new MyPreparationTaskDto(
+                            dto.getId(),
+                            dto.getActivityId(),
+                            dto.getOwnerId(),
+                            dto.getOwnerName(),
+                            dto.getTitle(),
+                            dto.getDescription(),
+                            dto.getDeadline(),
+                            dto.getAllocatedAmount(),
+                            Boolean.TRUE.equals(dto.getIsFinancial()),
+                            dto.getStatus(),
+                            role);
+                })
                 .toList();
     }
-
 
     @Override
     @Transactional(readOnly = true)

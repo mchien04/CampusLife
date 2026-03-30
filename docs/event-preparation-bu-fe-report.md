@@ -40,6 +40,58 @@ FE dùng theo [preparation-fe-guide.md](file:///d:/2025-2026%20HKI/TLCN/campusli
 
 ## 2. UI theo vai trò (các màn chính)
 
+## 2A. Checklist bảng (Student vs Admin)
+
+Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao tác → API → DTO request/response.
+
+### 2A.1. Student (Member/Leader) checklist
+
+| Thao tác | API | DTO (request/response) | Ghi chú UI |
+|---|---|---|---|
+| Xem dashboard activity | `GET /api/preparation/activities/{activityId}/dashboard` | Response: `PreparationDashboardDto` | Hiển thị task list + budget summary (nếu có) |
+| Xem activityId mình tham gia | `GET /api/preparation/my/activity-ids` | Response: `number[]` | Dùng để filter/quick access |
+| Xem task detail | `GET /api/preparation/detail/{id}` | Response: `PreparationTaskDto` | Trang chi tiết task |
+| Xem danh sách task của mình + role | `GET /api/preparation/my/activities/tasks?activityId=...` | Response: `MyPreparationTaskDto[]` | Screen “My tasks” + role theo từng task |
+| Xem member trong task | `GET /api/preparation/tasks/{taskId}/members` | Response: `PreparationTaskMemberDto[]` | Hiển thị role LEADER/MEMBER |
+| Xem allocation sources theo task | `GET /api/preparation/tasks/{taskId}/allocation-sources` | Response: `TaskAllocationSourceDto[]` | Hiển thị quota theo từng ví |
+| Accept task | `PUT /api/preparation/tasks/{taskId}/accept` | Response: `PreparationTaskDto` | Hiện cho member/leader |
+| Request complete (leader/owner) | `PUT /api/preparation/tasks/{taskId}/request-complete` | Response: `PreparationTaskDto` | Chỉ leader/owner |
+| Upload chứng từ | `POST /api/preparation/tasks/{taskId}/expenses/evidence` | Response: `UploadResultDto` | Multipart file |
+| Tạo expense | `POST /api/preparation/tasks/{taskId}/expenses` | Request: `CreateExpenseRequest` / Response: `ExpenseDto` | Nếu vượt allocate: 409 + `OverBudgetInfoDto` |
+| Duyệt expense cấp 1 (leader) | `PUT /api/preparation/expenses/{expenseId}/leader-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | Approve → PENDING_ADMIN |
+| Xin bổ sung allocate | `POST /api/preparation/tasks/{taskId}/allocation-adjustments` | Request: `CreateAllocationAdjustmentRequest` / Response: `AllocationAdjustmentRequestDto` | Member/leader gửi request (amount + description) |
+| Gợi ý nguồn ví để ứng (leader) | `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...` | Response: `FundAdvanceSourceSuggestionDto[]` | Hiển thị maxAdvanceAmount theo ví |
+| Tạo yêu cầu ứng (leader) | `POST /api/preparation/tasks/{taskId}/fund-advances` | Request: `CreateFundAdvanceRequest` / Response: `FundAdvanceDto` | Status REQUESTED |
+
+### 2A.2. Admin/Manager checklist
+
+| Thao tác | API | DTO (request/response) | Ghi chú UI |
+|---|---|---|---|
+| Toggle preparation | `PUT /api/preparation/activities/{activityId}/toggle?enabled=true\|false` | Response: wrapper body null | Bật/tắt toàn module |
+| Xem organizers | `GET /api/preparation/activities/{activityId}/organizers` | Response: `OrganizerDto[]` | Tab “Organizers” |
+| Add organizer | `POST /api/preparation/activities/{activityId}/organizers/{studentId}` | Response: wrapper body null | |
+| Remove organizer | `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}` | Response: wrapper body null | |
+| Tạo task | `POST /api/preparation/activities/{activityId}/tasks` | Request: `CreatePreparationTaskRequest` / Response: `PreparationTaskDto` | Owner được set leader mặc định |
+| Quản lý member task | `POST/DELETE /api/preparation/tasks/{taskId}/members/{studentId}` | Response: wrapper body null | |
+| Promote/demote leader | `POST/DELETE /api/preparation/tasks/{taskId}/leaders/{studentId}` | Response: wrapper body null | Financial task phải còn ≥ 1 leader |
+| Duyệt hoàn thành task | `PUT /api/preparation/tasks/{taskId}/complete-decision` | Request: `ApproveTaskCompletionRequest` / Response: `PreparationTaskDto` | Admin quyết định |
+| Upsert budget | `PUT /api/preparation/activities/{activityId}/budget` | Request: `UpsertActivityBudgetRequest` / Response: `ActivityBudgetDto` | Tự tạo “Khác”/“Tổng” |
+| Get budget detail | `GET /api/preparation/activities/{activityId}/budget` | Response: `ActivityBudgetDto` | Có cashAvailableAmount |
+| Allocate theo ví | `PUT /api/preparation/tasks/{taskId}/allocation` | Request: `AllocateTaskAmountRequest` / Response: `PreparationTaskDto` | TaskAllocation theo category |
+| Xem allocation sources theo task | `GET /api/preparation/tasks/{taskId}/allocation-sources` | Response: `TaskAllocationSourceDto[]` | Admin kiểm quota theo ví trước khi duyệt/ứng |
+| List expenses theo activity | `GET /api/preparation/activities/{activityId}/expenses?status=...` | Response: `ExpenseDto[]` | Pending invoices = PENDING_ADMIN |
+| Duyệt expense cấp cuối | `PUT /api/preparation/expenses/{expenseId}/admin-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | Có thể duyệt khi expense đang `PENDING_ADMIN` hoặc `PENDING_LEADER` |
+| List request bổ sung allocate | `GET /api/preparation/activities/{activityId}/allocation-adjustments?status=...` | Response: `AllocationAdjustmentRequestDto[]` | |
+| Auto split nguồn ví cho request | `GET /api/preparation/allocation-adjustments/{requestId}/source-plan` | Response: `AllocationAdjustmentSourcePlanDto[]` | 1-click tạo `sources[]` cho approve |
+| Duyệt/từ chối bổ sung allocate | `PUT /api/preparation/allocation-adjustments/{requestId}/admin-decision` | Request: `AdminDecisionAllocationAdjustmentRequest` / Response: `AllocationAdjustmentRequestDto` | Approve có thể dùng 1 nguồn `categoryId` hoặc nhiều nguồn `sources[]` |
+| List fund advance theo task | `GET /api/preparation/tasks/{taskId}/fund-advances` | Response: `FundAdvanceDto[]` | |
+| Duyệt/từ chối fund advance | `PUT /api/preparation/fund-advances/{fundAdvanceId}/admin-decision` | Request: `ApproveFundAdvanceRequest` / Response: `FundAdvanceDto` | Approve → HOLDING |
+| Hoàn ứng | `PUT /api/preparation/fund-advances/{fundAdvanceId}/return` | Response: `FundAdvanceDto` | HOLDING → SETTLED |
+| Report nợ tạm ứng | `GET /api/preparation/activities/{activityId}/fund-advance-debts?studentId=...` | Response: `FundAdvanceDebtDto[]` | Tiền ngoài ví |
+| Workload warnings | `GET /api/preparation/activities/{activityId}/workload-warnings` | Response: `WorkloadWarningDto[]` | OVERLOADED/UNASSIGNED |
+| Report finance overview | `GET /api/preparation/activities/{activityId}/reports/finance-overview` | Response: `FinanceOverviewReportDto` | Budget vs Actual + wallets + tasks |
+| Report cash flow | `GET /api/preparation/activities/{activityId}/reports/cash-flow` | Response: `CashFlowReportDto` | cash in/out + pending invoices summary |
+
 ### 2.1. Common (Organizer/Leader/Member)
 **Màn hình Activity → Preparation Dashboard**
 - Hiển thị:

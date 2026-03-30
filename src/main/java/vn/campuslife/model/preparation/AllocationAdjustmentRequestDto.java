@@ -16,13 +16,11 @@ public class AllocationAdjustmentRequestDto {
     private Long activityId;
     private Long taskId;
     private BigDecimal amount;
+    private String description;
     private AllocationAdjustmentStatus status;
     private Long requestedById;
     private String requestedByName;
-    private Long preferredCategoryId;
-    private String preferredCategoryName;
     private LocalDateTime createdAt;
     private LocalDateTime decidedAt;
     private Long decidedById;
 }
-

@@ -54,7 +54,8 @@ public class PreparationFinanceController {
             @PathVariable Long taskId,
             @RequestBody @Valid CreateAllocationAdjustmentRequest request,
             Authentication authentication) {
-        AllocationAdjustmentRequestDto dto = financeService.createAllocationAdjustmentRequest(taskId, request, authentication.getName());
+        AllocationAdjustmentRequestDto dto = financeService.createAllocationAdjustmentRequest(taskId, request,
+                authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -73,12 +74,36 @@ public class PreparationFinanceController {
             @PathVariable Long requestId,
             @RequestBody @Valid AdminDecisionAllocationAdjustmentRequest request,
             Authentication authentication) {
-        AllocationAdjustmentRequestDto dto = financeService.adminDecisionAllocationAdjustment(
-                requestId,
-                Boolean.TRUE.equals(request.getApproved()),
-                request.getCategoryId(),
-                authentication.getName());
+        AllocationAdjustmentRequestDto dto;
+        if (Boolean.TRUE.equals(request.getApproved())
+                && request.getSources() != null
+                && !request.getSources().isEmpty()) {
+            dto = financeService.adminDecisionAllocationAdjustmentMulti(
+                    requestId,
+                    request.getSources(),
+                    authentication.getName());
+        } else {
+            dto = financeService.adminDecisionAllocationAdjustment(
+                    requestId,
+                    Boolean.TRUE.equals(request.getApproved()),
+                    request.getCategoryId(),
+                    authentication.getName());
+        }
         return ResponseEntity.ok(Response.success("OK", dto));
+    }
+
+    @GetMapping("/allocation-adjustments/{requestId}/source-suggestions")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> suggestAllocationAdjustmentSources(@PathVariable Long requestId) {
+        List<AllocationSourceSuggestionDto> dtos = financeService.suggestAllocationAdjustmentSources(requestId);
+        return ResponseEntity.ok(Response.success("OK", dtos));
+    }
+
+    @GetMapping("/allocation-adjustments/{requestId}/source-plan")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> planAllocationAdjustmentSources(@PathVariable Long requestId) {
+        List<AllocationAdjustmentSourcePlanDto> dtos = financeService.planAllocationAdjustmentSources(requestId);
+        return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @PostMapping("/tasks/{taskId}/members/{studentId}")
@@ -136,6 +161,13 @@ public class PreparationFinanceController {
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
+    @GetMapping("/tasks/{taskId}/allocation-sources")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    public ResponseEntity<Response> listTaskAllocationSources(@PathVariable Long taskId) {
+        List<TaskAllocationSourceDto> dtos = financeService.listTaskAllocationSources(taskId);
+        return ResponseEntity.ok(Response.success("OK", dtos));
+    }
+
     @GetMapping("/activities/{activityId}/fund-advance-debts")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> listFundAdvanceDebts(
@@ -161,7 +193,8 @@ public class PreparationFinanceController {
             @RequestBody @Valid CreateExpenseRequest request,
             Authentication authentication) {
         ExpenseDto dto = financeService.createExpense(
-                new CreateExpenseRequest(taskId, request.getCategoryId(), request.getAmount(), request.getDescription(), request.getEvidenceUrl()),
+                new CreateExpenseRequest(taskId, request.getCategoryId(), request.getAmount(), request.getDescription(),
+                        request.getEvidenceUrl()),
                 authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
@@ -172,7 +205,8 @@ public class PreparationFinanceController {
             @PathVariable Long expenseId,
             @RequestBody @Valid ApproveExpenseRequest request,
             Authentication authentication) {
-        ExpenseDto dto = financeService.leaderDecision(expenseId, Boolean.TRUE.equals(request.getApproved()), authentication.getName());
+        ExpenseDto dto = financeService.leaderDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
+                authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -182,7 +216,8 @@ public class PreparationFinanceController {
             @PathVariable Long expenseId,
             @RequestBody @Valid ApproveExpenseRequest request,
             Authentication authentication) {
-        ExpenseDto dto = financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()), authentication.getName());
+        ExpenseDto dto = financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
+                authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 

@@ -33,6 +33,9 @@ public class AllocationAdjustmentRequest {
     @Column(precision = 19, scale = 2, nullable = false)
     private BigDecimal amount;
 
+    @Column(name = "description", length = 500, nullable = false)
+    private String description;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "preferred_category_id")
     private BudgetCategory preferredCategory;
@@ -50,4 +53,3 @@ public class AllocationAdjustmentRequest {
     @JoinColumn(name = "decided_by_id")
     private User decidedBy;
 }
-

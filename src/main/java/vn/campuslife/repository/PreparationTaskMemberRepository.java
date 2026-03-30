@@ -23,6 +23,18 @@ public interface PreparationTaskMemberRepository extends JpaRepository<Preparati
     List<PreparationTaskMember> findByTaskIdOrderByRoleAscCreatedAtAsc(Long taskId);
 
     @Query("""
+            select m
+            from PreparationTaskMember m
+            join fetch m.task t
+            where t.activity.id = :activityId
+              and m.student.id = :studentId
+            order by (case when t.deadline is null then 1 else 0 end), t.deadline asc, t.id asc
+            """)
+    List<PreparationTaskMember> findByStudentIdAndActivityIdOrderByTaskDeadlineAscIdAsc(
+            @Param("studentId") Long studentId,
+            @Param("activityId") Long activityId);
+
+    @Query("""
             select m.student.id as studentId, count(distinct m.task.id) as taskCount
             from PreparationTaskMember m
             where m.task.activity.id = :activityId

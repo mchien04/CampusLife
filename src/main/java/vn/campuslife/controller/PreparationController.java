@@ -27,6 +27,7 @@ public class PreparationController {
     private final PreparationService preparationService;
 
     private final StudentService userService;
+
     @PutMapping("/activities/{activityId}/toggle")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> togglePreparation(@PathVariable Long activityId, @RequestParam boolean enabled) {
@@ -94,7 +95,7 @@ public class PreparationController {
     }
 
     @GetMapping("/tasks/{taskId}/members")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> listTaskMembers(@PathVariable Long taskId) {
         List<PreparationTaskMemberDto> members = preparationService.listTaskMembers(taskId);
         return ResponseEntity.ok(Response.success("OK", members));
@@ -151,24 +152,26 @@ public class PreparationController {
         List<WorkloadWarningDto> warnings = preparationService.getWorkloadWarnings(activityId);
         return ResponseEntity.ok(Response.success("OK", warnings));
     }
-    //new
+
+    // new
     @GetMapping("/stats/{id}")
     public ResponseEntity<TaskStatsRespone> getStats(@PathVariable Long id) {
         TaskStatsRespone stats = preparationService.getStudentStats(id);
         return ResponseEntity.ok(stats);
     }
+
     @GetMapping("/detail/{id}")
     public ResponseEntity<Response> getTaskDetail(@PathVariable("id") Long id) {
         PreparationTaskDto taskDto = preparationService.getTaskDetail(id);
         return ResponseEntity.ok(Response.success("Lấy chi tiết thành công", taskDto));
     }
+
     @GetMapping("/my/activities/tasks")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> getMyTasks(
             @RequestParam Long activityId,
             Authentication authentication) {
-        Long userId = userService.getStudentIdByUsername(authentication.getName());
-        List<PreparationTaskDto> tasks = preparationService.getPreparationTasks(activityId, userId);
-        return ResponseEntity.ok(Response.success("Lấy danh sách công việc thành công", tasks));
+        List<MyPreparationTaskDto> tasks = preparationService.getPreparationTasks(activityId, authentication.getName());
+        return ResponseEntity.ok(Response.success("OK", tasks));
     }
 }
