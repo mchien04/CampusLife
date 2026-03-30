@@ -22,4 +22,6 @@ public interface PreparationTaskRepository extends JpaRepository<PreparationTask
             "SUM(CASE WHEN t.status = 'PENDING' THEN 1L ELSE 0L END)) " +
             "FROM PreparationTask t WHERE t.assignee.id = :studentId")
     TaskStatsRespone getStatsByStudentId(@Param("studentId") Long studentId);
+    List<PreparationTask> findByActivityIdAndAssigneeIdOrderByDeadlineAscIdAsc(Long activityId, Long assigneeId);
+    Optional<PreparationTask> findById(Long id);
 }

@@ -19,5 +19,7 @@ public class PreparationTaskDto {
     private String description;
     private LocalDateTime deadline;
     private PreparationTaskStatus status;
+
+
 }
 
