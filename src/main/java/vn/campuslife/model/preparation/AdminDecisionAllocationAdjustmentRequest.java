@@ -1,9 +1,12 @@
 package vn.campuslife.model.preparation;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -13,5 +16,7 @@ public class AdminDecisionAllocationAdjustmentRequest {
     private Boolean approved;
 
     private Long categoryId;
-}
 
+    @Valid
+    private List<AllocationAdjustmentSourceRequest> sources;
+}

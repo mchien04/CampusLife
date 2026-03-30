@@ -50,6 +50,46 @@
   - 409: ví không đủ số dư để allocate
   - 404: không tìm thấy task
 
+---
+
+## 1.1. Xem danh sách nguồn allocate của Task
+
+### 1. Mô tả nghiệp vụ
+Trả về danh sách các ví (BudgetCategory) mà task đã được allocate, kèm số liệu theo từng ví:
+- allocatedAmount: hạn mức allocate của task trên ví
+- approvedSpentAmount: tổng chi APPROVED của task trên ví
+- holdingAdvanceAmount: tổng tiền ứng đang HOLDING của task trên ví
+- allocationRemainingAmount: số còn lại có thể dùng để ứng/chi trong phạm vi allocate
+
+### 2. API Endpoint
+- **Method:** GET
+- **Path:** /api/preparation/tasks/{taskId}/allocation-sources
+- **Authentication:** Required (ADMIN/MANAGER hoặc Member/Leader của task)
+
+### 3. Request
+- **Path Parameters:** taskId (long)
+- **Query Parameters:** none
+- **Request Body:** none
+
+### 4. Response
+- **Success (200):** Trả list `TaskAllocationSourceDto`
+```json
+{
+  "status": true,
+  "message": "OK",
+  "body": [
+    {
+      "categoryId": 11,
+      "categoryName": "Hoa",
+      "allocatedAmount": 2000000,
+      "holdingAdvanceAmount": 500000,
+      "approvedSpentAmount": 400000,
+      "allocationRemainingAmount": 1100000
+    }
+  ]
+}
+```
+
 ## 2. Chặn Expense vượt allocate + gợi ý nguồn bổ sung
 
 ### 1. Mô tả nghiệp vụ
@@ -113,12 +153,82 @@ Khi member tạo Expense, hệ thống kiểm tra “committed” (PENDING_LEADE
 ```json
 {
   "amount": "string - số tiền > 0",
-  "preferredCategoryId": "long - optional (gợi ý nguồn)"
+  "description": "string - lý do xin bổ sung (required)"
 }
 ```
 
 ### 4. Response
 - **Success (200):** Trả `AllocationAdjustmentRequestDto`
+```json
+{
+  "status": true,
+  "message": "OK",
+  "body": {
+    "id": 1,
+    "activityId": 34,
+    "taskId": 10,
+    "amount": 500000,
+    "description": "Thiếu ngân sách vì phát sinh thêm hạng mục",
+    "status": "PENDING",
+    "requestedById": 100,
+    "requestedByName": "Nguyen Van A",
+    "createdAt": "2026-03-31T10:00:00",
+    "decidedAt": null,
+    "decidedById": null
+  }
+}
+```
+
+---
+
+### 2. API Endpoint
+- **Method:** GET
+- **Path:** /api/preparation/allocation-adjustments/{requestId}/source-suggestions
+- **Authentication:** Required (ADMIN/MANAGER)
+
+### 3. Request
+- **Path Parameters:** requestId (long)
+- **Query Parameters:** none
+- **Request Body:** none
+
+### 4. Response
+- **Success (200):** Trả list `AllocationSourceSuggestionDto` (lọc theo `availableToAllocateAmount >= request.amount`)
+```json
+{
+  "status": true,
+  "message": "OK",
+  "body": [
+    { "categoryId": 13, "categoryName": "Khác", "availableToAllocateAmount": 1200000 }
+  ]
+}
+```
+
+---
+
+### 2. API Endpoint
+- **Method:** GET
+- **Path:** /api/preparation/allocation-adjustments/{requestId}/source-plan
+- **Authentication:** Required (ADMIN/MANAGER)
+
+### 3. Request
+- **Path Parameters:** requestId (long)
+- **Query Parameters:** none
+- **Request Body:** none
+
+### 4. Response
+- **Success (200):** Trả list kế hoạch chia nhiều ví (greedy), tổng amount bằng `request.amount`
+```json
+{
+  "status": true,
+  "message": "OK",
+  "body": [
+    { "categoryId": 13, "categoryName": "Khác", "amount": 300000 },
+    { "categoryId": 12, "categoryName": "Hoa", "amount": 200000 }
+  ]
+}
+```
+- **Error Responses:**
+  - 409: không đủ `availableToAllocateAmount` để chia đủ `request.amount`
 
 ---
 
@@ -150,7 +260,13 @@ Khi member tạo Expense, hệ thống kiểm tra “committed” (PENDING_LEADE
 ```json
 {
   "approved": "boolean - true duyệt, false từ chối",
-  "categoryId": "long - bắt buộc khi approved=true"
+  "categoryId": "long - bắt buộc khi approved=true và không dùng sources",
+  "sources": [
+    {
+      "categoryId": "long - ví nguồn",
+      "amount": "string - số tiền > 0"
+    }
+  ]
 }
 ```
 
@@ -160,4 +276,3 @@ Khi member tạo Expense, hệ thống kiểm tra “committed” (PENDING_LEADE
   - 400: request không pending / thiếu categoryId khi approve
   - 409: ví không đủ số dư để allocate
   - 404: request/task/category không tồn tại
-

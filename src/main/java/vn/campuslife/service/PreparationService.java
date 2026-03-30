@@ -10,10 +10,14 @@ import java.util.List;
 
 public interface PreparationService {
     void togglePreparation(Long activityId, boolean enabled);
-    //new
+
+    // new
     TaskStatsRespone getStudentStats(Long studentId);
+
     PreparationTaskDto getTaskDetail(Long id);
-    List<PreparationTaskDto> getPreparationTasks(Long activityId, Long userId);
+
+    List<MyPreparationTaskDto> getPreparationTasks(Long activityId, String username);
+
     //
     PreparationDashboardDto getPreparationDashboard(Long activityId);
 

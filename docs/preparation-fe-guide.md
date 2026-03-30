@@ -45,6 +45,7 @@ Trang quản trị Preparation Finance:
    - Approved → `PENDING_ADMIN` và gửi notification cho ADMIN/MANAGER
    - Rejected → `REJECTED` và notify MEMBER
 3) ADMIN/MANAGER duyệt cấp cuối:
+   - Có thể duyệt trực tiếp từ `PENDING_LEADER` (bỏ qua leader) do quyền cao hơn
    - Approved → `APPROVED` và thực hiện atomically trong transaction:
      - Trừ `FundAdvance.remainingAmount` (FIFO theo createdAt) của member theo task và theo ví (`categoryId`)
      - Cộng `BudgetCategory.usedAmount`
@@ -104,6 +105,20 @@ export type PreparationTaskMemberDto = {
   studentId: number;
   studentName: string | null;
   role: PreparationTaskMemberRole;
+};
+
+export type MyPreparationTaskDto = {
+  id: number;
+  activityId: number;
+  ownerId: number;
+  ownerName: string | null;
+  title: string;
+  description: string | null;
+  deadline: string | null;
+  allocatedAmount: string;
+  isFinancial: boolean;
+  status: PreparationTaskStatus;
+  myRole: PreparationTaskMemberRole;
 };
 
 export type OrganizerDto = {
@@ -183,12 +198,27 @@ export type AllocationSourceSuggestionDto = {
   availableToAllocateAmount: string;
 };
 
+export type AllocationAdjustmentSourcePlanDto = {
+  categoryId: number;
+  categoryName: string | null;
+  amount: string;
+};
+
 export type FundAdvanceSourceSuggestionDto = {
   categoryId: number;
   categoryName: string | null;
   allocationRemainingAmount: string;
   cashAvailableAmount: string;
   maxAdvanceAmount: string;
+};
+
+export type TaskAllocationSourceDto = {
+  categoryId: number;
+  categoryName: string | null;
+  allocatedAmount: string;
+  holdingAdvanceAmount: string;
+  approvedSpentAmount: string;
+  allocationRemainingAmount: string;
 };
 
 export type FundAdvanceDebtDto = {
@@ -252,11 +282,10 @@ export type AllocationAdjustmentRequestDto = {
   activityId: number;
   taskId: number;
   amount: string;
+  description: string;
   status: AllocationAdjustmentStatus;
   requestedById: number | null;
   requestedByName: string | null;
-  preferredCategoryId: number | null;
-  preferredCategoryName: string | null;
   createdAt: string;
   decidedAt: string | null;
   decidedById: number | null;
@@ -306,12 +335,13 @@ export type CreateExpenseRequest = {
 
 export type CreateAllocationAdjustmentRequest = {
   amount: string;
-  preferredCategoryId?: number | null;
+  description: string;
 };
 
 export type AdminDecisionAllocationAdjustmentRequest = {
   approved: boolean;
   categoryId?: number | null;
+  sources?: { categoryId: number; amount: string }[];
 };
 
 export type ApproveTaskCompletionRequest = { approved: boolean };
@@ -340,6 +370,8 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `POST /api/preparation/tasks/{taskId}/expenses`
 - Xin bổ sung allocate:
   - `POST /api/preparation/tasks/{taskId}/allocation-adjustments`
+- Danh sách task của tôi + role theo activity:
+  - `GET /api/preparation/my/activities/tasks?activityId=...`
 
 ### 5.3. LEADER
 - Thêm member vào task:
@@ -355,6 +387,8 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `POST /api/preparation/tasks/{taskId}/fund-advances`
 - Gợi ý nguồn ví để ứng:
   - `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...`
+- Xem allocation sources theo task:
+  - `GET /api/preparation/tasks/{taskId}/allocation-sources`
 - Nhận task / yêu cầu hoàn thành:
   - `PUT /api/preparation/tasks/{taskId}/accept` (member/leader)
   - `PUT /api/preparation/tasks/{taskId}/request-complete`
@@ -370,6 +404,8 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `POST /api/preparation/activities/{activityId}/tasks`
 - Allocate amount cho task:
   - `PUT /api/preparation/tasks/{taskId}/allocation`
+- Xem allocation sources theo task:
+  - `GET /api/preparation/tasks/{taskId}/allocation-sources`
 - Duyệt/từ chối fund advance:
   - `PUT /api/preparation/fund-advances/{fundAdvanceId}/admin-decision`
 - Hoàn ứng:
@@ -382,6 +418,8 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `PUT /api/preparation/expenses/{expenseId}/admin-decision`
 - Danh sách/duyệt request bổ sung allocate:
   - `GET /api/preparation/activities/{activityId}/allocation-adjustments?status=...`
+  - `GET /api/preparation/allocation-adjustments/{requestId}/source-suggestions`
+  - `GET /api/preparation/allocation-adjustments/{requestId}/source-plan`
   - `PUT /api/preparation/allocation-adjustments/{requestId}/admin-decision`
 - Duyệt hoàn thành task:
   - `PUT /api/preparation/tasks/{taskId}/complete-decision`
