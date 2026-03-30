@@ -3,7 +3,9 @@ package vn.campuslife.service.security;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
+import vn.campuslife.enumeration.PreparationTaskMemberRole;
 import vn.campuslife.repository.ActivityOrganizerRepository;
+import vn.campuslife.repository.PreparationTaskMemberRepository;
 import vn.campuslife.repository.PreparationTaskRepository;
 import vn.campuslife.service.StudentService;
 
@@ -13,6 +15,7 @@ public class PreparationSecurity {
     private final StudentService studentService;
     private final ActivityOrganizerRepository activityOrganizerRepository;
     private final PreparationTaskRepository preparationTaskRepository;
+    private final PreparationTaskMemberRepository preparationTaskMemberRepository;
 
     public boolean isOrganizer(Long activityId, Authentication authentication) {
         Long studentId = getStudentId(authentication);
@@ -27,7 +30,25 @@ public class PreparationSecurity {
         if (studentId == null) {
             return false;
         }
-        return preparationTaskRepository.findByIdAndAssigneeId(taskId, studentId).isPresent();
+        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
+                taskId,
+                studentId,
+                PreparationTaskMemberRole.LEADER);
+        if (isLeader) {
+            return true;
+        }
+        return preparationTaskRepository.findByIdAndOwnerId(taskId, studentId).isPresent();
+    }
+
+    public boolean isTaskMember(Long taskId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        if (preparationTaskRepository.findByIdAndOwnerId(taskId, studentId).isPresent()) {
+            return true;
+        }
+        return preparationTaskMemberRepository.existsByTaskIdAndStudentId(taskId, studentId);
     }
 
     private Long getStudentId(Authentication authentication) {

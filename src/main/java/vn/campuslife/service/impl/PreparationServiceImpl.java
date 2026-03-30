@@ -4,20 +4,21 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.NotificationType;
+import vn.campuslife.enumeration.PreparationTaskMemberRole;
 import vn.campuslife.enumeration.PreparationTaskStatus;
-import vn.campuslife.enumeration.Role;
+import vn.campuslife.enumeration.WorkloadWarningType;
 import vn.campuslife.exception.*;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.repository.*;
-import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationService;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -29,12 +30,13 @@ public class PreparationServiceImpl implements PreparationService {
     private final StudentRepository studentRepository;
     private final ActivityOrganizerRepository activityOrganizerRepository;
     private final PreparationTaskRepository preparationTaskRepository;
-    private final BudgetRepository budgetRepository;
-    private final ExpenseRepository expenseRepository;
-    private final UserRepository userRepository;
-    private final FileUploadService fileUploadService;
-    private final NotificationService notificationService;
     private final PreparationTaskRepository taskRepository;
+    private final PreparationTaskMemberRepository preparationTaskMemberRepository;
+    private final NotificationService notificationService;
+    private final ActivityBudgetRepository activityBudgetRepository;
+    private final TaskAllocationRepository taskAllocationRepository;
+    private final FundAdvanceRepository fundAdvanceRepository;
+
     @Override
     @Transactional
     public void togglePreparation(Long activityId, boolean enabled) {
@@ -81,12 +83,10 @@ public class PreparationServiceImpl implements PreparationService {
                 .map(this::toTaskDto)
                 .toList();
 
-        return budgetRepository.findByActivityId(activityId)
-                .map(budget -> {
-                    BudgetDto budgetDto = toBudgetDto(budget);
-                    return new PreparationDashboardDto(activityId, true, tasks, budgetDto, null);
-                })
-                .orElseGet(() -> new PreparationDashboardDto(activityId, true, tasks, null, "No Budget Assigned"));
+        return activityBudgetRepository.findByActivityId(activityId)
+                .map(budget -> new PreparationDashboardDto(activityId, true, tasks, toActivityBudgetDto(budget), null))
+                .orElseGet(
+                        () -> new PreparationDashboardDto(activityId, true, tasks, null, "No ActivityBudget assigned"));
     }
 
     @Override
@@ -108,7 +108,7 @@ public class PreparationServiceImpl implements PreparationService {
             throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
         }
 
-        Student assignee = studentRepository.findByIdAndIsDeletedFalse(request.getAssigneeId())
+        Student assignee = studentRepository.findByIdAndIsDeletedFalse(request.getOwnerId())
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
 
         boolean organizer = activityOrganizerRepository.existsByActivityIdAndStudentId(activity.getId(),
@@ -119,12 +119,24 @@ public class PreparationServiceImpl implements PreparationService {
 
         PreparationTask task = new PreparationTask();
         task.setActivity(activity);
-        task.setAssignee(assignee);
+        task.setOwner(assignee);
         task.setTitle(request.getTitle());
         task.setDescription(request.getDescription());
         task.setDeadline(request.getDeadline());
+        task.setFinancial(Boolean.TRUE.equals(request.getIsFinancial()));
         task.setStatus(PreparationTaskStatus.PENDING);
         PreparationTask saved = preparationTaskRepository.save(task);
+
+        PreparationTaskMember leader = preparationTaskMemberRepository
+                .findByTaskIdAndStudentId(saved.getId(), assignee.getId())
+                .orElseGet(() -> {
+                    PreparationTaskMember created = new PreparationTaskMember();
+                    created.setTask(saved);
+                    created.setStudent(assignee);
+                    return created;
+                });
+        leader.setRole(PreparationTaskMemberRole.LEADER);
+        preparationTaskMemberRepository.save(leader);
 
         return toTaskDto(saved);
     }
@@ -132,145 +144,176 @@ public class PreparationServiceImpl implements PreparationService {
     @Override
     @Transactional
     public PreparationTaskDto updateMyTaskStatus(Long taskId, PreparationTaskStatus status, String username) {
-        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
-
-        PreparationTask task = preparationTaskRepository.findByIdAndAssigneeId(taskId, student.getId())
-                .orElseThrow(() -> new ForbiddenException("You are not allowed to update this task"));
-
-        task.setStatus(status);
-        PreparationTask saved = preparationTaskRepository.save(task);
-        return toTaskDto(saved);
-    }
-
-    @Override
-    @Transactional
-    public BudgetDto createOrUpdateBudget(UpsertBudgetRequest request) {
-        if (request.getActivityId() == null) {
-            throw new BadRequestException("Activity ID is required");
+        if (status == PreparationTaskStatus.ACCEPTED) {
+            return acceptTask(taskId, username);
         }
-        Activity activity = getActiveActivity(request.getActivityId());
-        if (!activity.isHasPreparation()) {
-            throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
+        if (status == PreparationTaskStatus.COMPLETION_REQUESTED) {
+            return requestCompleteTask(taskId, username);
         }
-
-        Budget budget = budgetRepository.findByActivityId(activity.getId()).orElseGet(Budget::new);
-        budget.setActivity(activity);
-        budget.setTotalAmount(request.getTotalAmount());
-        budget.setDescription(request.getDescription());
-
-        Budget saved = budgetRepository.save(budget);
-        return toBudgetDto(saved);
-    }
-
-    @Override
-    @Transactional
-    public ExpenseDto createExpense(CreateExpenseRequest request, String username) {
-        if (request.getActivityId() == null) {
-            throw new BadRequestException("Activity ID is required");
-        }
-        Activity activity = getActiveActivity(request.getActivityId());
-        if (!activity.isHasPreparation()) {
-            throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
-        }
-
-        Student reporter = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
-
-        boolean organizer = activityOrganizerRepository.existsByActivityIdAndStudentId(activity.getId(),
-                reporter.getId());
-        if (!organizer) {
-            throw new ForbiddenException("Organizer permission required");
-        }
-
-        Budget budget = budgetRepository.findByActivityId(activity.getId())
-                .orElseThrow(() -> new BadRequestException("No Budget Assigned"));
-
-        Expense expense = new Expense();
-        expense.setBudget(budget);
-        expense.setAmount(request.getAmount());
-        expense.setDescription(request.getDescription());
-        expense.setEvidenceUrl(request.getEvidenceUrl());
-        expense.setReportedBy(reporter);
-        expense.setApproved(null);
-
-        Expense saved = expenseRepository.save(expense);
-
-        notifyAdminsForExpense(activity, budget, saved, reporter);
-
-        return toExpenseDto(saved, activity.getId());
-    }
-
-    @Override
-    public UploadResultDto uploadExpenseEvidence(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BadRequestException("File is required");
-        }
-        String url = fileUploadService.uploadFile(file);
-        return new UploadResultDto(url);
+        throw new BadRequestException("Status update is not supported");
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ExpenseDto> listExpenses(Long activityId, String status) {
-        Activity activity = getActiveActivity(activityId);
-        if (!activity.isHasPreparation()) {
-            throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
-        }
-        budgetRepository.findByActivityId(activityId)
-                .orElseThrow(() -> new BadRequestException("No Budget Assigned"));
-
-        String normalized = status == null ? "ALL" : status.trim().toUpperCase();
-
-        List<Expense> expenses = switch (normalized) {
-            case "PENDING" -> expenseRepository.findByBudgetActivityIdAndApprovedIsNullOrderByCreatedAtDesc(activityId);
-            case "APPROVED" ->
-                expenseRepository.findByBudgetActivityIdAndApprovedOrderByCreatedAtDesc(activityId, true);
-            case "REJECTED" ->
-                expenseRepository.findByBudgetActivityIdAndApprovedOrderByCreatedAtDesc(activityId, false);
-            case "ALL" -> expenseRepository.findByBudgetActivityIdOrderByCreatedAtDesc(activityId);
-            default -> throw new BadRequestException("Invalid status. Use PENDING/APPROVED/REJECTED/ALL");
-        };
-
-        return expenses.stream()
-                .map(e -> toExpenseDto(e, activityId))
+    public List<PreparationTaskMemberDto> listTaskMembers(Long taskId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        return preparationTaskMemberRepository.findByTaskIdOrderByRoleAscCreatedAtAsc(taskId).stream()
+                .map(m -> new PreparationTaskMemberDto(
+                        m.getStudent() != null ? m.getStudent().getId() : null,
+                        m.getStudent() != null ? m.getStudent().getFullName() : null,
+                        m.getRole()))
                 .toList();
     }
 
     @Override
     @Transactional
-    public ExpenseDto approveExpense(Long expenseId, boolean approved) {
-        Expense expense = expenseRepository.findById(expenseId)
-                .orElseThrow(() -> new ResourceNotFoundException("Expense not found"));
-
-        Budget budget = expense.getBudget();
-        if (budget == null || budget.getActivity() == null) {
-            throw new BadRequestException("Expense has no associated activity");
+    public void removeTaskMember(Long taskId, Long studentId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        PreparationTaskMember member = preparationTaskMemberRepository.findByTaskIdAndStudentId(taskId, studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task member not found"));
+        if (member.getRole() == PreparationTaskMemberRole.LEADER && task.isFinancial()) {
+            long leaderCount = preparationTaskMemberRepository.countByTaskIdAndRole(taskId,
+                    PreparationTaskMemberRole.LEADER);
+            if (leaderCount <= 1) {
+                throw new BadRequestException("Financial task must have at least one leader");
+            }
         }
+        preparationTaskMemberRepository.delete(member);
+    }
 
-        Activity activity = getActiveActivity(budget.getActivity().getId());
+    @Override
+    @Transactional
+    public void promoteTaskLeader(Long taskId, Long studentId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        Long activityId = task.getActivity() != null ? task.getActivity().getId() : null;
+        if (activityId == null) {
+            throw new BadRequestException("Task has no activity");
+        }
+        if (!activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, studentId)) {
+            throw new BadRequestException("Student is not an organizer of this activity");
+        }
+        Student student = studentRepository.findByIdAndIsDeletedFalse(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+
+        PreparationTaskMember member = preparationTaskMemberRepository.findByTaskIdAndStudentId(taskId, studentId)
+                .orElseGet(() -> {
+                    PreparationTaskMember created = new PreparationTaskMember();
+                    created.setTask(task);
+                    created.setStudent(student);
+                    return created;
+                });
+        member.setRole(PreparationTaskMemberRole.LEADER);
+        preparationTaskMemberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
+    public void demoteTaskLeader(Long taskId, Long studentId) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        PreparationTaskMember member = preparationTaskMemberRepository.findByTaskIdAndStudentId(taskId, studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task member not found"));
+        if (member.getRole() != PreparationTaskMemberRole.LEADER) {
+            return;
+        }
+        if (task.isFinancial()) {
+            long leaderCount = preparationTaskMemberRepository.countByTaskIdAndRole(taskId,
+                    PreparationTaskMemberRole.LEADER);
+            if (leaderCount <= 1) {
+                throw new BadRequestException("Financial task must have at least one leader");
+            }
+        }
+        member.setRole(PreparationTaskMemberRole.MEMBER);
+        preparationTaskMemberRepository.save(member);
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto acceptTask(Long taskId, String username) {
+        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        boolean isOwner = task.getOwner() != null && task.getOwner().getId().equals(student.getId());
+        boolean isMember = preparationTaskMemberRepository.existsByTaskIdAndStudentId(taskId, student.getId());
+        if (!isOwner && !isMember) {
+            throw new ForbiddenException("Task member permission required");
+        }
+        if (task.getStatus() != PreparationTaskStatus.PENDING) {
+            throw new BadRequestException("Task is not pending");
+        }
+        task.setStatus(PreparationTaskStatus.ACCEPTED);
+        return toTaskDto(preparationTaskRepository.save(task));
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto requestCompleteTask(Long taskId, String username) {
+        Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        boolean isLeader = preparationTaskMemberRepository.existsByTaskIdAndStudentIdAndRole(
+                taskId,
+                student.getId(),
+                PreparationTaskMemberRole.LEADER);
+        boolean isOwner = task.getOwner() != null && task.getOwner().getId().equals(student.getId());
+        if (!isLeader && !isOwner) {
+            throw new ForbiddenException("Leader permission required");
+        }
+        if (task.getStatus() != PreparationTaskStatus.ACCEPTED) {
+            throw new BadRequestException("Task must be accepted before requesting completion");
+        }
+        task.setStatus(PreparationTaskStatus.COMPLETION_REQUESTED);
+        return toTaskDto(preparationTaskRepository.save(task));
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto adminCompleteDecision(Long taskId, boolean approved) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        if (task.getStatus() != PreparationTaskStatus.COMPLETION_REQUESTED) {
+            throw new BadRequestException("Task is not pending completion approval");
+        }
+        task.setStatus(approved ? PreparationTaskStatus.COMPLETED : PreparationTaskStatus.ACCEPTED);
+        return toTaskDto(preparationTaskRepository.save(task));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WorkloadWarningDto> getWorkloadWarnings(Long activityId) {
+        Activity activity = getActiveActivity(activityId);
         if (!activity.isHasPreparation()) {
             throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
         }
 
-        if (Boolean.TRUE.equals(expense.getApproved()) && approved) {
-            return toExpenseDto(expense, activity.getId());
-        }
+        Map<Long, Long> countByStudentId = preparationTaskMemberRepository.countTasksByStudentInActivity(activityId)
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        PreparationTaskMemberRepository.StudentTaskCountView::getStudentId,
+                        PreparationTaskMemberRepository.StudentTaskCountView::getTaskCount));
 
-        if (approved) {
-            BigDecimal spent = expenseRepository.sumApprovedAmountByBudgetId(budget.getId());
-            BigDecimal remaining = budget.getTotalAmount().subtract(spent);
-            if (remaining.compareTo(expense.getAmount()) < 0) {
-                throw new InsufficientBudgetException("Insufficient budget remaining");
-            }
-            expense.setApproved(true);
-        } else {
-            expense.setApproved(false);
-        }
-
-        Expense saved = expenseRepository.save(expense);
-        notifyReporterForExpenseDecision(activity, saved);
-        return toExpenseDto(saved, activity.getId());
+        return activityOrganizerRepository.findByActivityId(activityId).stream()
+                .map(ao -> ao.getStudent())
+                .filter(s -> s != null && s.getId() != null)
+                .map(s -> {
+                    long count = countByStudentId.getOrDefault(s.getId(), 0L);
+                    if (count > 3) {
+                        return new WorkloadWarningDto(s.getId(), s.getFullName(), count,
+                                WorkloadWarningType.OVERLOADED);
+                    }
+                    if (count == 0) {
+                        return new WorkloadWarningDto(s.getId(), s.getFullName(), count,
+                                WorkloadWarningType.UNASSIGNED);
+                    }
+                    return null;
+                })
+                .filter(v -> v != null)
+                .toList();
     }
 
     @Override
@@ -325,90 +368,67 @@ public class PreparationServiceImpl implements PreparationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Activity not found"));
     }
 
-    private BudgetDto toBudgetDto(Budget budget) {
-        BigDecimal spent = expenseRepository.sumApprovedAmountByBudgetId(budget.getId());
-        BigDecimal remaining = budget.getTotalAmount().subtract(spent);
-        Long activityId = budget.getActivity() != null ? budget.getActivity().getId() : null;
-        return new BudgetDto(
-                budget.getId(),
-                activityId,
-                budget.getTotalAmount(),
-                spent,
-                remaining,
-                budget.getDescription());
-    }
-
     private PreparationTaskDto toTaskDto(PreparationTask task) {
-        Student assignee = task.getAssignee();
-        String assigneeName = assignee != null ? assignee.getFullName() : null;
+        Student owner = task.getOwner();
+        String ownerName = owner != null ? owner.getFullName() : null;
         Long activityId = task.getActivity() != null ? task.getActivity().getId() : null;
-        Long assigneeId = assignee != null ? assignee.getId() : null;
+        Long ownerId = owner != null ? owner.getId() : null;
         return new PreparationTaskDto(
                 task.getId(),
                 activityId,
-                assigneeId,
-                assigneeName,
+                ownerId,
+                ownerName,
                 task.getTitle(),
                 task.getDescription(),
                 task.getDeadline(),
+                task.getAllocatedAmount(),
+                task.isFinancial(),
                 task.getStatus());
     }
 
-    private ExpenseDto toExpenseDto(Expense expense, Long activityId) {
-        Student reporter = expense.getReportedBy();
-        return new ExpenseDto(
-                expense.getId(),
-                activityId,
-                expense.getBudget() != null ? expense.getBudget().getId() : null,
-                expense.getAmount(),
-                expense.getDescription(),
-                expense.getEvidenceUrl(),
-                reporter != null ? reporter.getId() : null,
-                reporter != null ? reporter.getFullName() : null,
-                expense.getApproved(),
-                expense.getCreatedAt());
+    private ActivityBudgetDto toActivityBudgetDto(ActivityBudget budget) {
+        Map<Long, BigDecimal> allocatedToTasksByCategory = taskAllocationRepository
+                .sumAllocatedToTasksByActivity(budget.getActivity().getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        TaskAllocationRepository.CategoryAllocationSumView::getCategoryId,
+                        TaskAllocationRepository.CategoryAllocationSumView::getAllocatedToTasksAmount));
+        Map<Long, BigDecimal> holdingByCategoryId = fundAdvanceRepository
+                .sumHoldingByCategoryInActivity(budget.getActivity().getId())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getCategoryId,
+                        FundAdvanceRepository.FundAdvanceHoldingByCategoryView::getHoldingAmount));
+        List<BudgetCategoryDto> categories = budget.getCategories().stream()
+                .sorted(Comparator.comparing(BudgetCategory::getId, Comparator.nullsLast(Long::compareTo)))
+                .map(c -> {
+                    BigDecimal allocated = zeroIfNull(c.getAllocatedAmount());
+                    BigDecimal allocatedToTasks = allocatedToTasksByCategory.getOrDefault(c.getId(), BigDecimal.ZERO);
+                    BigDecimal availableToAllocate = allocated.subtract(allocatedToTasks);
+                    BigDecimal used = zeroIfNull(c.getUsedAmount());
+                    BigDecimal remaining = allocated.subtract(used);
+                    BigDecimal cashOutside = holdingByCategoryId.getOrDefault(c.getId(), BigDecimal.ZERO);
+                    BigDecimal cashAvailable = remaining.subtract(cashOutside);
+                    Double percent = allocated.compareTo(BigDecimal.ZERO) > 0
+                            ? used.multiply(BigDecimal.valueOf(100))
+                                    .divide(allocated, 2, RoundingMode.HALF_UP)
+                                    .doubleValue()
+                            : 0.0;
+                    return new BudgetCategoryDto(c.getId(), c.getName(), allocated, allocatedToTasks,
+                            availableToAllocate,
+                            cashOutside,
+                            cashAvailable,
+                            used, remaining, percent);
+                })
+                .toList();
+        return new ActivityBudgetDto(
+                budget.getId(),
+                budget.getActivity() != null ? budget.getActivity().getId() : null,
+                budget.getTotalAmount(),
+                categories);
     }
 
-    private void notifyAdminsForExpense(Activity activity, Budget budget, Expense expense, Student reporter) {
-        List<User> admins = userRepository.findAllByRoleInAndIsDeletedFalse(List.of(Role.ADMIN, Role.MANAGER));
-        List<Long> userIds = admins.stream().map(User::getId).toList();
-        if (userIds.isEmpty()) {
-            return;
-        }
-
-        String title = "Báo cáo chi phí mới";
-        String content = "Hoạt động: " + activity.getName()
-                + " | Số tiền: " + expense.getAmount()
-                + " | Trạng thái: PENDING"
-                + " | Người báo cáo: " + (reporter.getFullName() != null ? reporter.getFullName() : reporter.getId());
-
-        Map<String, Object> metadata = Map.of(
-                "activityId", activity.getId(),
-                "budgetId", budget.getId(),
-                "expenseId", expense.getId());
-
-        notificationService.sendBulkNotification(userIds, title, content, NotificationType.GENERAL, null, metadata);
-    }
-
-    private void notifyReporterForExpenseDecision(Activity activity, Expense expense) {
-        Student reporter = expense.getReportedBy();
-        if (reporter == null || reporter.getUser() == null) {
-            return;
-        }
-        String decision = Boolean.TRUE.equals(expense.getApproved()) ? "APPROVED" : "REJECTED";
-        String title = "Chi phí đã được duyệt";
-        if ("REJECTED".equals(decision)) {
-            title = "Chi phí bị từ chối";
-        }
-        String content = "Hoạt động: " + activity.getName()
-                + " | Số tiền: " + expense.getAmount()
-                + " | Trạng thái: " + decision;
-
-        Map<String, Object> metadata = Map.of(
-                "activityId", activity.getId(),
-                "expenseId", expense.getId());
-
-        notificationService.sendNotification(reporter.getUser().getId(), title, content, NotificationType.GENERAL, null,
-                metadata);
+    private BigDecimal zeroIfNull(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }

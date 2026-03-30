@@ -23,15 +23,21 @@ public interface PreparationService {
 
     PreparationTaskDto updateMyTaskStatus(Long taskId, PreparationTaskStatus status, String username);
 
-    BudgetDto createOrUpdateBudget(UpsertBudgetRequest request);
+    java.util.List<PreparationTaskMemberDto> listTaskMembers(Long taskId);
 
-    ExpenseDto createExpense(CreateExpenseRequest request, String username);
+    void removeTaskMember(Long taskId, Long studentId);
 
-    UploadResultDto uploadExpenseEvidence(MultipartFile file);
+    void promoteTaskLeader(Long taskId, Long studentId);
 
-    java.util.List<ExpenseDto> listExpenses(Long activityId, String status);
+    void demoteTaskLeader(Long taskId, Long studentId);
 
-    ExpenseDto approveExpense(Long expenseId, boolean approved);
+    PreparationTaskDto acceptTask(Long taskId, String username);
+
+    PreparationTaskDto requestCompleteTask(Long taskId, String username);
+
+    PreparationTaskDto adminCompleteDecision(Long taskId, boolean approved);
+
+    java.util.List<WorkloadWarningDto> getWorkloadWarnings(Long activityId);
 
     void addOrganizer(Long activityId, Long studentId);
 

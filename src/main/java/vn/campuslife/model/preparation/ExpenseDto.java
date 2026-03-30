@@ -3,6 +3,7 @@ package vn.campuslife.model.preparation;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vn.campuslife.enumeration.ExpenseStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,12 +14,14 @@ import java.time.LocalDateTime;
 public class ExpenseDto {
     private Long id;
     private Long activityId;
-    private Long budgetId;
+    private Long taskId;
+    private Long categoryId;
+    private String categoryName;
     private BigDecimal amount;
     private String description;
     private String evidenceUrl;
-    private Long reportedById;
-    private String reportedByName;
-    private Boolean approved;
+    private ExpenseStatus status;
+    private Long createdById;
+    private String createdByName;
     private LocalDateTime createdAt;
 }

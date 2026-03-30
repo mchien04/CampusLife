@@ -8,6 +8,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import vn.campuslife.enumeration.PreparationTaskStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -27,7 +28,7 @@ public class PreparationTask {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assignee_id", nullable = false)
-    private Student assignee;
+    private Student owner;
 
     @Column(nullable = false)
     private String title;
@@ -36,6 +37,12 @@ public class PreparationTask {
     private String description;
 
     private LocalDateTime deadline;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal allocatedAmount = BigDecimal.ZERO;
+
+    @Column(nullable = false)
+    private boolean isFinancial = false;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
