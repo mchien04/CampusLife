@@ -20,6 +20,10 @@ public interface FundAdvanceRepository extends JpaRepository<FundAdvance, Long> 
 
     List<FundAdvance> findByTaskIdOrderByCreatedAtDesc(Long taskId);
 
+    List<FundAdvance> findByStudentIdAndTaskActivityIdOrderByCreatedAtDesc(Long studentId, Long activityId);
+
+    List<FundAdvance> findByStudentIdAndTaskIdOrderByCreatedAtDesc(Long studentId, Long taskId);
+
     boolean existsByTaskActivityIdAndStudentIdAndStatusInAndRemainingAmountGreaterThan(Long activityId, Long studentId,
             Set<FundAdvanceStatus> statuses, BigDecimal amount);
 

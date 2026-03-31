@@ -975,6 +975,85 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
 
     @Override
     @Transactional(readOnly = true)
+    public List<ExpenseCategorySuggestionDto> suggestExpenseCategories(Long taskId, String amount) {
+        PreparationTask task = preparationTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+        requirePreparationEnabledForTask(task);
+        if (!task.isFinancial()) {
+            throw new BadRequestException("Task is not financial");
+        }
+        BigDecimal target = amount == null || amount.isBlank() ? null : parsePositiveAmount(amount, "amount");
+
+        List<TaskAllocation> allocations = taskAllocationRepository.findByTaskIdOrderByCreatedAtAsc(taskId);
+        if (allocations.isEmpty()) {
+            return List.of();
+        }
+
+        return allocations.stream()
+                .map(a -> {
+                    BudgetCategory c = a.getCategory();
+                    if (c == null || c.getId() == null) {
+                        return null;
+                    }
+                    BigDecimal allocated = zeroIfNull(a.getAmount());
+                    BigDecimal approved = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId, c.getId());
+                    BigDecimal holding = fundAdvanceRepository.sumHoldingByTaskIdAndCategoryId(taskId, c.getId());
+                    BigDecimal allocationRemaining = allocated.subtract(zeroIfNull(approved)).subtract(zeroIfNull(holding));
+                    if (allocationRemaining.compareTo(BigDecimal.ZERO) < 0) {
+                        allocationRemaining = BigDecimal.ZERO;
+                    }
+
+                    BigDecimal walletRemaining = zeroIfNull(c.getAllocatedAmount()).subtract(zeroIfNull(c.getUsedAmount()));
+                    if (walletRemaining.compareTo(BigDecimal.ZERO) < 0) {
+                        walletRemaining = BigDecimal.ZERO;
+                    }
+                    BigDecimal max = allocationRemaining.min(walletRemaining);
+                    return new ExpenseCategorySuggestionDto(
+                            c.getId(),
+                            c.getName(),
+                            allocationRemaining,
+                            walletRemaining,
+                            max);
+                })
+                .filter(v -> v != null)
+                .filter(v -> v.getMaxExpenseAmount().compareTo(BigDecimal.ZERO) > 0)
+                .filter(v -> target == null || v.getMaxExpenseAmount().compareTo(target) >= 0)
+                .sorted(Comparator.comparing(ExpenseCategorySuggestionDto::getMaxExpenseAmount).reversed())
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FundAdvanceDto> listMyFundAdvances(Long activityId, Long taskId, String username) {
+        Activity activity = getActiveActivity(activityId);
+        if (!activity.isHasPreparation()) {
+            throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
+        }
+        Student me = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+        if (!activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, me.getId())) {
+            throw new ForbiddenException("Organizer permission required");
+        }
+
+        List<FundAdvance> advances;
+        if (taskId != null) {
+            PreparationTask task = preparationTaskRepository.findById(taskId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+            requirePreparationEnabledForTask(task);
+            if (task.getActivity() == null || task.getActivity().getId() == null
+                    || !task.getActivity().getId().equals(activityId)) {
+                throw new BadRequestException("Task does not belong to this activity");
+            }
+            advances = fundAdvanceRepository.findByStudentIdAndTaskIdOrderByCreatedAtDesc(me.getId(), taskId);
+        } else {
+            advances = fundAdvanceRepository.findByStudentIdAndTaskActivityIdOrderByCreatedAtDesc(me.getId(), activityId);
+        }
+
+        return advances.stream().map(this::toFundAdvanceDto).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public FinancialReportDto getFinancialReport(Long activityId) {
         Activity activity = getActiveActivity(activityId);
         if (!activity.isHasPreparation()) {

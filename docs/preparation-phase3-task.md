@@ -139,6 +139,9 @@ Luồng chuẩn:
   - 403: không đủ quyền leader
   - 404: task không tồn tại
 
+### 5. Migration (DB enum)
+- File: `docs/migrations/2026_03_31_phase3_preparation_task_status_add_completion_requested.sql`
+
 ---
 
 ### 2. API Endpoint
@@ -211,4 +214,3 @@ Trả về danh sách cảnh báo:
   - 400: preparation chưa bật
   - 403: không đủ quyền
   - 404: activity không tồn tại
-

@@ -212,6 +212,14 @@ export type FundAdvanceSourceSuggestionDto = {
   maxAdvanceAmount: string;
 };
 
+export type ExpenseCategorySuggestionDto = {
+  categoryId: number;
+  categoryName: string | null;
+  allocationRemainingAmount: string;
+  walletRemainingAmount: string;
+  maxExpenseAmount: string;
+};
+
 export type TaskAllocationSourceDto = {
   categoryId: number;
   categoryName: string | null;
@@ -368,6 +376,8 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `POST /api/preparation/tasks/{taskId}/expenses/evidence` (multipart)
 - Tạo expense:
   - `POST /api/preparation/tasks/{taskId}/expenses`
+- Gợi ý ví để tạo expense:
+  - `GET /api/preparation/tasks/{taskId}/expense-category-suggestions?amount=...`
 - Xin bổ sung allocate:
   - `POST /api/preparation/tasks/{taskId}/allocation-adjustments`
 - Danh sách task của tôi + role theo activity:
@@ -387,6 +397,10 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `POST /api/preparation/tasks/{taskId}/fund-advances`
 - Gợi ý nguồn ví để ứng:
   - `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...`
+- Danh sách tạm ứng của tôi (người nhận ứng) theo activity:
+  - `GET /api/preparation/my/fund-advances?activityId=...&taskId=...`
+- Danh sách tạm ứng theo task (xem lịch sử của cả task):
+  - `GET /api/preparation/tasks/{taskId}/fund-advances`
 - Xem allocation sources theo task:
   - `GET /api/preparation/tasks/{taskId}/allocation-sources`
 - Nhận task / yêu cầu hoàn thành:

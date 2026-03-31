@@ -51,6 +51,10 @@ public interface PreparationFinanceService {
 
     java.util.List<TaskAllocationSourceDto> listTaskAllocationSources(Long taskId);
 
+    java.util.List<ExpenseCategorySuggestionDto> suggestExpenseCategories(Long taskId, String amount);
+
+    java.util.List<FundAdvanceDto> listMyFundAdvances(Long activityId, Long taskId, String username);
+
         FinanceOverviewReportDto getFinanceOverviewReport(Long activityId);
 
         CashFlowReportDto getCashFlowReport(Long activityId);
