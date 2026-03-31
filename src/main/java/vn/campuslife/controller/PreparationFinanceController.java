@@ -168,6 +168,25 @@ public class PreparationFinanceController {
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
+    @GetMapping("/tasks/{taskId}/expense-category-suggestions")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    public ResponseEntity<Response> suggestExpenseCategories(
+            @PathVariable Long taskId,
+            @RequestParam(required = false) String amount) {
+        List<ExpenseCategorySuggestionDto> dtos = financeService.suggestExpenseCategories(taskId, amount);
+        return ResponseEntity.ok(Response.success("OK", dtos));
+    }
+
+    @GetMapping("/my/fund-advances")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<Response> listMyFundAdvances(
+            @RequestParam Long activityId,
+            @RequestParam(required = false) Long taskId,
+            Authentication authentication) {
+        List<FundAdvanceDto> dtos = financeService.listMyFundAdvances(activityId, taskId, authentication.getName());
+        return ResponseEntity.ok(Response.success("OK", dtos));
+    }
+
     @GetMapping("/activities/{activityId}/fund-advance-debts")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> listFundAdvanceDebts(

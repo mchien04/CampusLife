@@ -58,6 +58,7 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Request complete (leader/owner) | `PUT /api/preparation/tasks/{taskId}/request-complete` | Response: `PreparationTaskDto` | Chỉ leader/owner |
 | Upload chứng từ | `POST /api/preparation/tasks/{taskId}/expenses/evidence` | Response: `UploadResultDto` | Multipart file |
 | Tạo expense | `POST /api/preparation/tasks/{taskId}/expenses` | Request: `CreateExpenseRequest` / Response: `ExpenseDto` | Nếu vượt allocate: 409 + `OverBudgetInfoDto` |
+| Gợi ý ví để tạo expense | `GET /api/preparation/tasks/{taskId}/expense-category-suggestions?amount=...` | Response: `ExpenseCategorySuggestionDto[]` | Nếu task chỉ allocate 1 ví thì FE auto-select |
 | Duyệt expense cấp 1 (leader) | `PUT /api/preparation/expenses/{expenseId}/leader-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | Approve → PENDING_ADMIN |
 | Xin bổ sung allocate | `POST /api/preparation/tasks/{taskId}/allocation-adjustments` | Request: `CreateAllocationAdjustmentRequest` / Response: `AllocationAdjustmentRequestDto` | Member/leader gửi request (amount + description) |
 | Gợi ý nguồn ví để ứng (leader) | `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...` | Response: `FundAdvanceSourceSuggestionDto[]` | Hiển thị maxAdvanceAmount theo ví |
@@ -85,6 +86,7 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Auto split nguồn ví cho request | `GET /api/preparation/allocation-adjustments/{requestId}/source-plan` | Response: `AllocationAdjustmentSourcePlanDto[]` | 1-click tạo `sources[]` cho approve |
 | Duyệt/từ chối bổ sung allocate | `PUT /api/preparation/allocation-adjustments/{requestId}/admin-decision` | Request: `AdminDecisionAllocationAdjustmentRequest` / Response: `AllocationAdjustmentRequestDto` | Approve có thể dùng 1 nguồn `categoryId` hoặc nhiều nguồn `sources[]` |
 | List fund advance theo task | `GET /api/preparation/tasks/{taskId}/fund-advances` | Response: `FundAdvanceDto[]` | |
+| Tạm ứng của tôi (người nhận) | `GET /api/preparation/my/fund-advances?activityId=...&taskId=...` | Response: `FundAdvanceDto[]` | Member xem mình đang HOLDING bao nhiêu |
 | Duyệt/từ chối fund advance | `PUT /api/preparation/fund-advances/{fundAdvanceId}/admin-decision` | Request: `ApproveFundAdvanceRequest` / Response: `FundAdvanceDto` | Approve → HOLDING |
 | Hoàn ứng | `PUT /api/preparation/fund-advances/{fundAdvanceId}/return` | Response: `FundAdvanceDto` | HOLDING → SETTLED |
 | Report nợ tạm ứng | `GET /api/preparation/activities/{activityId}/fund-advance-debts?studentId=...` | Response: `FundAdvanceDebtDto[]` | Tiền ngoài ví |
