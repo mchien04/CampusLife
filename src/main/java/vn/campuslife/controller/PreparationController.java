@@ -62,6 +62,15 @@ public class PreparationController {
         return ResponseEntity.ok(Response.success("Added organizer"));
     }
 
+    @PostMapping("/activities/{activityId}/organizers")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> addOrganizers(
+            @PathVariable Long activityId,
+            @RequestBody @Valid BulkAddOrganizersRequest request) {
+        BulkAddOrganizersResultDto result = preparationService.addOrganizers(activityId, request.getStudentIds());
+        return ResponseEntity.ok(Response.success("OK", result));
+    }
+
     @DeleteMapping("/activities/{activityId}/organizers/{studentId}")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> removeOrganizer(@PathVariable Long activityId, @PathVariable Long studentId) {

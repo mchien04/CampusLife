@@ -18,6 +18,8 @@ public class ActivityResponse {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
 
+    private boolean hasPreparation;
+
     private boolean requiresSubmission;
     private BigDecimal maxPoints;
 

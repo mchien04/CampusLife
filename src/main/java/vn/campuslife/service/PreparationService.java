@@ -45,6 +45,8 @@ public interface PreparationService {
 
     void addOrganizer(Long activityId, Long studentId);
 
+    BulkAddOrganizersResultDto addOrganizers(Long activityId, List<Long> studentIds);
+
     void removeOrganizer(Long activityId, Long studentId);
 
     java.util.List<OrganizerDto> listOrganizers(Long activityId);

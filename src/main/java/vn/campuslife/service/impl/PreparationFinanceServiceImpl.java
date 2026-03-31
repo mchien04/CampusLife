@@ -377,7 +377,15 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         advance.setDecidedAt(java.time.LocalDateTime.now());
         advance.setDecidedBy(actor);
         FundAdvance saved = fundAdvanceRepository.save(advance);
-        writeAudit(actor, "ADMIN_DECISION_FUND_ADVANCE", "FundAdvance", saved.getId(), "approved=" + approved);
+        Long taskId = task != null ? task.getId() : null;
+        Long studentId = student != null ? student.getId() : null;
+        Long categoryId = saved.getCategory() != null ? saved.getCategory().getId() : null;
+        writeAudit(actor, "ADMIN_DECISION_FUND_ADVANCE", "FundAdvance", saved.getId(),
+                "approved=" + approved
+                        + ",taskId=" + taskId
+                        + ",studentId=" + studentId
+                        + ",categoryId=" + categoryId
+                        + ",amount=" + saved.getAmount());
         return toFundAdvanceDto(saved);
     }
 
@@ -392,12 +400,21 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             throw new BadRequestException("FundAdvance is not holding");
         }
         requirePreparationEnabledForTask(advance.getTask());
+        BigDecimal returnedAmount = zeroIfNull(advance.getRemainingAmount());
         advance.setRemainingAmount(BigDecimal.ZERO);
         advance.setStatus(FundAdvanceStatus.SETTLED);
         advance.setDecidedAt(java.time.LocalDateTime.now());
         advance.setDecidedBy(actor);
         FundAdvance saved = fundAdvanceRepository.save(advance);
-        writeAudit(actor, "RETURN_FUND_ADVANCE", "FundAdvance", saved.getId(), "returned=true");
+        Long taskId = saved.getTask() != null ? saved.getTask().getId() : null;
+        Long studentId = saved.getStudent() != null ? saved.getStudent().getId() : null;
+        Long categoryId = saved.getCategory() != null ? saved.getCategory().getId() : null;
+        writeAudit(actor, "RETURN_FUND_ADVANCE", "FundAdvance", saved.getId(),
+                "returned=true"
+                        + ",taskId=" + taskId
+                        + ",studentId=" + studentId
+                        + ",categoryId=" + categoryId
+                        + ",amount=" + returnedAmount);
         return toFundAdvanceDto(saved);
     }
 
@@ -643,7 +660,11 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             expense.setStatus(ExpenseStatus.REJECTED);
             Expense saved = expenseRepository.save(expense);
             writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(),
-                    "approved=false,overrideLeader=" + overrideLeader);
+                    "approved=false,overrideLeader=" + overrideLeader
+                            + ",taskId=" + saved.getTask().getId()
+                            + ",categoryId=" + saved.getCategory().getId()
+                            + ",createdById=" + saved.getCreatedBy().getId()
+                            + ",amount=" + saved.getAmount());
             notifyCreatorForDecision(saved);
             return toExpenseDto(saved);
         }
@@ -674,7 +695,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         category.setUsedAmount(zeroIfNull(category.getUsedAmount()).add(zeroIfNull(expense.getAmount())));
         budgetCategoryRepository.save(category);
 
-        writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(), "approved=true,overrideLeader=" + overrideLeader);
+        writeAudit(actor, "ADMIN_DECISION", "Expense", saved.getId(),
+                "approved=true,overrideLeader=" + overrideLeader
+                        + ",taskId=" + saved.getTask().getId()
+                        + ",categoryId=" + saved.getCategory().getId()
+                        + ",createdById=" + saved.getCreatedBy().getId()
+                        + ",amount=" + saved.getAmount());
 
         notifyCreatorForDecision(saved);
         notifyBudgetLowIfNeeded(actor, task, category);
@@ -846,8 +872,12 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
         req.setDecidedAt(java.time.LocalDateTime.now());
         req.setDecidedBy(actor);
         AllocationAdjustmentRequest saved = allocationAdjustmentRequestRepository.save(req);
+        String sourcesStr = deltaByCategoryId.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> e.getKey() + ":" + e.getValue())
+                .collect(Collectors.joining("|"));
         writeAudit(actor, "ADMIN_DECISION_ALLOCATION_ADJUSTMENT", "AllocationAdjustmentRequest", saved.getId(),
-                "approved=true,multiSource=true,amount=" + req.getAmount());
+                "approved=true,multiSource=true,sources=" + sourcesStr + ",amount=" + req.getAmount());
         return toAllocationAdjustmentDto(saved);
     }
 
@@ -975,13 +1005,15 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
 
     @Override
     @Transactional(readOnly = true)
-    public List<ExpenseCategorySuggestionDto> suggestExpenseCategories(Long taskId, String amount) {
+    public List<ExpenseCategorySuggestionDto> suggestExpenseCategories(Long taskId, String amount, String username) {
         PreparationTask task = preparationTaskRepository.findById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
         requirePreparationEnabledForTask(task);
         if (!task.isFinancial()) {
             throw new BadRequestException("Task is not financial");
         }
+        Student me = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
         BigDecimal target = amount == null || amount.isBlank() ? null : parsePositiveAmount(amount, "amount");
 
         List<TaskAllocation> allocations = taskAllocationRepository.findByTaskIdOrderByCreatedAtAsc(taskId);
@@ -997,22 +1029,25 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                     }
                     BigDecimal allocated = zeroIfNull(a.getAmount());
                     BigDecimal approved = expenseRepository.sumApprovedAmountByTaskIdAndCategoryId(taskId, c.getId());
-                    BigDecimal holding = fundAdvanceRepository.sumHoldingByTaskIdAndCategoryId(taskId, c.getId());
-                    BigDecimal allocationRemaining = allocated.subtract(zeroIfNull(approved)).subtract(zeroIfNull(holding));
+                    BigDecimal allocationRemaining = allocated.subtract(zeroIfNull(approved));
                     if (allocationRemaining.compareTo(BigDecimal.ZERO) < 0) {
                         allocationRemaining = BigDecimal.ZERO;
                     }
 
-                    BigDecimal walletRemaining = zeroIfNull(c.getAllocatedAmount()).subtract(zeroIfNull(c.getUsedAmount()));
+                    BigDecimal walletRemaining = zeroIfNull(c.getAllocatedAmount())
+                            .subtract(zeroIfNull(c.getUsedAmount()));
                     if (walletRemaining.compareTo(BigDecimal.ZERO) < 0) {
                         walletRemaining = BigDecimal.ZERO;
                     }
-                    BigDecimal max = allocationRemaining.min(walletRemaining);
+                    BigDecimal myHolding = fundAdvanceRepository
+                            .sumHoldingRemainingByTaskIdAndStudentIdAndCategoryOrNull(taskId, me.getId(), c.getId());
+                    BigDecimal max = allocationRemaining.min(walletRemaining).min(zeroIfNull(myHolding));
                     return new ExpenseCategorySuggestionDto(
                             c.getId(),
                             c.getName(),
                             allocationRemaining,
                             walletRemaining,
+                            zeroIfNull(myHolding),
                             max);
                 })
                 .filter(v -> v != null)
@@ -1046,7 +1081,8 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             }
             advances = fundAdvanceRepository.findByStudentIdAndTaskIdOrderByCreatedAtDesc(me.getId(), taskId);
         } else {
-            advances = fundAdvanceRepository.findByStudentIdAndTaskActivityIdOrderByCreatedAtDesc(me.getId(), activityId);
+            advances = fundAdvanceRepository.findByStudentIdAndTaskActivityIdOrderByCreatedAtDesc(me.getId(),
+                    activityId);
         }
 
         return advances.stream().map(this::toFundAdvanceDto).toList();

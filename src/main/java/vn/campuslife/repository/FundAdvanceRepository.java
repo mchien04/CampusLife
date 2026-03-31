@@ -29,6 +29,8 @@ public interface FundAdvanceRepository extends JpaRepository<FundAdvance, Long> 
 
     java.util.List<FundAdvance> findByTaskActivityIdAndStatusOrderByCreatedAtDesc(Long activityId, FundAdvanceStatus status);
 
+    java.util.List<FundAdvance> findByTaskActivityIdOrderByCreatedAtDesc(Long activityId);
+
     @Query("""
             select fa.student.id as studentId, coalesce(sum(fa.remainingAmount), 0) as holdingAmount
             from FundAdvance fa
@@ -54,6 +56,19 @@ public interface FundAdvanceRepository extends JpaRepository<FundAdvance, Long> 
               and fa.status = 'HOLDING'
             """)
     BigDecimal sumHoldingByTaskIdAndCategoryId(@Param("taskId") Long taskId, @Param("categoryId") Long categoryId);
+
+    @Query("""
+            select coalesce(sum(fa.remainingAmount), 0)
+            from FundAdvance fa
+            where fa.task.id = :taskId
+              and fa.student.id = :studentId
+              and fa.status = 'HOLDING'
+              and (fa.category is null or fa.category.id = :categoryId)
+            """)
+    BigDecimal sumHoldingRemainingByTaskIdAndStudentIdAndCategoryOrNull(
+            @Param("taskId") Long taskId,
+            @Param("studentId") Long studentId,
+            @Param("categoryId") Long categoryId);
 
     @Query("""
             select fa.category.id as categoryId, coalesce(sum(fa.remainingAmount), 0) as holdingAmount

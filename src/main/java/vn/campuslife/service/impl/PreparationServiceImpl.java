@@ -403,6 +403,54 @@ public class PreparationServiceImpl implements PreparationService {
 
     @Override
     @Transactional
+    public BulkAddOrganizersResultDto addOrganizers(Long activityId, List<Long> studentIds) {
+        Activity activity = getActiveActivity(activityId);
+        if (studentIds == null || studentIds.isEmpty()) {
+            return new BulkAddOrganizersResultDto(List.of(), List.of());
+        }
+        List<Long> unique = studentIds.stream().filter(v -> v != null).distinct().toList();
+        if (unique.isEmpty()) {
+            return new BulkAddOrganizersResultDto(List.of(), List.of());
+        }
+
+        List<Student> students = studentRepository.findAllById(unique).stream()
+                .filter(s -> s != null && !s.isDeleted())
+                .toList();
+        if (students.size() != unique.size()) {
+            throw new ResourceNotFoundException("Some students not found");
+        }
+
+        List<OrganizerDto> added = new java.util.ArrayList<>();
+        List<Long> skipped = new java.util.ArrayList<>();
+        for (Student student : students) {
+            Long sid = student.getId();
+            if (activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, sid)) {
+                skipped.add(sid);
+                continue;
+            }
+            ActivityOrganizer organizer = new ActivityOrganizer();
+            organizer.setActivity(activity);
+            organizer.setStudent(student);
+            activityOrganizerRepository.save(organizer);
+            added.add(new OrganizerDto(student.getId(), student.getFullName()));
+
+            if (student.getUser() != null) {
+                String title = "Bạn đã được thêm vào BTC";
+                String content = "Hoạt động: " + activity.getName();
+                Map<String, Object> metadata = Map.of(
+                        "activityId", activity.getId(),
+                        "role", "ORGANIZER");
+                notificationService.sendNotification(student.getUser().getId(), title, content,
+                        NotificationType.GENERAL,
+                        null, metadata);
+            }
+        }
+
+        return new BulkAddOrganizersResultDto(added, skipped);
+    }
+
+    @Override
+    @Transactional
     public void removeOrganizer(Long activityId, Long studentId) {
         long deleted = activityOrganizerRepository.deleteByActivityIdAndStudentId(activityId, studentId);
         if (deleted == 0) {
