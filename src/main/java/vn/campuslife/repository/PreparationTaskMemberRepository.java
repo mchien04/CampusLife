@@ -42,6 +42,16 @@ public interface PreparationTaskMemberRepository extends JpaRepository<Preparati
             """)
     List<StudentTaskCountView> countTasksByStudentInActivity(@Param("activityId") Long activityId);
 
+    @Query("""
+            select m
+            from PreparationTaskMember m
+            join fetch m.task t
+            join fetch m.student s
+            where t.activity.id = :activityId
+            order by (case when t.deadline is null then 1 else 0 end), t.deadline asc, t.id asc, m.role asc, m.id asc
+            """)
+    List<PreparationTaskMember> findByActivityIdWithTaskAndStudent(@Param("activityId") Long activityId);
+
     interface StudentTaskCountView {
         Long getStudentId();
         Long getTaskCount();

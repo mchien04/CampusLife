@@ -468,6 +468,8 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setStartDate(a.getStartDate());
         dto.setEndDate(a.getEndDate());
 
+        dto.setHasPreparation(a.isHasPreparation());
+
         dto.setRequiresSubmission(a.isRequiresSubmission());
         dto.setMaxPoints(a.getMaxPoints());
 

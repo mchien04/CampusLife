@@ -172,8 +172,10 @@ public class PreparationFinanceController {
     @PreAuthorize("@preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> suggestExpenseCategories(
             @PathVariable Long taskId,
-            @RequestParam(required = false) String amount) {
-        List<ExpenseCategorySuggestionDto> dtos = financeService.suggestExpenseCategories(taskId, amount);
+            @RequestParam(required = false) String amount,
+            Authentication authentication) {
+        List<ExpenseCategorySuggestionDto> dtos = financeService.suggestExpenseCategories(taskId, amount,
+                authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 

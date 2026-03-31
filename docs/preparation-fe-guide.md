@@ -217,6 +217,7 @@ export type ExpenseCategorySuggestionDto = {
   categoryName: string | null;
   allocationRemainingAmount: string;
   walletRemainingAmount: string;
+  myFundAdvanceRemainingAmount: string;
   maxExpenseAmount: string;
 };
 
@@ -370,6 +371,9 @@ export type TogglePreparationRequest = { enabled: boolean };
 - `GET /api/preparation/activities/{activityId}/workload-warnings`
 - `GET /api/preparation/activities/{activityId}/reports/finance-overview`
 - `GET /api/preparation/activities/{activityId}/reports/cash-flow`
+- `GET /api/preparation/activities/{activityId}/exports/financial?format=xlsx|pdf`
+- `GET /api/preparation/activities/{activityId}/exports/operational?format=xlsx|pdf`
+- `GET /api/preparation/activities/{activityId}/exports/audit?format=xlsx|pdf`
 
 ### 5.2. MEMBER
 - Upload hóa đơn:
@@ -412,6 +416,7 @@ export type TogglePreparationRequest = { enabled: boolean };
 - Upsert activity budget + categories:
   - `PUT /api/preparation/activities/{activityId}/budget`
 - Quản lý organizer:
+  - `POST /api/preparation/activities/{activityId}/organizers` (body: `{ studentIds: number[] }`)
   - `POST /api/preparation/activities/{activityId}/organizers/{studentId}`
   - `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}`
 - Tạo task:

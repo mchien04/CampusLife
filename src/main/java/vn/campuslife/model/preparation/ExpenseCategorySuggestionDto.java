@@ -14,6 +14,6 @@ public class ExpenseCategorySuggestionDto {
     private String categoryName;
     private BigDecimal allocationRemainingAmount;
     private BigDecimal walletRemainingAmount;
+    private BigDecimal myFundAdvanceRemainingAmount;
     private BigDecimal maxExpenseAmount;
 }
-

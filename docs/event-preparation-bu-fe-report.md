@@ -70,6 +70,7 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 |---|---|---|---|
 | Toggle preparation | `PUT /api/preparation/activities/{activityId}/toggle?enabled=true\|false` | Response: wrapper body null | Bật/tắt toàn module |
 | Xem organizers | `GET /api/preparation/activities/{activityId}/organizers` | Response: `OrganizerDto[]` | Tab “Organizers” |
+| Add organizers (bulk) | `POST /api/preparation/activities/{activityId}/organizers` | Request: `BulkAddOrganizersRequest` / Response: `BulkAddOrganizersResultDto` | Chọn nhiều người, add 1 lần |
 | Add organizer | `POST /api/preparation/activities/{activityId}/organizers/{studentId}` | Response: wrapper body null | |
 | Remove organizer | `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}` | Response: wrapper body null | |
 | Tạo task | `POST /api/preparation/activities/{activityId}/tasks` | Request: `CreatePreparationTaskRequest` / Response: `PreparationTaskDto` | Owner được set leader mặc định |
@@ -93,6 +94,9 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Workload warnings | `GET /api/preparation/activities/{activityId}/workload-warnings` | Response: `WorkloadWarningDto[]` | OVERLOADED/UNASSIGNED |
 | Report finance overview | `GET /api/preparation/activities/{activityId}/reports/finance-overview` | Response: `FinanceOverviewReportDto` | Budget vs Actual + wallets + tasks |
 | Report cash flow | `GET /api/preparation/activities/{activityId}/reports/cash-flow` | Response: `CashFlowReportDto` | cash in/out + pending invoices summary |
+| Export Financial (Excel/PDF) | `GET /api/preparation/activities/{activityId}/exports/financial?format=xlsx\|pdf` | Response: file | Budget vs Actual + Cash Flow + Debts |
+| Export Operational (Excel/PDF) | `GET /api/preparation/activities/{activityId}/exports/operational?format=xlsx\|pdf` | Response: file | Tasks + Workload + Evidence |
+| Export Audit (Excel/PDF) | `GET /api/preparation/activities/{activityId}/exports/audit?format=xlsx\|pdf` | Response: file | Audit logs + Reserve transfers |
 
 ### 2.1. Common (Organizer/Leader/Member)
 **Màn hình Activity → Preparation Dashboard**
@@ -148,6 +152,7 @@ Trong Task:
 - Mục đích: xác định BTC/Organizer để phân quyền cho toàn bộ nghiệp vụ.
 - API:
   - `GET /api/preparation/activities/{activityId}/organizers`
+  - `POST /api/preparation/activities/{activityId}/organizers` (bulk)
   - `POST /api/preparation/activities/{activityId}/organizers/{studentId}`
   - `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}`
 - DTO:
