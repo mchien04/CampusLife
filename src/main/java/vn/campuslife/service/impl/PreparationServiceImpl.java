@@ -15,9 +15,9 @@ import vn.campuslife.model.preparation.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationService;
-
-import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.math.BigDecimal;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -67,8 +67,10 @@ public class PreparationServiceImpl implements PreparationService {
         if (!activity.isHasPreparation()) {
             throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
         }
+
         Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+
         if (!activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, student.getId())) {
             throw new ForbiddenException("Organizer permission required");
         }
@@ -83,9 +85,9 @@ public class PreparationServiceImpl implements PreparationService {
                         PreparationTaskMember::getRole,
                         (a, b) -> a));
 
-        List<PreparationTask> ownerTasks = preparationTaskRepository.findByActivityIdAndOwnerIdOrderByDeadlineAscIdAsc(
-                activityId,
-                student.getId());
+        List<PreparationTask> ownerTasks = preparationTaskRepository
+                .findByActivityIdAndOwnerIdOrderByDeadlineAscIdAsc(activityId, student.getId());
+
         for (PreparationTask t : ownerTasks) {
             if (t != null && t.getId() != null) {
                 roleByTaskId.putIfAbsent(t.getId(), PreparationTaskMemberRole.LEADER);
@@ -93,11 +95,13 @@ public class PreparationServiceImpl implements PreparationService {
         }
 
         java.util.Map<Long, PreparationTask> taskById = new java.util.HashMap<>();
+
         for (PreparationTaskMember m : memberships) {
             if (m.getTask() != null && m.getTask().getId() != null) {
                 taskById.put(m.getTask().getId(), m.getTask());
             }
         }
+
         for (PreparationTask t : ownerTasks) {
             if (t != null && t.getId() != null) {
                 taskById.putIfAbsent(t.getId(), t);
@@ -105,13 +109,17 @@ public class PreparationServiceImpl implements PreparationService {
         }
 
         return taskById.values().stream()
-                .sorted(java.util.Comparator.comparing(PreparationTask::getDeadline,
+                .sorted(java.util.Comparator.comparing(
+                        PreparationTask::getDeadline,
                         java.util.Comparator.nullsLast(java.time.LocalDateTime::compareTo))
                         .thenComparing(PreparationTask::getId))
                 .map(t -> {
                     PreparationTaskDto dto = toTaskDto(t);
-                    PreparationTaskMemberRole role = roleByTaskId.getOrDefault(t.getId(),
-                            PreparationTaskMemberRole.MEMBER);
+                    PreparationTaskMemberRole role = roleByTaskId.getOrDefault(
+                            t.getId(),
+                            PreparationTaskMemberRole.MEMBER
+                    );
+
                     return new MyPreparationTaskDto(
                             dto.getId(),
                             dto.getActivityId(),
@@ -123,11 +131,11 @@ public class PreparationServiceImpl implements PreparationService {
                             dto.getAllocatedAmount(),
                             Boolean.TRUE.equals(dto.getIsFinancial()),
                             dto.getStatus(),
-                            role);
+                            role
+                    );
                 })
                 .toList();
     }
-
     @Override
     @Transactional(readOnly = true)
     public PreparationDashboardDto getPreparationDashboard(Long activityId) {
