@@ -74,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/upload/**").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .requestMatchers("/api/departments/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/articles/**").permitAll()
 
                         // Check-in endpoints - place early to avoid pattern conflicts
                         .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").authenticated()
@@ -86,6 +87,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/departments/**").hasAnyRole("ADMIN", "MANAGER")
                         // Users Management - Admin and Manager can access
                         .requestMatchers("/api/admin/users/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/admin/articles/**").hasAnyRole("ADMIN", "MANAGER")
                         // Student Account Management - Admin only
                         .requestMatchers("/api/admin/students/**").hasRole("ADMIN")
                         // Admin-only endpoints (general rule - must be last)
