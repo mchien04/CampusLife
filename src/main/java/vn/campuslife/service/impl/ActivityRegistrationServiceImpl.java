@@ -93,12 +93,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             // 7) Kiểm tra số lượng vé (nếu giới hạn theo APPROVED)
-            if (activity.getTicketQuantity() != null) {
-                Long current = registrationRepository
-                        .countByActivityIdAndStatus(request.getActivityId(), RegistrationStatus.APPROVED);
-                if (current >= activity.getTicketQuantity()) {
-                    return new Response(false, "Activity is full", null);
-                }
+            if (!hasRemainingSlots(activity.getId(), activity.getTicketQuantity())) {
+                return new Response(false, "Activity is full", null);
             }
 
             // 8) Tạo đăng ký + MÃ VÉ
@@ -269,6 +265,12 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             ActivityRegistration registration = registrationOpt.get();
             RegistrationStatus newStatus = RegistrationStatus.valueOf(status.toUpperCase());
+            if (newStatus == RegistrationStatus.APPROVED
+                    && registration.getStatus() != RegistrationStatus.APPROVED
+                    && !hasRemainingSlots(registration.getActivity().getId(), registration.getActivity().getTicketQuantity())) {
+                return new Response(false, "Activity is full. Cannot approve more registrations.", null);
+            }
+
             registration.setStatus(newStatus);
             ActivityRegistration savedRegistration = registrationRepository.save(registration);
 
@@ -1335,6 +1337,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         return new Response(true,
                 "Student registrations retrieved successfully",
                 responses);
+    }
+
+    private boolean hasRemainingSlots(Long activityId, Integer ticketQuantity) {
+        if (ticketQuantity == null) {
+            return true;
+        }
+        Long approvedCount = registrationRepository.countByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
+        return approvedCount < ticketQuantity;
     }
 
 }
