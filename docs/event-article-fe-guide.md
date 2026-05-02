@@ -36,7 +36,8 @@ Module EventArticle cung cấp trang bài viết quảng bá (dạng blog/landin
       "published": true,
       "publishedAt": "2026-04-17T10:30:00",
       "registrationStatus": "OPEN",
-      "registrationLink": "/activities/123"
+      "registrationLink": "/activities/123",
+      "viewCount": 150
     }
   }
   ```
@@ -79,7 +80,8 @@ Field: `registrationStatus` (enum)
 
 - `UPCOMING`: disable nút, label gợi ý: "Sắp mở đăng ký"
 - `OPEN`: enable nút, label: "Đăng ký ngay"
-- `FULL`: disable nút, label: "Hết chỗ"
+- `WAITLIST`: enable nút, label: "Đăng ký danh sách chờ" (Gọi API `/waitlist`)
+- `FULL`: disable nút, label: "Hết chỗ" (Chỉ dùng khi không hỗ trợ waitlist)
 - `CLOSED`: disable nút, label: "Đã đóng đăng ký"
 
 Field: `registrationLink` (string)
@@ -130,9 +132,40 @@ export async function getArticleBySlug(slug: string) {
 }
 ```
 
+### 5. API Bổ sung (Sinh viên)
+
+#### A. Đăng ký danh sách chờ (Waitlist)
+- **Method:** POST
+- **Path:** `/api/articles/{slug}/waitlist`
+- **Auth:** Required
+- **Logic:** Gọi khi `registrationStatus == WAITLIST`. Trả về success nếu vào hàng chờ thành công.
+
+#### B. Thêm vào lịch (Add to Calendar)
+- **Method:** GET
+- **Path:** `/api/articles/{slug}/calendar`
+- **Response:** File `.ics` định dạng iCalendar.
+- **FE:** Dùng `<a href="...">` hoặc `window.open` để tải file.
+
+#### C. Gợi ý sự kiện liên quan (Related)
+- **Method:** GET
+- **Path:** `/api/articles/{slug}/related?limit=3`
+- **Response:** Danh sách các bài viết cùng loại sự kiện.
+
+#### D. Tracking lượt xem (Analytics)
+- **Method:** POST
+- **Path:** `/api/articles/{slug}/track-view`
+- **Logic:** Nên gọi 1 lần khi student vào trang bài viết.
+
+#### E. Lịch cá nhân (Personal Calendar)
+- **Method:** GET
+- **Path:** `/api/registrations/personal-calendar`
+- **Auth:** Required
+- **Response:** Danh sách các ngày có sự kiện student đã tham gia/đăng ký (APPROVED/ATTENDED).
+- **FE:** Dùng để đánh dấu dấu chấm hoặc icon trên component Calendar của sinh viên.
+
 ---
 
-## Admin/Manager APIs (CMS)
+## 2) Admin/Manager CMS (Authenticated)
 
 ## 1. Mô tả nghiệp vụ
 

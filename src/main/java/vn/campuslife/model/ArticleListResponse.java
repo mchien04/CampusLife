@@ -10,25 +10,21 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class EventArticleAdminResponse {
+public class ArticleListResponse {
     private Long id;
-    private Long activityId;
     private String title;
     private String slug;
     private String thumbnailUrl;
-    private String content;
-    private String seoTitle;
     private String seoDescription;
-    private boolean published;
+    private String registrationStatus;
+    private String registrationLink;
+    private boolean isPublished;
+    private boolean isFeatured;
+    private boolean isPinned;
     private LocalDateTime publishedAt;
     private Long viewCount;
     private Long wishlistCount;
-    private boolean featured;
-    private boolean pinned;
-    private int priority;
-    private Long categoryId;
     private String categoryName;
-    private List<String> tagNames;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    private List<String> tags;
+    private List<ArticleImageResponse> images;
 }
