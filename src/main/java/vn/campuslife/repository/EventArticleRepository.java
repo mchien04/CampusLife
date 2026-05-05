@@ -24,7 +24,8 @@ public interface EventArticleRepository extends JpaRepository<EventArticle, Long
     @Query(value = "SELECT ea FROM EventArticle ea WHERE ea.isPublished = true ORDER BY ea.isPinned DESC, ea.priority DESC, ea.publishedAt DESC", countQuery = "SELECT COUNT(ea) FROM EventArticle ea WHERE ea.isPublished = true")
     Page<EventArticle> findAllPublishedOrderByPinnedAndPriority(Pageable pageable);
 
-    @Query(value = "SELECT ea FROM EventArticle ea ORDER BY ea.isPinned DESC, ea.priority DESC, ea.publishedAt DESC, ea.updatedAt DESC", countQuery = "SELECT COUNT(ea) FROM EventArticle ea")
+    @Query(value = "SELECT ea FROM EventArticle ea ORDER BY ea.isPinned DESC, ea.priority DESC, ea.publishedAt DESC, ea.updatedAt DESC",
+            countQuery = "SELECT COUNT(ea) FROM EventArticle ea")
     Page<EventArticle> findAllOrderByPinnedAndPriority(Pageable pageable);
 
     @Query("SELECT ea FROM EventArticle ea WHERE ea.isPublished = true AND ea.isFeatured = true ORDER BY ea.publishedAt DESC")
