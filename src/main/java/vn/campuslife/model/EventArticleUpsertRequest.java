@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -15,5 +17,9 @@ public class EventArticleUpsertRequest {
     private String content;
     private String seoTitle;
     private String seoDescription;
+    private Long categoryId;
+    private List<Long> tagIds;
+    private boolean isFeatured;
+    private boolean isPinned;
+    private int priority;
 }
-

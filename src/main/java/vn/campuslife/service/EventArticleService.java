@@ -1,21 +1,79 @@
 package vn.campuslife.service;
 
-import vn.campuslife.model.EventArticleAdminResponse;
-import vn.campuslife.model.EventArticleDetailResponse;
-import vn.campuslife.model.EventArticleUpsertRequest;
+import org.springframework.data.domain.Page;
+import vn.campuslife.model.*;
+
+import java.util.List;
 
 public interface EventArticleService {
-    EventArticleDetailResponse getPublishedArticleBySlug(String slug);
+    // Student Public APIs
+    vn.campuslife.model.ArticleListResponse getPublishedArticleBySlug(String slug);
 
-    EventArticleAdminResponse createArticle(EventArticleUpsertRequest request);
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getAllPublishedArticles(int page, int size);
 
-    EventArticleAdminResponse updateArticle(Long articleId, EventArticleUpsertRequest request);
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getAllArticlesForAdmin(int page, int size);
 
-    EventArticleAdminResponse publishArticle(Long articleId);
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getPublishedArticlesByCategory(String categorySlug, int page, int size);
 
-    EventArticleAdminResponse unpublishArticle(Long articleId);
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> searchPublishedArticles(String keyword, int page, int size);
 
-    EventArticleAdminResponse getArticleById(Long articleId);
+    List<vn.campuslife.model.ArticleListResponse> getFeaturedArticles();
 
-    EventArticleAdminResponse getArticleByActivityId(Long activityId);
+    vn.campuslife.model.ArticleDetailResponse getArticleDetailBySlug(String slug, Long studentId);
+
+    List<vn.campuslife.model.ArticleListResponse> getRelatedArticles(String slug, int limit);
+
+    // Wishlist APIs
+    vn.campuslife.model.Response addToWishlist(String slug, String username);
+
+    vn.campuslife.model.Response removeFromWishlist(String slug, String username);
+
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleWishlistItemResponse> getStudentWishlist(String username, int page, int size);
+
+    boolean isInWishlist(String slug, String username);
+
+    // Admin/Manager CRUD
+    vn.campuslife.model.EventArticleAdminResponse createArticle(vn.campuslife.model.EventArticleUpsertRequest request);
+
+    vn.campuslife.model.EventArticleAdminResponse updateArticle(Long articleId, vn.campuslife.model.EventArticleUpsertRequest request);
+
+    vn.campuslife.model.EventArticleAdminResponse publishArticle(Long articleId);
+
+    vn.campuslife.model.EventArticleAdminResponse unpublishArticle(Long articleId);
+
+    vn.campuslife.model.EventArticleAdminResponse getArticleById(Long articleId);
+
+    vn.campuslife.model.EventArticleAdminResponse getArticleByActivityId(Long activityId);
+
+    // Admin Statistics Dashboard
+    vn.campuslife.model.ArticleStatisticsResponse getArticleStatistics();
+
+    // Category Management
+    List<vn.campuslife.model.ArticleCategoryResponse> getAllCategories();
+
+    vn.campuslife.model.ArticleCategoryResponse createCategory(vn.campuslife.model.ArticleCategoryRequest request);
+
+    vn.campuslife.model.ArticleCategoryResponse updateCategory(Long categoryId, vn.campuslife.model.ArticleCategoryRequest request);
+
+    void deleteCategory(Long categoryId);
+
+    // Tag Management
+    List<vn.campuslife.model.ArticleTagResponse> getAllTags();
+
+    vn.campuslife.model.ArticleTagResponse createTag(vn.campuslife.model.ArticleTagRequest request);
+
+    void deleteTag(Long tagId);
+
+    // Image Management
+    vn.campuslife.model.ArticleImageResponse addImageToArticle(Long articleId, vn.campuslife.model.ArticleImageRequest request);
+
+    void removeImageFromArticle(Long articleId, Long imageId);
+
+    // Waitlist & Calendar
+    vn.campuslife.model.Response registerForWaitlist(String slug, String username);
+
+    byte[] generateIcsFile(String slug);
+
+    // Analytics
+    void trackView(String slug);
 }

@@ -283,6 +283,16 @@ public class ActivityRegistrationController {
         }
     }
 
+    @GetMapping("/personal-calendar")
+    public ResponseEntity<Response> getStudentJoinedEventDates(Authentication authentication) {
+        Long studentId = getStudentIdFromAuth(authentication);
+        if (studentId == null) {
+            return ResponseEntity.badRequest().body(new Response(false, "Student not found", null));
+        }
+        Response response = registrationService.getStudentJoinedEventDates(studentId);
+        return ResponseEntity.ok(response);
+    }
+
     // Lấy báo cáo tham gia / chưa tham gia
     @GetMapping("/activities/{activityId}/report")
     public ResponseEntity<Response> getReport(

@@ -49,14 +49,25 @@ public interface ActivityRegistrationService {
     Response checkRegistrationStatus(Long activityId, Long studentId);
 
     /**
+     * Lấy danh sách ngày có sự kiện đã tham gia/đăng ký của sinh viên
+     */
+    Response getStudentJoinedEventDates(Long studentId);
+
+    /**
+     * Đăng ký vào danh sách chờ
+     */
+    Response registerForWaitlist(Long activityId, Long studentId);
+
+    /**
      * Check-in tham gia sự kiện qua ticketCode
      */
     Response checkIn(ActivityParticipationRequest request);
 
     /**
      * Check-in bằng QR code (tự động set thành ATTENDED)
+     * 
      * @param checkInCode Mã QR code từ activity
-     * @param studentId ID của sinh viên (từ authentication)
+     * @param studentId   ID của sinh viên (từ authentication)
      * @return Response với thông tin participation
      */
     Response checkInByQrCode(String checkInCode, Long studentId);
@@ -77,7 +88,8 @@ public interface ActivityRegistrationService {
     Response validateTicketCode(String ticketCode);
 
     /**
-     * Backfill: Tạo participation cho tất cả registration đã APPROVED nhưng chưa có participation
+     * Backfill: Tạo participation cho tất cả registration đã APPROVED nhưng chưa có
+     * participation
      */
     Response backfillMissingParticipations();
 
@@ -85,10 +97,12 @@ public interface ActivityRegistrationService {
      * Lấy danh sách participations theo activityId
      */
     Response getActivityParticipations(Long activityId);
+
     /**
      * Lấy danh sách Đăng ký của sinh theo status
      */
     Response getStudentRegistrationsStatus(Long studentId, RegistrationStatus status);
+
     /**
      * Tìm kiếm
      */

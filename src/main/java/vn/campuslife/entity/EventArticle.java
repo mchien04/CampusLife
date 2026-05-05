@@ -1,16 +1,6 @@
 package vn.campuslife.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -19,6 +9,8 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "event_articles")
@@ -55,6 +47,36 @@ public class EventArticle {
     private boolean isPublished = false;
 
     private LocalDateTime publishedAt;
+
+    @Column(nullable = false)
+    private Long viewCount = 0L;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private ArticleCategory category;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "article_article_tags",
+        joinColumns = @JoinColumn(name = "article_id"),
+        inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    private Set<ArticleTag> tags = new HashSet<>();
+
+    @OneToMany(mappedBy = "article", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<ArticleImage> images = new HashSet<>();
+
+    @Column(nullable = false)
+    private boolean isFeatured = false;
+
+    @Column(nullable = false)
+    private boolean isPinned = false;
+
+    @Column(nullable = false)
+    private int priority = 0;
+
+    @Column(nullable = false)
+    private Long wishlistCount = 0L;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "activity_id", nullable = false, unique = true)

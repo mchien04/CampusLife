@@ -267,7 +267,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             RegistrationStatus newStatus = RegistrationStatus.valueOf(status.toUpperCase());
             if (newStatus == RegistrationStatus.APPROVED
                     && registration.getStatus() != RegistrationStatus.APPROVED
-                    && !hasRemainingSlots(registration.getActivity().getId(), registration.getActivity().getTicketQuantity())) {
+                    && !hasRemainingSlots(registration.getActivity().getId(),
+                            registration.getActivity().getTicketQuantity())) {
                 return new Response(false, "Activity is full. Cannot approve more registrations.", null);
             }
 
@@ -538,16 +539,18 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             // 5. Logic check-in/check-out
             LocalDateTime now = LocalDateTime.now();
             boolean isFirstTime = participation.getCheckInTime() == null;
-            
+
             if (isFirstTime) {
-                // Lần đầu quét QR: Set cả checkInTime VÀ checkOutTime (check-in và check-out cùng lúc)
+                // Lần đầu quét QR: Set cả checkInTime VÀ checkOutTime (check-in và check-out
+                // cùng lúc)
                 participation.setCheckInTime(now);
                 participation.setCheckOutTime(now);
                 participation.setParticipationType(ParticipationType.ATTENDED);
                 participation.setDate(now);
                 registration.setStatus(RegistrationStatus.ATTENDED);
                 registrationRepository.save(registration);
-                logger.info("Student {} checked in and out to activity {} via QR code (first time)", studentId, activity.getId());
+                logger.info("Student {} checked in and out to activity {} via QR code (first time)", studentId,
+                        activity.getId());
             } else {
                 // Đã có checkInTime: Chỉ set checkOutTime (check-out)
                 if (participation.getCheckOutTime() != null) {
@@ -562,7 +565,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             // 7. Xử lý điểm (chỉ khi check-out, không phải check-in)
             // Với logic mới: cả lần đầu và lần sau đều là check-out nên đều xử lý điểm
-            // CTXH: Cả sinh viên quét QR code và admin/manager quét ticketCode đều được cộng điểm
+            // CTXH: Cả sinh viên quét QR code và admin/manager quét ticketCode đều được
+            // cộng điểm
             if (!activity.isRequiresSubmission()) {
                 participation.setIsCompleted(true);
                 participation.setParticipationType(ParticipationType.COMPLETED);
@@ -618,7 +622,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                         logger.info("Auto-completed participation for activity {} via QR code. Points: {}",
                                 activity.getName(), points);
                     } catch (Exception e) {
-                        logger.error("Failed to update student score after QR code check-in for activity {}: {}", 
+                        logger.error("Failed to update student score after QR code check-in for activity {}: {}",
                                 activity.getId(), e.getMessage(), e);
                         // Không throw để không làm gián đoạn check-in, nhưng log đầy đủ
                     }
@@ -679,7 +683,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.setParticipationType(ParticipationType.COMPLETED);
                 participationRepository.save(participation);
 
-                logger.info("Completed grading for submission-based activity {}. Points were already added via submission.",
+                logger.info(
+                        "Completed grading for submission-based activity {}. Points were already added via submission.",
                         activity.getName());
 
                 return Response.success("Đã chấm điểm completion (điểm đã được tính từ bài nộp)", participation);
@@ -863,7 +868,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             StudentScore score = scoreOpt.get();
 
             // Tính lại tổng điểm từ tất cả ActivityParticipation của sinh viên này
-            // Query tất cả participation có COMPLETED status và cùng scoreType trong cùng semester
+            // Query tất cả participation có COMPLETED status và cùng scoreType trong cùng
+            // semester
             // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
             List<ActivityParticipation> allParticipations = participationRepository
                     .findAll()
@@ -929,15 +935,18 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 history.setActivityId(activity.getId());
                 scoreHistoryRepository.save(history);
 
-                logger.info("Updated {} score from participation: {} -> {} for student {} (activity: {}, participation: {}, milestone: {})",
-                        activity.getScoreType(), oldScore, total, student.getId(), activity.getId(), participation.getId(), milestonePoints);
+                logger.info(
+                        "Updated {} score from participation: {} -> {} for student {} (activity: {}, participation: {}, milestone: {})",
+                        activity.getScoreType(), oldScore, total, student.getId(), activity.getId(),
+                        participation.getId(), milestonePoints);
             } else {
-                logger.debug("Score unchanged for student {} activity {}: {}", 
+                logger.debug("Score unchanged for student {} activity {}: {}",
                         student.getId(), activity.getId(), total);
             }
 
         } catch (Exception e) {
-            logger.error("Failed to update student score from participation (student: {}, activity: {}, participation: {}): {}", 
+            logger.error(
+                    "Failed to update student score from participation (student: {}, activity: {}, participation: {}): {}",
                     participation.getRegistration().getStudent().getId(),
                     participation.getRegistration().getActivity().getId(),
                     participation.getId(),
@@ -1323,12 +1332,12 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return new Response(false, "Failed to retrieve registrations due to server error", null);
         }
     }
+
     /**
      * Tìm kiếm
      */
     public Response search(String keyword, RegistrationStatus status) {
-        List<ActivityRegistration> registrations =
-                registrationRepository.search(keyword, status);
+        List<ActivityRegistration> registrations = registrationRepository.search(keyword, status);
 
         List<ActivityRegistrationResponse> responses = registrations.stream()
                 .map(this::toRegistrationResponse)
@@ -1337,6 +1346,86 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         return new Response(true,
                 "Student registrations retrieved successfully",
                 responses);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getStudentJoinedEventDates(Long studentId) {
+        try {
+            List<ActivityRegistration> registrations = registrationRepository
+                    .findByStudentIdAndStudentIsDeletedFalse(studentId);
+            List<Map<String, Object>> dates = registrations.stream()
+                    .filter(r -> r.getStatus() == RegistrationStatus.APPROVED
+                            || r.getStatus() == RegistrationStatus.ATTENDED)
+                    .map(r -> {
+                        Activity a = r.getActivity();
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("activityId", a.getId());
+                        map.put("title", a.getName());
+                        map.put("startTime", a.getStartDate());
+                        map.put("endTime", a.getEndDate());
+                        map.put("location", a.getLocation());
+                        return map;
+                    })
+                    .collect(Collectors.toList());
+            return new Response(true, "Event dates retrieved", dates);
+        } catch (Exception e) {
+            logger.error("Error retrieving student event dates: ", e);
+            return new Response(false, "Error retrieving event dates", null);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response registerForWaitlist(Long activityId, Long studentId) {
+        try {
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+            Activity activity = activityOpt.get();
+
+            if (activity.isDraft()) {
+                return new Response(false, "Activity is not published yet", null);
+            }
+
+            Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
+            if (studentOpt.isEmpty()) {
+                return new Response(false, "Student not found", null);
+            }
+            Student student = studentOpt.get();
+
+            if (registrationRepository.existsByActivityIdAndStudentId(activityId, studentId)) {
+                return new Response(false, "Already registered or in waitlist for this activity", null);
+            }
+
+            if (activity.getRegistrationDeadline() != null &&
+                    LocalDateTime.now().isAfter(activity.getRegistrationDeadline())) {
+                return new Response(false, "Registration deadline has passed", null);
+            }
+
+            // Only allow waitlist if the activity is actually full
+            if (hasRemainingSlots(activity.getId(), activity.getTicketQuantity())) {
+                return new Response(false, "Activity still has slots. Please register normally.", null);
+            }
+
+            ActivityRegistration registration = new ActivityRegistration();
+            registration.setActivity(activity);
+            registration.setStudent(student);
+            registration.setRegisteredDate(LocalDateTime.now());
+            registration.setStatus(RegistrationStatus.WAITLIST);
+            registration.setTicketCode(TicketCodeUtils.newTicketCode());
+
+            registrationRepository.save(registration);
+
+            // Notify admin/manager about new waitlist entry if needed,
+            // but usually waitlist is just for tracking.
+
+            return new Response(true, "Successfully joined the waitlist", null);
+        } catch (Exception e) {
+            logger.error("Error joining waitlist: ", e);
+            return new Response(false, "An error occurred while joining waitlist", null);
+        }
     }
 
     private boolean hasRemainingSlots(Long activityId, Integer ticketQuantity) {
