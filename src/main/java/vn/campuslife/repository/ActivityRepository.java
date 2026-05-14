@@ -3,6 +3,8 @@ package vn.campuslife.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.Activity;
@@ -114,5 +116,26 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
       """)
   List<Activity> findInMonth(@Param("start") LocalDateTime start,
                              @Param("end") LocalDateTime end);
+
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.isDraft = false
+        and a.startDate >= :now
+      order by a.startDate asc
+      """)
+  Page<Activity> findUpcomingPublished(@Param("now") LocalDateTime now, Pageable pageable);
+
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.isDraft = false
+        and a.registrationStartDate is not null
+        and a.registrationDeadline is not null
+        and a.registrationStartDate <= :now
+        and a.registrationDeadline >= :now
+      order by a.registrationDeadline asc
+      """)
+  Page<Activity> findOpenRegistrationPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
 }
