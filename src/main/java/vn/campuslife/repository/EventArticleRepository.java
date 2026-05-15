@@ -17,6 +17,8 @@ public interface EventArticleRepository extends JpaRepository<EventArticle, Long
 
     Optional<EventArticle> findByActivityId(Long activityId);
 
+    Optional<EventArticle> findByActivityIdAndIsPublishedTrue(Long activityId);
+
     boolean existsBySlug(String slug);
 
     boolean existsBySlugAndIdNot(String slug, Long id);
