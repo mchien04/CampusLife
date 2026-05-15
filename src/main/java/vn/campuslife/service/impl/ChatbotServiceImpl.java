@@ -10,11 +10,13 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.ChatbotConversation;
 import vn.campuslife.entity.ChatbotMessage;
+import vn.campuslife.entity.EventArticle;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.ChatbotIntent;
 import vn.campuslife.enumeration.ChatbotPageContext;
 import vn.campuslife.enumeration.ChatbotMessageRole;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.ChatbotActivityOptionResponse;
 import vn.campuslife.model.ChatbotMessageRequest;
 import vn.campuslife.model.ChatbotMessageResponse;
@@ -23,10 +25,12 @@ import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ChatbotConversationRepository;
 import vn.campuslife.repository.ChatbotMessageRepository;
+import vn.campuslife.repository.EventArticleRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.ai.ChatbotNluResult;
 import vn.campuslife.service.ai.ChatbotNluService;
 import vn.campuslife.service.StudentService;
+import vn.campuslife.service.ai.GeminiApiClient;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -51,8 +55,7 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     private static final Set<String> STOP_WORDS = Set.of(
             "su", "kien", "sự", "kiện", "cho", "minh", "mình", "toi", "tôi", "em", "anh", "chi", "chị",
             "ban", "bạn", "la", "là", "ve", "về", "nay", "này", "do", "đó", "duoc", "được", "khong", "không",
-            "co", "có", "can", "cần", "hoi", "hỏi", "thong", "tin", "thông", "voi", "với", "gi", "gì"
-    );
+            "co", "có", "can", "cần", "hoi", "hỏi", "thong", "tin", "thông", "voi", "với", "gi", "gì");
 
     private final ChatbotConversationRepository conversationRepository;
     private final ChatbotMessageRepository messageRepository;
@@ -61,6 +64,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final StudentService studentService;
     private final ChatbotNluService chatbotNluService;
+    private final EventArticleRepository eventArticleRepository;
+    private final GeminiApiClient geminiApiClient;
 
     @Override
     @Transactional
@@ -75,7 +80,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
 
         ChatbotConversation conversation = resolveConversation(user, request.getConversationId());
 
-        Activity contextActivity = resolveContextActivity(conversation, request);
+        EventArticle contextArticle = resolveContextArticle(request);
+        Activity contextActivity = resolveContextActivity(conversation, request, contextArticle);
         if (contextActivity != null && (conversation.getContextActivity() == null
                 || !conversation.getContextActivity().getId().equals(contextActivity.getId()))) {
             conversation.setContextActivity(contextActivity);
@@ -84,9 +90,11 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
 
         messageRepository.save(new ChatbotMessage(null, conversation, ChatbotMessageRole.USER, message, false, null));
 
-        ChatbotMessageResponse response = respond(conversation, username, message, contextActivity, request);
+        ChatbotMessageResponse response = respond(conversation, username, message, contextActivity, contextArticle,
+                request);
 
-        messageRepository.save(new ChatbotMessage(null, conversation, ChatbotMessageRole.ASSISTANT, response.getAnswer(), false, null));
+        messageRepository.save(new ChatbotMessage(null, conversation, ChatbotMessageRole.ASSISTANT,
+                response.getAnswer(), false, null));
 
         response.setConversationId(conversation.getId());
         return response;
@@ -109,10 +117,25 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
                 });
     }
 
-    private Activity resolveContextActivity(ChatbotConversation conversation, ChatbotMessageRequest request) {
+    private EventArticle resolveContextArticle(ChatbotMessageRequest request) {
+        if (request == null || request.getContextArticleSlug() == null || request.getContextArticleSlug().isBlank()) {
+            return null;
+        }
+        return eventArticleRepository.findBySlugAndIsPublishedTrue(request.getContextArticleSlug().trim()).orElse(null);
+    }
+
+    private Activity resolveContextActivity(ChatbotConversation conversation, ChatbotMessageRequest request,
+            EventArticle contextArticle) {
+        if (contextArticle != null && contextArticle.getActivity() != null) {
+            Activity a = contextArticle.getActivity();
+            if (!a.isDeleted() && !a.isDraft()) {
+                return a;
+            }
+        }
         Long contextActivityId = request.getContextActivityId();
         if (contextActivityId == null) {
-            return request.getPageContext() == ChatbotPageContext.ACTIVITY_DETAIL ? conversation.getContextActivity() : null;
+            return request.getPageContext() == ChatbotPageContext.ACTIVITY_DETAIL ? conversation.getContextActivity()
+                    : null;
         }
 
         Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(contextActivityId);
@@ -127,8 +150,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
             String username,
             String message,
             Activity contextActivity,
-            ChatbotMessageRequest request
-    ) {
+            EventArticle contextArticle,
+            ChatbotMessageRequest request) {
         String normalizedMessage = normalize(message);
         List<Activity> lastCandidates = loadLastCandidates(conversation);
         Integer optionIndex = parseOptionIndex(message);
@@ -145,8 +168,7 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
                 message,
                 request.getPageContext(),
                 contextActivity != null,
-                lastCandidates
-        );
+                lastCandidates);
 
         ChatbotIntent intent = nluOpt.map(ChatbotNluResult::intent).orElse(ChatbotIntent.UNKNOWN);
         if (intent == ChatbotIntent.CHOOSE_OPTION && nluOpt.isPresent()) {
@@ -169,6 +191,32 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
             clearLastCandidates(conversation);
             return answerUpcoming();
         }
+        if (intent == ChatbotIntent.LIST_ONGOING) {
+            clearLastCandidates(conversation);
+            return answerOngoing();
+        }
+        if (intent == ChatbotIntent.LIST_PAST) {
+            clearLastCandidates(conversation);
+            return answerPast();
+        }
+        if (intent == ChatbotIntent.LIST_BY_SCORETYPE) {
+            clearLastCandidates(conversation);
+            ScoreType scoreType = parseScoreType(nluOpt.map(ChatbotNluResult::scoreType).orElse(null));
+            if (scoreType == null) {
+                return new ChatbotMessageResponse(null,
+                        "Bạn muốn lọc theo loại điểm nào? (ví dụ: PARTICIPATION, SUBMISSION...)", null, false,
+                        new ArrayList<>());
+            }
+            return answerByScoreType(scoreType);
+        }
+        if (intent == ChatbotIntent.ACTIVITY_FOR_ARTICLE) {
+            clearLastCandidates(conversation);
+            return answerActivityForArticle(contextArticle);
+        }
+        if (intent == ChatbotIntent.SUMMARIZE_ARTICLE) {
+            clearLastCandidates(conversation);
+            return answerSummarizeArticle(contextArticle);
+        }
 
         if (isAskingOpenRegistration(normalizedMessage)) {
             clearLastCandidates(conversation);
@@ -178,12 +226,34 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
             clearLastCandidates(conversation);
             return answerUpcoming();
         }
+        if (isAskingOngoing(normalizedMessage)) {
+            clearLastCandidates(conversation);
+            return answerOngoing();
+        }
+        if (isAskingPast(normalizedMessage)) {
+            clearLastCandidates(conversation);
+            return answerPast();
+        }
+        ScoreType scoreTypeFromText = parseScoreTypeFromText(normalizedMessage);
+        if (scoreTypeFromText != null && isAskingListByScoreType(normalizedMessage)) {
+            clearLastCandidates(conversation);
+            return answerByScoreType(scoreTypeFromText);
+        }
+        if (isAskingActivityForArticle(normalizedMessage)) {
+            clearLastCandidates(conversation);
+            return answerActivityForArticle(contextArticle);
+        }
+        if (isAskingSummarizeArticle(normalizedMessage)) {
+            clearLastCandidates(conversation);
+            return answerSummarizeArticle(contextArticle);
+        }
 
         Activity resolved = contextActivity;
         List<Activity> candidates = new ArrayList<>();
         if (resolved == null) {
             String activityQuery = nluOpt.map(ChatbotNluResult::activityQuery).orElse(null);
-            candidates = activityQuery != null && !activityQuery.isBlank() ? searchActivities(activityQuery) : searchActivities(message);
+            candidates = activityQuery != null && !activityQuery.isBlank() ? searchActivities(activityQuery)
+                    : searchActivities(message);
             if (candidates.isEmpty()) {
                 return new ChatbotMessageResponse(null,
                         "Mình chưa tìm thấy sự kiện bạn nhắc tới. Bạn cho mình tên sự kiện (hoặc 1-2 từ khóa) rõ hơn nhé.",
@@ -195,7 +265,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
             ResolutionResult rr = chooseBestCandidate(message, candidates);
             if (rr.needsClarification) {
                 List<ChatbotActivityOptionResponse> options = rr.options.stream()
-                        .map(a -> new ChatbotActivityOptionResponse(a.getId(), a.getName(), a.getStartDate(), a.getLocation()))
+                        .map(a -> new ChatbotActivityOptionResponse(a.getId(), a.getName(), a.getStartDate(),
+                                a.getLocation()))
                         .toList();
                 ChatbotMessageResponse resp = new ChatbotMessageResponse();
                 resp.setAnswer("Bạn muốn hỏi về sự kiện nào trong các lựa chọn sau?");
@@ -216,11 +287,16 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         }
 
         clearLastCandidates(conversation);
+        if (intent == ChatbotIntent.ARTICLE_FOR_ACTIVITY || isAskingArticleForActivity(normalizedMessage)) {
+            return answerArticleForActivity(resolved);
+        }
         return answerWithResolvedActivity(username, resolved, intent, normalizedMessage);
     }
 
-    private ChatbotMessageResponse answerWithResolvedActivity(String username, Activity activity, ChatbotIntent intent, String normalizedMessage) {
-        ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(activity.getId(), activity.getName());
+    private ChatbotMessageResponse answerWithResolvedActivity(String username, Activity activity, ChatbotIntent intent,
+            String normalizedMessage) {
+        ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(activity.getId(),
+                activity.getName());
         String answer;
 
         if (intent == ChatbotIntent.TIME) {
@@ -266,21 +342,26 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         if (ids.isEmpty()) {
             return List.of();
         }
-        List<Activity> activities = activityRepository.findAllById(ids).stream()
-                .filter(a -> !a.isDeleted() && !a.isDraft())
-                .toList();
+        List<Activity> activities = new ArrayList<>();
+        for (Activity a : activityRepository.findAllById(ids)) {
+            if (!a.isDeleted() && !a.isDraft()) {
+                activities.add(a);
+            }
+        }
         activities.sort(Comparator.comparingInt(a -> ids.indexOf(a.getId())));
         return activities;
     }
 
     private void storeLastCandidates(ChatbotConversation conversation, List<Activity> options) {
-        String ids = options.stream().limit(10).map(a -> String.valueOf(a.getId())).collect(java.util.stream.Collectors.joining(","));
+        String ids = options.stream().limit(10).map(a -> String.valueOf(a.getId()))
+                .collect(java.util.stream.Collectors.joining(","));
         conversation.setLastCandidateActivityIds(ids);
         conversationRepository.save(conversation);
     }
 
     private void clearLastCandidates(ChatbotConversation conversation) {
-        if (conversation.getLastCandidateActivityIds() != null && !conversation.getLastCandidateActivityIds().isBlank()) {
+        if (conversation.getLastCandidateActivityIds() != null
+                && !conversation.getLastCandidateActivityIds().isBlank()) {
             conversation.setLastCandidateActivityIds(null);
             conversationRepository.save(conversation);
         }
@@ -328,18 +409,146 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         Page<Activity> page = activityRepository.findUpcomingPublished(LocalDateTime.now(),
                 PageRequest.of(0, 5, Sort.by("startDate").ascending()));
         if (page.isEmpty()) {
-            return new ChatbotMessageResponse(null, "Hiện chưa có sự kiện sắp diễn ra.", null, false, new ArrayList<>());
+            return new ChatbotMessageResponse(null, "Hiện chưa có sự kiện sắp diễn ra.", null, false,
+                    new ArrayList<>());
         }
-        return new ChatbotMessageResponse(null, formatActivityList("Các sự kiện sắp diễn ra:", page.getContent()), null, false, new ArrayList<>());
+        return new ChatbotMessageResponse(null, formatActivityList("Các sự kiện sắp diễn ra:", page.getContent()), null,
+                false, new ArrayList<>());
     }
 
     private ChatbotMessageResponse answerOpenRegistration() {
         Page<Activity> page = activityRepository.findOpenRegistrationPublished(LocalDateTime.now(),
                 PageRequest.of(0, 5, Sort.by("registrationDeadline").ascending()));
         if (page.isEmpty()) {
-            return new ChatbotMessageResponse(null, "Hiện chưa có sự kiện nào đang mở đăng ký.", null, false, new ArrayList<>());
+            return new ChatbotMessageResponse(null, "Hiện chưa có sự kiện nào đang mở đăng ký.", null, false,
+                    new ArrayList<>());
         }
-        return new ChatbotMessageResponse(null, formatActivityList("Các sự kiện đang mở đăng ký:", page.getContent()), null, false, new ArrayList<>());
+        return new ChatbotMessageResponse(null, formatActivityList("Các sự kiện đang mở đăng ký:", page.getContent()),
+                null, false, new ArrayList<>());
+    }
+
+    private ChatbotMessageResponse answerOngoing() {
+        Page<Activity> page = activityRepository.findOngoingPublished(LocalDateTime.now(),
+                PageRequest.of(0, 5, Sort.by("startDate").ascending()));
+        if (page.isEmpty()) {
+            return new ChatbotMessageResponse(null, "Hiện chưa có sự kiện nào đang diễn ra.", null, false,
+                    new ArrayList<>());
+        }
+        return new ChatbotMessageResponse(null, formatActivityList("Các sự kiện đang diễn ra:", page.getContent()),
+                null, false, new ArrayList<>());
+    }
+
+    private ChatbotMessageResponse answerPast() {
+        Page<Activity> page = activityRepository.findPastPublished(LocalDateTime.now(),
+                PageRequest.of(0, 5, Sort.by("startDate").descending()));
+        if (page.isEmpty()) {
+            return new ChatbotMessageResponse(null, "Hiện chưa có dữ liệu sự kiện đã diễn ra.", null, false,
+                    new ArrayList<>());
+        }
+        return new ChatbotMessageResponse(null, formatActivityList("Các sự kiện đã diễn ra:", page.getContent()), null,
+                false, new ArrayList<>());
+    }
+
+    private ChatbotMessageResponse answerByScoreType(ScoreType scoreType) {
+        Page<Activity> page = activityRepository.findPublishedByScoreType(scoreType,
+                PageRequest.of(0, 10, Sort.by("startDate").descending()));
+        if (page.isEmpty()) {
+            return new ChatbotMessageResponse(null, "Hiện chưa có sự kiện thuộc loại điểm: " + scoreType.name(), null,
+                    false, new ArrayList<>());
+        }
+        return new ChatbotMessageResponse(null,
+                formatActivityList("Danh sách sự kiện theo loại điểm " + scoreType.name() + ":", page.getContent()),
+                null, false, new ArrayList<>());
+    }
+
+    private ChatbotMessageResponse answerArticleForActivity(Activity activity) {
+        Optional<EventArticle> articleOpt = eventArticleRepository.findByActivityIdAndIsPublishedTrue(activity.getId());
+        if (articleOpt.isEmpty()) {
+            ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(activity.getId(),
+                    activity.getName());
+            return new ChatbotMessageResponse(null, "Sự kiện này hiện chưa có bài viết được đăng.", resolvedActivity,
+                    false, new ArrayList<>());
+        }
+        EventArticle article = articleOpt.get();
+        ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(activity.getId(),
+                activity.getName());
+        String answer = "Sự kiện này có bài viết: " + article.getTitle() + "\nSlug: " + article.getSlug()
+                + "\nBạn có thể xem qua API: /api/articles/" + article.getSlug();
+        return new ChatbotMessageResponse(null, answer, resolvedActivity, false, new ArrayList<>());
+    }
+
+    private ChatbotMessageResponse answerActivityForArticle(EventArticle article) {
+        if (article == null) {
+            return new ChatbotMessageResponse(null,
+                    "Bạn đang hỏi bài viết nào? Hãy mở trang bài viết hoặc gửi slug bài viết để mình kiểm tra.", null,
+                    false, new ArrayList<>());
+        }
+        Activity a = article.getActivity();
+        if (a == null) {
+            return new ChatbotMessageResponse(null, "Bài viết này chưa được liên kết với sự kiện.", null, false,
+                    new ArrayList<>());
+        }
+        ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(a.getId(), a.getName());
+        String answer = "Bài viết \"" + article.getTitle() + "\" thuộc sự kiện: " + a.getName();
+        return new ChatbotMessageResponse(null, answer, resolvedActivity, false, new ArrayList<>());
+    }
+
+    private ChatbotMessageResponse answerSummarizeArticle(EventArticle article) {
+        if (article == null) {
+            return new ChatbotMessageResponse(null,
+                    "Bạn đang hỏi bài viết nào? Hãy mở trang bài viết hoặc gửi slug bài viết để mình tóm tắt.", null,
+                    false, new ArrayList<>());
+        }
+        if (!geminiApiClient.isEnabled()) {
+            return new ChatbotMessageResponse(null, "Gemini chưa được bật nên mình chưa thể tóm tắt tự động.", null,
+                    false, new ArrayList<>());
+        }
+        String content = article.getContent() == null ? "" : article.getContent();
+        content = content.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
+        if (content.length() > 6000) {
+            content = content.substring(0, 6000);
+        }
+        String prompt = """
+                Bạn là trợ lý tóm tắt bài viết sự kiện cho sinh viên.
+                Hãy tóm tắt ngắn gọn bằng tiếng Việt, 5-8 gạch đầu dòng, tập trung vào: nội dung chính, thời gian/địa điểm (nếu có), cách đăng ký/điều kiện (nếu có).
+
+                Tiêu đề: %s
+
+                Nội dung:
+                %s
+                """
+                .formatted(article.getTitle(), content);
+
+        Optional<String> summaryOpt = geminiApiClient.generateText(prompt);
+        if (summaryOpt.isEmpty() || summaryOpt.get().isBlank()) {
+            return new ChatbotMessageResponse(null, "Mình chưa tóm tắt được bài viết lúc này. Bạn thử lại sau.", null,
+                    false, new ArrayList<>());
+        }
+        String summary = summaryOpt.get().trim();
+        if (summary.startsWith("__GEMINI_BLOCKED__:")) {
+            String reason = summary.substring("__GEMINI_BLOCKED__:".length()).trim();
+            return new ChatbotMessageResponse(null,
+                    "Gemini từ chối xử lý nội dung bài viết (blockReason: " + reason
+                            + "). Bạn thử tóm tắt lại sau hoặc rút ngắn nội dung.",
+                    null, false, new ArrayList<>());
+        }
+        if (summary.startsWith("__GEMINI_EMPTY__")) {
+            return new ChatbotMessageResponse(null,
+                    "Gemini không trả về nội dung tóm tắt. Bạn kiểm tra lại GEMINI_API_KEY/quota, hoặc thử lại sau.",
+                    null, false, new ArrayList<>());
+        }
+        if (summary.startsWith("__GEMINI_NETWORK__")) {
+            return new ChatbotMessageResponse(null,
+                    "Backend không kết nối được đến Gemini API. Bạn kiểm tra mạng/firewall/DNS của máy chạy backend.",
+                    null, false, new ArrayList<>());
+        }
+        if (summary.startsWith("__GEMINI_HTTP__:")) {
+            String detail = summary.substring("__GEMINI_HTTP__:".length()).trim();
+            return new ChatbotMessageResponse(null,
+                    "Gemini API trả lỗi HTTP: " + detail + ". Bạn kiểm tra lại GEMINI_API_KEY/quota/model.",
+                    null, false, new ArrayList<>());
+        }
+        return new ChatbotMessageResponse(null, summary, null, false, new ArrayList<>());
     }
 
     private String formatActivityList(String title, List<Activity> activities) {
@@ -355,14 +564,12 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
                 sb.append(" - ").append(a.getLocation());
             }
         }
-        sb.append("\nBạn có thể bấm vào 1 sự kiện để vào trang chi tiết rồi hỏi tiếp, hoặc nhắn tên sự kiện bạn muốn hỏi.");
+        sb.append(
+                "\nBạn có thể bấm vào 1 sự kiện để vào trang chi tiết rồi hỏi tiếp, hoặc nhắn tên sự kiện bạn muốn hỏi.");
         return sb.toString();
     }
 
     private String answerForActivity(String username, String normalized, Activity a) {
-        if (isAskingTime(normalized)) {
-            return formatTimeAnswer(a);
-        }
         if (isAskingLocation(normalized)) {
             return formatLocationAnswer(a);
         }
@@ -372,6 +579,12 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         if (isAskingCheckIn(normalized)) {
             return formatCheckInAnswer(a);
         }
+        if (isAskingRegistration(normalized)) {
+            return formatRegistrationAnswer(username, a);
+        }
+        if (isAskingTime(normalized)) {
+            return formatTimeAnswer(a);
+        }
         if (isAskingBenefits(normalized)) {
             return formatBenefitsAnswer(a);
         }
@@ -380,9 +593,6 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         }
         if (isAskingPoints(normalized)) {
             return formatPointsAnswer(a);
-        }
-        if (isAskingRegistration(normalized)) {
-            return formatRegistrationAnswer(username, a);
         }
         return formatSummaryAnswer(username, a);
     }
@@ -457,7 +667,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         sb.append("\nCần duyệt đăng ký: ").append(a.isRequiresApproval() ? "Có" : "Không");
 
         if (a.getTicketQuantity() != null) {
-            Long approved = activityRegistrationRepository.countByActivityIdAndStatus(a.getId(), RegistrationStatus.APPROVED);
+            Long approved = activityRegistrationRepository.countByActivityIdAndStatus(a.getId(),
+                    RegistrationStatus.APPROVED);
             long remaining = Math.max(0, a.getTicketQuantity().longValue() - (approved == null ? 0 : approved));
             sb.append("\nSố lượng slot: ").append(a.getTicketQuantity())
                     .append(" (đã duyệt: ").append(approved == null ? 0 : approved)
@@ -498,7 +709,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         sb.append("\nCần nộp minh chứng: ").append(a.isRequiresSubmission() ? "Có" : "Không");
 
         if (a.getTicketQuantity() != null) {
-            Long approved = activityRegistrationRepository.countByActivityIdAndStatus(a.getId(), RegistrationStatus.APPROVED);
+            Long approved = activityRegistrationRepository.countByActivityIdAndStatus(a.getId(),
+                    RegistrationStatus.APPROVED);
             long remaining = Math.max(0, a.getTicketQuantity().longValue() - (approved == null ? 0 : approved));
             sb.append("\nSlot: ").append(a.getTicketQuantity()).append(" (còn ").append(remaining).append(")");
         }
@@ -517,7 +729,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     }
 
     private static boolean isAskingTime(String s) {
-        return containsAny(s, "khi nao", "khi nào", "thoi gian", "thời gian", "bat dau", "bắt đầu", "ket thuc", "kết thúc", "dien ra");
+        return containsAny(s, "khi nao", "khi nào", "thoi gian", "thời gian", "bat dau", "bắt đầu", "ket thuc",
+                "kết thúc", "dien ra");
     }
 
     private static boolean isAskingLocation(String s) {
@@ -525,7 +738,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     }
 
     private static boolean isAskingRegistration(String s) {
-        return containsAny(s, "dang ky", "đăng ký", "mo dang ky", "mở đăng ký", "han", "hạn", "deadline", "full", "con cho", "còn chỗ", "slot", "ve", "vé");
+        return containsAny(s, "dang ky", "đăng ký", "mo dang ky", "mở đăng ký", "han", "hạn", "deadline", "full",
+                "con cho", "còn chỗ", "slot", "ve", "vé");
     }
 
     private static boolean isAskingOpenRegistration(String s) {
@@ -536,8 +750,66 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         return containsAny(s, "sap dien ra", "sắp diễn ra", "su kien sap toi", "sự kiện sắp tới");
     }
 
+    private static boolean isAskingOngoing(String s) {
+        return containsAny(s, "dang dien ra", "đang diễn ra", "hien dang dien ra", "hiện đang diễn ra");
+    }
+
+    private static boolean isAskingPast(String s) {
+        return containsAny(s, "da dien ra", "đã diễn ra", "da to chuc", "đã tổ chức", "su kien cu", "sự kiện cũ");
+    }
+
+    private static boolean isAskingListByScoreType(String s) {
+        return containsAny(s, "theo loai diem", "theo loại điểm", "loai diem", "loại điểm", "diem ren luyen",
+                "điểm rèn luyện", "cong tac xa hoi", "công tác xã hội", "chuyen de", "chuyên đề");
+    }
+
+    private static boolean isAskingArticleForActivity(String s) {
+        return containsAny(s, "co bai viet", "có bài viết", "bai viet nao", "bài viết nào", "bai viet", "bài viết")
+                && containsAny(s, "su kien", "sự kiện", "nay", "này", "khong", "không", "co", "có");
+    }
+
+    private static boolean isAskingActivityForArticle(String s) {
+        return containsAny(s, "bai viet nay", "bài viết này", "bai viet do", "bài viết đó")
+                && containsAny(s, "su kien nao", "sự kiện nào", "cua su kien", "của sự kiện");
+    }
+
+    private static boolean isAskingSummarizeArticle(String s) {
+        return containsAny(s, "tom tat", "tóm tắt", "summary") && containsAny(s, "bai viet", "bài viết");
+    }
+
+    private static ScoreType parseScoreTypeFromText(String normalizedMessage) {
+        if (normalizedMessage == null) {
+            return null;
+        }
+        if (normalizedMessage.contains("ren luyen") || normalizedMessage.contains("rèn luyện")
+                || normalizedMessage.contains("ren-luyen")) {
+            return ScoreType.REN_LUYEN;
+        }
+        if (normalizedMessage.contains("cong tac xa hoi") || normalizedMessage.contains("công tác xã hội")
+                || normalizedMessage.contains("xa hoi")) {
+            return ScoreType.CONG_TAC_XA_HOI;
+        }
+        if (normalizedMessage.contains("chuyen de") || normalizedMessage.contains("chuyên đề")) {
+            return ScoreType.CHUYEN_DE;
+        }
+        return null;
+    }
+
+    private static ScoreType parseScoreType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String s = raw.trim().toUpperCase(Locale.ROOT);
+        try {
+            return ScoreType.valueOf(s);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private static boolean isAskingRequirements(String s) {
-        return containsAny(s, "yeu cau", "yêu cầu", "dieu kien", "điều kiện", "can chuan bi", "cần chuẩn bị", "chuan bi", "chuẩn bị");
+        return containsAny(s, "yeu cau", "yêu cầu", "dieu kien", "điều kiện", "can chuan bi", "cần chuẩn bị",
+                "chuan bi", "chuẩn bị");
     }
 
     private static boolean isAskingBenefits(String s) {
@@ -549,7 +821,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     }
 
     private static boolean isAskingContact(String s) {
-        return containsAny(s, "lien he", "liên hệ", "ho tro", "hỗ trợ", "email", "sdt", "số điện thoại", "so dien thoai");
+        return containsAny(s, "lien he", "liên hệ", "ho tro", "hỗ trợ", "email", "sdt", "số điện thoại",
+                "so dien thoai");
     }
 
     private static boolean isAskingCheckIn(String s) {
@@ -578,8 +851,7 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         Specification<Activity> spec = (root, query, cb) -> {
             var base = cb.and(
                     cb.isFalse(root.get("isDeleted")),
-                    cb.isFalse(root.get("isDraft"))
-            );
+                    cb.isFalse(root.get("isDraft")));
 
             var orPredicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
             for (String t : tokens) {
@@ -594,7 +866,8 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
             return cb.and(base, or);
         };
 
-        Page<Activity> page = activityRepository.findAll(spec, PageRequest.of(0, 20, Sort.by("startDate").descending()));
+        Page<Activity> page = activityRepository.findAll(spec,
+                PageRequest.of(0, 20, Sort.by("startDate").descending()));
         return page.getContent();
     }
 

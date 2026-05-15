@@ -41,8 +41,9 @@ public class ChatbotNluService {
             ChatbotIntent intent = parseIntent(node.path("intent").asText(null));
             Integer optionIndex = node.hasNonNull("optionIndex") ? node.get("optionIndex").asInt() : null;
             String activityQuery = node.hasNonNull("activityQuery") ? node.get("activityQuery").asText() : null;
+            String scoreType = node.hasNonNull("scoreType") ? node.get("scoreType").asText() : null;
 
-            return Optional.of(new ChatbotNluResult(intent, optionIndex, activityQuery));
+            return Optional.of(new ChatbotNluResult(intent, optionIndex, activityQuery, scoreType));
         } catch (Exception e) {
             return Optional.empty();
         }
@@ -62,12 +63,18 @@ public class ChatbotNluService {
 
                 Các intent hợp lệ:
                 TIME, LOCATION, REGISTRATION, BENEFITS, REQUIREMENTS, POINTS, CONTACT, CHECKIN, SUMMARY,
-                LIST_UPCOMING, LIST_OPEN_REGISTRATION, CHOOSE_OPTION, UNKNOWN
+                LIST_UPCOMING, LIST_OPEN_REGISTRATION, LIST_ONGOING, LIST_PAST, LIST_BY_SCORETYPE,
+                ARTICLE_FOR_ACTIVITY, ACTIVITY_FOR_ARTICLE, SUMMARIZE_ARTICLE,
+                CHOOSE_OPTION, UNKNOWN
 
                 Quy tắc:
                 - Nếu người dùng chọn 1 lựa chọn trong danh sách trước đó (ví dụ "cái số 2", "chọn 3"), intent=CHOOSE_OPTION và optionIndex là số.
                 - Nếu đang ở trang chi tiết sự kiện (pageContext=ACTIVITY_DETAIL) hoặc hasContextActivity=true thì không cần activityQuery.
+                - Nếu đang ở trang bài viết (pageContext=ARTICLE_DETAIL) thì:
+                  - intent=ACTIVITY_FOR_ARTICLE khi hỏi "bài viết này của sự kiện nào"
+                  - intent=SUMMARIZE_ARTICLE khi hỏi "tóm tắt bài viết"
                 - Nếu đang ở GLOBAL và người dùng nhắc tên sự kiện, đặt activityQuery là cụm từ quan trọng để tìm event.
+                - Nếu người dùng hỏi danh sách theo loại điểm, intent=LIST_BY_SCORETYPE và scoreType là 1 trong: REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE.
                 - Nếu không rõ thì intent=UNKNOWN.
 
                 Ngữ cảnh:
@@ -79,7 +86,7 @@ public class ChatbotNluService {
                 %s
 
                 JSON output schema:
-                {"intent":"...","optionIndex":1,"activityQuery":"..."}
+                {"intent":"...","optionIndex":1,"activityQuery":"...","scoreType":"..."}
                 """.formatted(
                 pageContext == null ? "GLOBAL" : pageContext.name(),
                 Boolean.toString(hasContextActivity),

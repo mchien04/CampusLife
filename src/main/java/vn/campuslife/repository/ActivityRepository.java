@@ -138,4 +138,34 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
       """)
   Page<Activity> findOpenRegistrationPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.isDraft = false
+        and a.startDate is not null
+        and a.startDate <= :now
+        and (a.endDate is null or a.endDate >= :now)
+      order by a.startDate asc
+      """)
+  Page<Activity> findOngoingPublished(@Param("now") LocalDateTime now, Pageable pageable);
+
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.isDraft = false
+        and a.startDate is not null
+        and ((a.endDate is not null and a.endDate < :now) or (a.endDate is null and a.startDate < :now))
+      order by coalesce(a.endDate, a.startDate) desc
+      """)
+  Page<Activity> findPastPublished(@Param("now") LocalDateTime now, Pageable pageable);
+
+  @Query("""
+      select a from Activity a
+      where a.isDeleted = false
+        and a.isDraft = false
+        and a.scoreType = :scoreType
+      order by a.startDate desc
+      """)
+  Page<Activity> findPublishedByScoreType(@Param("scoreType") ScoreType scoreType, Pageable pageable);
+
 }

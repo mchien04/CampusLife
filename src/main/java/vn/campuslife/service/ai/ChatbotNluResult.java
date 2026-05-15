@@ -5,6 +5,7 @@ import vn.campuslife.enumeration.ChatbotIntent;
 public record ChatbotNluResult(
         ChatbotIntent intent,
         Integer optionIndex,
-        String activityQuery
+        String activityQuery,
+        String scoreType
 ) {
 }

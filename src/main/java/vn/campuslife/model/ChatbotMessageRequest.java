@@ -7,6 +7,7 @@ import vn.campuslife.enumeration.ChatbotPageContext;
 public class ChatbotMessageRequest {
     private Long conversationId;
     private Long contextActivityId;
+    private String contextArticleSlug;
     private ChatbotPageContext pageContext = ChatbotPageContext.GLOBAL;
     private String message;
 }
