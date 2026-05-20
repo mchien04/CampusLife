@@ -1,0 +1,23 @@
+package vn.campuslife.enumeration;
+
+public enum ChatbotIntent {
+    TIME,
+    LOCATION,
+    REGISTRATION,
+    BENEFITS,
+    REQUIREMENTS,
+    POINTS,
+    CONTACT,
+    CHECKIN,
+    SUMMARY,
+    LIST_UPCOMING,
+    LIST_OPEN_REGISTRATION,
+    LIST_ONGOING,
+    LIST_PAST,
+    LIST_BY_SCORETYPE,
+    ARTICLE_FOR_ACTIVITY,
+    ACTIVITY_FOR_ARTICLE,
+    SUMMARIZE_ARTICLE,
+    CHOOSE_OPTION,
+    UNKNOWN
+}
