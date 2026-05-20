@@ -115,4 +115,16 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
   List<Activity> findInMonth(@Param("start") LocalDateTime start,
                              @Param("end") LocalDateTime end);
 
+  @Query("""
+    SELECT a
+    FROM Activity a
+    WHERE a.isDeleted = false
+      AND a.isDraft = false
+      AND (
+          a.registrationDeadline IS NULL
+          OR a.registrationDeadline >= :now
+      )
+    ORDER BY a.startDate ASC
+""")
+  List<Activity> findOpenActivitiesForRecommendation(@Param("now") LocalDateTime now);
 }

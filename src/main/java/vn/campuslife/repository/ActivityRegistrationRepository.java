@@ -191,4 +191,17 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
             @Param("keyword") String keyword,
             @Param("status") RegistrationStatus status
     );
+
+    @Query("""
+   SELECT ar
+   FROM ActivityRegistration ar
+   WHERE ar.student.id = :studentId
+     AND ar.status IN :statuses
+     AND ar.activity.isDeleted = false
+   ORDER BY ar.registeredDate DESC
+    """)
+    List<ActivityRegistration> findByStudentIdAndStatusInForRecommendation(
+            @Param("studentId") Long studentId,
+            @Param("statuses") List<RegistrationStatus> statuses
+    );
 }

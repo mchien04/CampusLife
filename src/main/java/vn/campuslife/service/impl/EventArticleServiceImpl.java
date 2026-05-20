@@ -38,6 +38,9 @@ public class EventArticleServiceImpl implements EventArticleService {
     private final ArticleWishlistRepository wishlistRepository;
     private final ArticleImageRepository imageRepository;
 
+    private final  ArticleViewHistoryRepository articleViewHistoryRepository;
+    private final StudentRepository studentRepository;
+
     @org.springframework.beans.factory.annotation.Value("${app.upload.public-url:http://localhost:8080}")
     private String publicUrl;
 
@@ -94,10 +97,25 @@ public class EventArticleServiceImpl implements EventArticleService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public ArticleDetailResponse getArticleDetailBySlug(String slug, Long studentId) {
         EventArticle article = eventArticleRepository.findBySlugAndIsPublishedTrue(slug)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found with slug: " + slug));
+
+        if (studentId != null) {
+            boolean viewedRecently = articleViewHistoryRepository
+                    .existsByStudentIdAndArticleIdAndViewedAtAfter(
+                            studentId,
+                            article.getId(),
+                            LocalDateTime.now().minusDays(1)
+                    );
+
+            if (!viewedRecently) {
+                ArticleViewHistory history = new ArticleViewHistory();
+                history.setArticle(article);
+                history.setStudent(studentRepository.getReferenceById(studentId));
+                articleViewHistoryRepository.save(history);
+            }
+        }
 
         ArticleDetailResponse response = new ArticleDetailResponse();
         response.setId(article.getId());
@@ -132,6 +150,7 @@ public class EventArticleServiceImpl implements EventArticleService {
             activityInfo.setEndDate(activity.getEndDate());
             activityInfo.setRegistrationStartDate(activity.getRegistrationStartDate());
             activityInfo.setRegistrationDeadline(activity.getRegistrationDeadline());
+            activityInfo.setScoreType(activity.getScoreType());
             response.setActivityInfo(activityInfo);
         }
 

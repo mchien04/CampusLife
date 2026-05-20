@@ -3,6 +3,7 @@ package vn.campuslife.model;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vn.campuslife.enumeration.ScoreType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,6 +49,8 @@ public class ArticleDetailResponse {
         private LocalDateTime endDate;
         private LocalDateTime registrationStartDate;
         private LocalDateTime registrationDeadline;
+        private ScoreType scoreType;
+
     }
 
     @Data
