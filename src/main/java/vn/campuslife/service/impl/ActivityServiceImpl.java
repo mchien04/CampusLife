@@ -792,7 +792,7 @@ public class ActivityServiceImpl implements ActivityService {
     //sự kiện trong tháng
     @Override
     public List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
-        return activityRepository.findInMonth(start, end);
+        return activityRepository.findActivitiesInMonth(start, end);
     }
 
     /**
