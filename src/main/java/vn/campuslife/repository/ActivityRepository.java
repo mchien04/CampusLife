@@ -114,7 +114,7 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
         and a.startDate <  :end
       order by a.startDate desc
       """)
-  List<Activity> findInMonth(@Param("start") LocalDateTime start,
+  List<Activity> findActivitiesInMonth(@Param("start") LocalDateTime start,
                              @Param("end") LocalDateTime end);
 
     @Query("""
