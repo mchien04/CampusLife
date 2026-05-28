@@ -22,4 +22,5 @@ public class PreparationTaskDto {
     private BigDecimal allocatedAmount;
     private Boolean isFinancial;
     private PreparationTaskStatus status;
+
 }

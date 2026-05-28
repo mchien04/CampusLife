@@ -114,58 +114,70 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
         and a.startDate <  :end
       order by a.startDate desc
       """)
-  List<Activity> findInMonth(@Param("start") LocalDateTime start,
+  List<Activity> findActivitiesInMonth(@Param("start") LocalDateTime start,
                              @Param("end") LocalDateTime end);
 
-  @Query("""
-      select a from Activity a
-      where a.isDeleted = false
-        and a.isDraft = false
-        and a.startDate >= :now
-      order by a.startDate asc
-      """)
-  Page<Activity> findUpcomingPublished(@Param("now") LocalDateTime now, Pageable pageable);
+    @Query("""
+    SELECT a
+    FROM Activity a
+    WHERE a.isDeleted = false
+      AND a.isDraft = false
+      AND (
+          a.registrationDeadline IS NULL
+          OR a.registrationDeadline >= :now
+      )
+    ORDER BY a.startDate ASC
+""")
+    List<Activity> findOpenActivitiesForRecommendation(@Param("now") LocalDateTime now);
 
-  @Query("""
-      select a from Activity a
-      where a.isDeleted = false
-        and a.isDraft = false
-        and a.registrationStartDate is not null
-        and a.registrationDeadline is not null
-        and a.registrationStartDate <= :now
-        and a.registrationDeadline >= :now
-      order by a.registrationDeadline asc
-      """)
-  Page<Activity> findOpenRegistrationPublished(@Param("now") LocalDateTime now, Pageable pageable);
+    @Query("""
+    select a from Activity a
+    where a.isDeleted = false
+      and a.isDraft = false
+      and a.startDate >= :now
+    order by a.startDate asc
+    """)
+    Page<Activity> findUpcomingPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
-  @Query("""
-      select a from Activity a
-      where a.isDeleted = false
-        and a.isDraft = false
-        and a.startDate is not null
-        and a.startDate <= :now
-        and (a.endDate is null or a.endDate >= :now)
-      order by a.startDate asc
-      """)
-  Page<Activity> findOngoingPublished(@Param("now") LocalDateTime now, Pageable pageable);
+    @Query("""
+    select a from Activity a
+    where a.isDeleted = false
+      and a.isDraft = false
+      and a.registrationStartDate is not null
+      and a.registrationDeadline is not null
+      and a.registrationStartDate <= :now
+      and a.registrationDeadline >= :now
+    order by a.registrationDeadline asc
+    """)
+    Page<Activity> findOpenRegistrationPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
-  @Query("""
-      select a from Activity a
-      where a.isDeleted = false
-        and a.isDraft = false
-        and a.startDate is not null
-        and ((a.endDate is not null and a.endDate < :now) or (a.endDate is null and a.startDate < :now))
-      order by coalesce(a.endDate, a.startDate) desc
-      """)
-  Page<Activity> findPastPublished(@Param("now") LocalDateTime now, Pageable pageable);
+    @Query("""
+    select a from Activity a
+    where a.isDeleted = false
+      and a.isDraft = false
+      and a.startDate is not null
+      and a.startDate <= :now
+      and (a.endDate is null or a.endDate >= :now)
+    order by a.startDate asc
+    """)
+    Page<Activity> findOngoingPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
-  @Query("""
-      select a from Activity a
-      where a.isDeleted = false
-        and a.isDraft = false
-        and a.scoreType = :scoreType
-      order by a.startDate desc
-      """)
-  Page<Activity> findPublishedByScoreType(@Param("scoreType") ScoreType scoreType, Pageable pageable);
+    @Query("""
+    select a from Activity a
+    where a.isDeleted = false
+      and a.isDraft = false
+      and a.startDate is not null
+      and ((a.endDate is not null and a.endDate < :now) or (a.endDate is null and a.startDate < :now))
+    order by coalesce(a.endDate, a.startDate) desc
+    """)
+    Page<Activity> findPastPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
+    @Query("""
+    select a from Activity a
+    where a.isDeleted = false
+      and a.isDraft = false
+      and a.scoreType = :scoreType
+    order by a.startDate desc
+    """)
+    Page<Activity> findPublishedByScoreType(@Param("scoreType") ScoreType scoreType, Pageable pageable);
 }
