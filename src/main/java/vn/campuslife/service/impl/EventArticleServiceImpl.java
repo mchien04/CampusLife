@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.RegistrationCtaStatus;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.ArticleType;
+import vn.campuslife.enumeration.ReactionType;
 import vn.campuslife.exception.BadRequestException;
 import vn.campuslife.exception.ResourceNotFoundException;
 import vn.campuslife.model.*;
@@ -40,6 +42,8 @@ public class EventArticleServiceImpl implements EventArticleService {
 
     private final  ArticleViewHistoryRepository articleViewHistoryRepository;
     private final StudentRepository studentRepository;
+    private final ArticleReactionRepository articleReactionRepository;
+    private final vn.campuslife.service.NotificationService notificationService;
 
     @org.springframework.beans.factory.annotation.Value("${app.upload.public-url:http://localhost:8080}")
     private String publicUrl;
@@ -98,8 +102,21 @@ public class EventArticleServiceImpl implements EventArticleService {
 
     @Override
     public ArticleDetailResponse getArticleDetailBySlug(String slug, Long studentId) {
-        EventArticle article = eventArticleRepository.findBySlugAndIsPublishedTrue(slug)
-                .orElseThrow(() -> new ResourceNotFoundException("Article not found with slug: " + slug));
+        Optional<EventArticle> articleOpt = eventArticleRepository.findBySlugAndIsPublishedTrue(slug);
+
+        if (articleOpt.isEmpty()) {
+            Optional<EventArticleSlugHistory> historyOpt = slugHistoryRepository.findByOldSlug(slug);
+            if (historyOpt.isPresent()) {
+                String newSlug = historyOpt.get().getArticle().getSlug();
+                ArticleDetailResponse response = getArticleDetailBySlug(newSlug, studentId);
+                response.setRedirectedFrom(slug);
+                response.setCurrentSlug(newSlug);
+                return response;
+            }
+            throw new ResourceNotFoundException("Article not found with slug: " + slug);
+        }
+
+        EventArticle article = articleOpt.get();
 
         if (studentId != null) {
             boolean viewedRecently = articleViewHistoryRepository
@@ -136,12 +153,11 @@ public class EventArticleServiceImpl implements EventArticleService {
         response.setUpdatedAt(article.getUpdatedAt());
 
         Activity activity = article.getActivity();
-        RegistrationCtaStatus ctaStatus = resolveRegistrationStatus(activity, LocalDateTime.now());
-
-        response.setRegistrationStatus(ctaStatus.name());
-        response.setRegistrationLink(resolveRegistrationLink(activity));
 
         if (activity != null) {
+            RegistrationCtaStatus ctaStatus = resolveRegistrationStatus(activity, LocalDateTime.now());
+            response.setRegistrationStatus(ctaStatus.name());
+
             ArticleDetailResponse.ArticleActivityInfo activityInfo = new ArticleDetailResponse.ArticleActivityInfo();
             activityInfo.setId(activity.getId());
             activityInfo.setName(activity.getName());
@@ -151,6 +167,7 @@ public class EventArticleServiceImpl implements EventArticleService {
             activityInfo.setRegistrationStartDate(activity.getRegistrationStartDate());
             activityInfo.setRegistrationDeadline(activity.getRegistrationDeadline());
             activityInfo.setScoreType(activity.getScoreType());
+            activityInfo.setShareLink(activity.getShareLink());
             response.setActivityInfo(activityInfo);
         }
 
@@ -177,8 +194,15 @@ public class EventArticleServiceImpl implements EventArticleService {
 
         if (studentId != null) {
             response.setWishlisted(wishlistRepository.existsByArticleIdAndStudentId(article.getId(), studentId));
+            Optional<ArticleReaction> reactionOpt = articleReactionRepository.findByArticleIdAndStudentId(article.getId(), studentId);
+            if (reactionOpt.isPresent()) {
+                response.setMyReaction(reactionOpt.get().getReactionType());
+            } else {
+                response.setMyReaction(null);
+            }
         } else {
             response.setWishlisted(false);
+            response.setMyReaction(null);
         }
 
         return response;
@@ -318,14 +342,6 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Transactional
     public EventArticleAdminResponse createArticle(EventArticleUpsertRequest request) {
         validateUpsertRequest(request, true);
-        Long activityId = request.getActivityId();
-
-        Activity activity = activityRepository.findByIdAndIsDeletedFalse(activityId)
-                .orElseThrow(() -> new ResourceNotFoundException("Activity not found: " + activityId));
-
-        if (eventArticleRepository.findByActivityId(activityId).isPresent()) {
-            throw new BadRequestException("This activity already has an article");
-        }
 
         String slug = normalizeSlug(request.getSlug());
         if (eventArticleRepository.existsBySlug(slug)) {
@@ -333,7 +349,6 @@ public class EventArticleServiceImpl implements EventArticleService {
         }
 
         EventArticle article = new EventArticle();
-        article.setActivity(activity);
         article.setTitle(request.getTitle().trim());
         article.setSlug(slug);
         article.setThumbnailUrl(trimToNull(request.getThumbnailUrl()));
@@ -347,6 +362,26 @@ public class EventArticleServiceImpl implements EventArticleService {
         article.setFeatured(request.isFeatured());
         article.setPinned(request.isPinned());
         article.setPriority(request.getPriority());
+        article.setArticleType(request.getArticleType() != null ? request.getArticleType() : ArticleType.ANNOUNCEMENT);
+
+        if (request.getActivityId() != null) {
+            Activity activity = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Activity not found: " + request.getActivityId()));
+            article.setActivity(activity);
+
+            boolean hasExisting = !eventArticleRepository.findByActivityId(request.getActivityId()).isEmpty();
+            boolean shouldBePrimary = request.isPrimary() || !hasExisting;
+            article.setPrimary(shouldBePrimary);
+
+            if (shouldBePrimary) {
+                List<EventArticle> others = eventArticleRepository.findByActivityId(request.getActivityId());
+                others.forEach(a -> a.setPrimary(false));
+                eventArticleRepository.saveAll(others);
+            }
+        } else {
+            article.setActivity(null);
+            article.setPrimary(false);
+        }
 
         if (request.getCategoryId() != null) {
             ArticleCategory category = categoryRepository.findById(request.getCategoryId())
@@ -371,9 +406,75 @@ public class EventArticleServiceImpl implements EventArticleService {
         EventArticle article = eventArticleRepository.findById(articleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
 
-        if (request.getActivityId() != null && !request.getActivityId().equals(article.getActivity().getId())) {
-            throw new BadRequestException("Cannot change activityId of an existing article");
+        Long oldActivityId = article.getActivity() != null ? article.getActivity().getId() : null;
+        Long newActivityId = request.getActivityId();
+
+        boolean activityChanged = !Objects.equals(oldActivityId, newActivityId);
+
+        if (activityChanged) {
+            if (newActivityId != null) {
+                Activity newActivity = activityRepository.findByIdAndIsDeletedFalse(newActivityId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Activity not found: " + newActivityId));
+                article.setActivity(newActivity);
+
+                boolean hasExisting = !eventArticleRepository.findByActivityId(newActivityId).isEmpty();
+                boolean shouldBePrimary = request.isPrimary() || !hasExisting;
+                article.setPrimary(shouldBePrimary);
+
+                if (shouldBePrimary) {
+                    List<EventArticle> others = eventArticleRepository.findByActivityId(newActivityId);
+                    others.forEach(a -> {
+                        if (!a.getId().equals(articleId)) {
+                            a.setPrimary(false);
+                        }
+                    });
+                    eventArticleRepository.saveAll(others);
+                }
+            } else {
+                article.setActivity(null);
+                article.setPrimary(false);
+            }
+
+            if (oldActivityId != null && article.isPrimary()) {
+                List<EventArticle> oldArticles = eventArticleRepository.findByActivityId(oldActivityId);
+                oldArticles.stream()
+                        .filter(a -> !a.getId().equals(articleId))
+                        .min(Comparator.comparing(EventArticle::getId))
+                        .ifPresent(oldest -> {
+                            oldest.setPrimary(true);
+                            eventArticleRepository.save(oldest);
+                        });
+            }
+        } else {
+            if (article.getActivity() != null) {
+                if (request.isPrimary()) {
+                    article.setPrimary(true);
+                    List<EventArticle> others = eventArticleRepository.findByActivityId(article.getActivity().getId());
+                    others.forEach(a -> {
+                        if (!a.getId().equals(articleId)) {
+                            a.setPrimary(false);
+                        }
+                    });
+                    eventArticleRepository.saveAll(others);
+                } else {
+                    if (article.isPrimary()) {
+                        article.setPrimary(false);
+                        List<EventArticle> others = eventArticleRepository.findByActivityId(article.getActivity().getId());
+                        others.stream()
+                                .filter(a -> !a.getId().equals(articleId))
+                                .min(Comparator.comparing(EventArticle::getId))
+                                .ifPresent(oldest -> {
+                                    oldest.setPrimary(true);
+                                    eventArticleRepository.save(oldest);
+                                });
+                    }
+                }
+            } else {
+                article.setPrimary(false);
+            }
         }
+
+        article.setArticleType(request.getArticleType() != null ? request.getArticleType() : ArticleType.ANNOUNCEMENT);
 
         String oldSlug = article.getSlug();
         String newSlug = normalizeSlug(request.getSlug());
@@ -425,6 +526,26 @@ public class EventArticleServiceImpl implements EventArticleService {
         if (!article.isPublished()) {
             article.setPublished(true);
             article.setPublishedAt(LocalDateTime.now());
+
+            try {
+                List<ArticleWishlist> wishlists = wishlistRepository.findByArticleId(articleId);
+                if (wishlists != null && !wishlists.isEmpty()) {
+                    List<Long> studentUserIds = wishlists.stream()
+                        .map(w -> w.getStudent().getUser().getId())
+                        .collect(Collectors.toList());
+
+                    notificationService.sendBulkNotification(
+                        studentUserIds,
+                        "Bài viết mới được xuất bản",
+                        "Bài viết \"" + article.getTitle() + "\" trong danh sách quan tâm của bạn đã được xuất bản.",
+                        vn.campuslife.enumeration.NotificationType.ARTICLE_PUBLISHED,
+                        "/articles/" + article.getSlug(),
+                        null
+                    );
+                }
+            } catch (Exception e) {
+                // Ignore notification failure to keep publishing transactional integrity
+            }
         }
 
         EventArticle saved = eventArticleRepository.save(article);
@@ -456,10 +577,40 @@ public class EventArticleServiceImpl implements EventArticleService {
 
     @Override
     @Transactional(readOnly = true)
-    public EventArticleAdminResponse getArticleByActivityId(Long activityId) {
-        EventArticle article = eventArticleRepository.findByActivityId(activityId)
-                .orElseThrow(() -> new ResourceNotFoundException("Article not found for activity: " + activityId));
-        return toAdminResponse(article);
+    public List<EventArticleAdminResponse> getArticlesByActivityId(Long activityId) {
+        List<EventArticle> articles = eventArticleRepository.findByActivityId(activityId);
+        return articles.stream().map(this::toAdminResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public EventArticleAdminResponse setPrimaryArticle(Long articleId) {
+        EventArticle target = eventArticleRepository.findById(articleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
+
+        if (target.getActivity() == null) {
+            throw new BadRequestException("Standalone articles cannot be primary");
+        }
+
+        Long activityId = target.getActivity().getId();
+
+        List<EventArticle> others = eventArticleRepository.findByActivityId(activityId);
+        others.forEach(a -> {
+            if (!a.getId().equals(articleId)) {
+                a.setPrimary(false);
+            }
+        });
+        eventArticleRepository.saveAll(others);
+
+        target.setPrimary(true);
+        return toAdminResponse(eventArticleRepository.save(target));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ArticleListResponse> getArticlesBySeriesId(Long seriesId) {
+        List<EventArticle> articles = eventArticleRepository.findPublishedBySeriesId(seriesId);
+        return articles.stream().map(a -> toListResponse(a, null)).collect(Collectors.toList());
     }
 
     // ============== ADMIN STATISTICS ==============
@@ -724,8 +875,11 @@ public class EventArticleServiceImpl implements EventArticleService {
         Activity activity = article.getActivity();
         if (activity != null) {
             response.setRegistrationStatus(resolveRegistrationStatus(activity, LocalDateTime.now()).name());
-            response.setRegistrationLink(resolveRegistrationLink(activity));
+            response.setActivityId(activity.getId());
+            response.setShareLink(activity.getShareLink());
         }
+        response.setArticleType(article.getArticleType());
+        response.setPrimary(article.isPrimary());
 
         if (article.getCategory() != null) {
             response.setCategoryName(article.getCategory().getName());
@@ -746,7 +900,12 @@ public class EventArticleServiceImpl implements EventArticleService {
     private EventArticleAdminResponse toAdminResponse(EventArticle article) {
         EventArticleAdminResponse res = new EventArticleAdminResponse();
         res.setId(article.getId());
-        res.setActivityId(article.getActivity().getId());
+        if (article.getActivity() != null) {
+            res.setActivityId(article.getActivity().getId());
+            res.setActivityName(article.getActivity().getName());
+        }
+        res.setArticleType(article.getArticleType());
+        res.setPrimary(article.isPrimary());
         res.setTitle(article.getTitle());
         res.setSlug(article.getSlug());
         res.setThumbnailUrl(UrlUtils.toFullUrl(article.getThumbnailUrl(), publicUrl));
@@ -829,13 +988,6 @@ public class EventArticleServiceImpl implements EventArticleService {
         return RegistrationCtaStatus.OPEN;
     }
 
-    private String resolveRegistrationLink(Activity activity) {
-        if (activity.getShareLink() != null && !activity.getShareLink().isBlank()) {
-            return activity.getShareLink();
-        }
-        return "/activities/" + activity.getId();
-    }
-
     private void validateUpsertRequest(EventArticleUpsertRequest request, boolean isCreate) {
         if (request.getTitle() == null || request.getTitle().isBlank()) {
             throw new BadRequestException("Title is required");
@@ -845,9 +997,6 @@ public class EventArticleServiceImpl implements EventArticleService {
         }
         if (request.getContent() == null || request.getContent().isBlank()) {
             throw new BadRequestException("Content is required");
-        }
-        if (isCreate && (request.getActivityId() == null)) {
-            throw new BadRequestException("ActivityId is required when creating article");
         }
     }
 
@@ -862,5 +1011,255 @@ public class EventArticleServiceImpl implements EventArticleService {
 
     private String trimToNull(String str) {
         return (str == null || str.isBlank()) ? null : str.trim();
+    }
+
+    private LocalDateTime parseDateTime(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) {
+            return null;
+        }
+        try {
+            if (dateStr.length() == 10) {
+                return java.time.LocalDate.parse(dateStr).atStartOfDay();
+            }
+            return LocalDateTime.parse(dateStr);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response addReaction(String slug, String username, vn.campuslife.enumeration.ReactionType type) {
+        EventArticle article = eventArticleRepository.findBySlugAndIsPublishedTrue(slug)
+                .orElseThrow(() -> new ResourceNotFoundException("Article not found with slug: " + slug));
+
+        Long studentId = studentService.getStudentIdByUsername(username);
+        if (studentId == null) {
+            return new Response(false, "Student not found", null);
+        }
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student entity not found"));
+
+        Optional<ArticleReaction> reactionOpt = articleReactionRepository.findByArticleIdAndStudentId(article.getId(), studentId);
+        if (reactionOpt.isPresent()) {
+            ArticleReaction reaction = reactionOpt.get();
+            reaction.setReactionType(type);
+            articleReactionRepository.save(reaction);
+        } else {
+            ArticleReaction reaction = new ArticleReaction();
+            reaction.setArticle(article);
+            reaction.setStudent(student);
+            reaction.setReactionType(type);
+            articleReactionRepository.save(reaction);
+        }
+
+        return Response.success("Reaction added/updated", null);
+    }
+
+    @Override
+    @Transactional
+    public Response removeReaction(String slug, String username) {
+        EventArticle article = eventArticleRepository.findBySlugAndIsPublishedTrue(slug)
+                .orElseThrow(() -> new ResourceNotFoundException("Article not found with slug: " + slug));
+
+        Long studentId = studentService.getStudentIdByUsername(username);
+        if (studentId == null) {
+            return new Response(false, "Student not found", null);
+        }
+
+        Optional<ArticleReaction> reactionOpt = articleReactionRepository.findByArticleIdAndStudentId(article.getId(), studentId);
+        if (reactionOpt.isPresent()) {
+            articleReactionRepository.delete(reactionOpt.get());
+            return Response.success("Reaction removed", null);
+        }
+        return new Response(false, "Reaction not found", null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Long> getReactionCounts(String slug) {
+        EventArticle article = eventArticleRepository.findBySlugAndIsPublishedTrue(slug)
+                .orElseThrow(() -> new ResourceNotFoundException("Article not found with slug: " + slug));
+
+        Map<String, Long> counts = new HashMap<>();
+        for (vn.campuslife.enumeration.ReactionType type : vn.campuslife.enumeration.ReactionType.values()) {
+            counts.put(type.name(), 0L);
+        }
+
+        List<Object[]> results = articleReactionRepository.countReactionsByArticleId(article.getId());
+        for (Object[] row : results) {
+            vn.campuslife.enumeration.ReactionType type = (vn.campuslife.enumeration.ReactionType) row[0];
+            Long count = (Long) row[1];
+            counts.put(type.name(), count);
+        }
+
+        return counts;
+    }
+
+    @Override
+    @Transactional
+    public Response trackShare(String slug) {
+        EventArticle article = eventArticleRepository.findBySlugAndIsPublishedTrue(slug)
+                .orElseThrow(() -> new ResourceNotFoundException("Article not found with slug: " + slug));
+
+        article.setShareCount(article.getShareCount() + 1);
+        eventArticleRepository.save(article);
+        return Response.success("Share tracked", null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ArticleHistoryResponse> getReadingHistory(String username, int page, int size) {
+        Long studentId = studentService.getStudentIdByUsername(username);
+        if (studentId == null) {
+            return Page.empty();
+        }
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ArticleViewHistory> historyPage = articleViewHistoryRepository.findByStudentIdOrderByViewedAtDesc(studentId, pageable);
+        return historyPage.map(history -> {
+            ArticleHistoryResponse res = new ArticleHistoryResponse();
+            res.setId(history.getId());
+            EventArticle article = history.getArticle();
+            res.setArticleId(article.getId());
+            res.setTitle(article.getTitle());
+            res.setSlug(article.getSlug());
+            res.setThumbnailUrl(UrlUtils.toFullUrl(article.getThumbnailUrl(), publicUrl));
+            res.setSeoDescription(article.getSeoDescription());
+            res.setPublished(article.isPublished());
+            res.setPublishedAt(article.getPublishedAt());
+            res.setViewedAt(history.getViewedAt());
+            if (article.getActivity() != null) {
+                res.setRegistrationStatus(resolveRegistrationStatus(article.getActivity(), LocalDateTime.now()).name());
+            }
+            return res;
+        });
+    }
+
+    @Override
+    @Transactional
+    public void deleteReadingHistory(String username, Long historyId) {
+        Long studentId = studentService.getStudentIdByUsername(username);
+        ArticleViewHistory history = articleViewHistoryRepository.findById(historyId)
+                .orElseThrow(() -> new ResourceNotFoundException("History entry not found: " + historyId));
+
+        if (studentId == null || !history.getStudent().getId().equals(studentId)) {
+            throw new BadRequestException("You are not authorized to delete this history entry");
+        }
+
+        articleViewHistoryRepository.delete(history);
+    }
+
+    @Override
+    @Transactional
+    public void clearAllReadingHistory(String username) {
+        Long studentId = studentService.getStudentIdByUsername(username);
+        if (studentId != null) {
+            articleViewHistoryRepository.deleteByStudentId(studentId);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ArticleListResponse> getTrendingArticles(int days, int limit) {
+        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        Pageable pageable = PageRequest.of(0, limit);
+        List<Object[]> trendingData = articleViewHistoryRepository.findTrendingArticleIds(since, pageable);
+        List<Long> articleIds = trendingData.stream()
+                .map(row -> (Long) row[0])
+                .collect(Collectors.toList());
+
+        if (articleIds.isEmpty()) {
+            return eventArticleRepository.findAllPublishedOrderByPinnedAndPriority(PageRequest.of(0, limit))
+                    .map(a -> toListResponse(a, null))
+                    .getContent();
+        }
+
+        List<EventArticle> articles = eventArticleRepository.findAllById(articleIds);
+        articles.sort(Comparator.comparingInt(a -> articleIds.indexOf(a.getId())));
+        return articles.stream().map(a -> toListResponse(a, null)).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ArticleListResponse> getFilteredArticlesForAdmin(
+            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            int page, int size) {
+            
+        LocalDateTime from = parseDateTime(dateFrom);
+        LocalDateTime to = parseDateTime(dateTo);
+        
+        Pageable pageable = PageRequest.of(page, size);
+        org.springframework.data.jpa.domain.Specification<EventArticle> spec = 
+                vn.campuslife.repository.specification.ArticleSpecification.filterArticles(
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, from, to
+                );
+                
+        Page<EventArticle> articles = eventArticleRepository.findAll(spec, pageable);
+        return articles.map(a -> toListResponse(a, null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportArticlesToExcel(
+            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo) {
+            
+        LocalDateTime from = parseDateTime(dateFrom);
+        LocalDateTime to = parseDateTime(dateTo);
+        
+        org.springframework.data.jpa.domain.Specification<EventArticle> spec = 
+                vn.campuslife.repository.specification.ArticleSpecification.filterArticles(
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, from, to
+                );
+                
+        List<EventArticle> articles = eventArticleRepository.findAll(spec);
+        
+        try (org.apache.poi.ss.usermodel.Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+             
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("Articles");
+            
+            org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(0);
+            String[] headers = { "ID", "Title", "Slug", "Article Type", "Activity Name", "Category", "Published", "Published At", "View Count", "Wishlist Count", "Share Count", "Primary" };
+            
+            org.apache.poi.ss.usermodel.CellStyle headerCellStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerCellStyle.setFont(headerFont);
+            
+            for (int col = 0; col < headers.length; col++) {
+                org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(col);
+                cell.setCellValue(headers[col]);
+                cell.setCellStyle(headerCellStyle);
+            }
+            
+            int rowIdx = 1;
+            for (EventArticle article : articles) {
+                org.apache.poi.ss.usermodel.Row row = sheet.createRow(rowIdx++);
+                
+                row.createCell(0).setCellValue(article.getId());
+                row.createCell(1).setCellValue(article.getTitle());
+                row.createCell(2).setCellValue(article.getSlug());
+                row.createCell(3).setCellValue(article.getArticleType() != null ? article.getArticleType().name() : "");
+                row.createCell(4).setCellValue(article.getActivity() != null ? article.getActivity().getName() : "");
+                row.createCell(5).setCellValue(article.getCategory() != null ? article.getCategory().getName() : "");
+                row.createCell(6).setCellValue(article.isPublished() ? "Yes" : "No");
+                row.createCell(7).setCellValue(article.getPublishedAt() != null ? article.getPublishedAt().toString() : "");
+                row.createCell(8).setCellValue(article.getViewCount());
+                row.createCell(9).setCellValue(article.getWishlistCount());
+                row.createCell(10).setCellValue(article.getShareCount());
+                row.createCell(11).setCellValue(article.isPrimary() ? "Yes" : "No");
+            }
+            
+            for (int col = 0; col < headers.length; col++) {
+                sheet.autoSizeColumn(col);
+            }
+            
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to export articles to Excel", e);
+        }
     }
 }
