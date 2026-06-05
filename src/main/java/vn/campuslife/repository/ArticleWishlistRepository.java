@@ -18,4 +18,5 @@ public interface ArticleWishlistRepository extends JpaRepository<ArticleWishlist
     List<ArticleWishlist> findByStudentIdOrderByCreatedAtDesc(Long studentId);
     long countByArticleId(Long articleId);
     void deleteByArticleIdAndStudentId(Long articleId, Long studentId);
+    List<ArticleWishlist> findByArticleId(Long articleId);
 }

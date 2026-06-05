@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import vn.campuslife.enumeration.ArticleType;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -78,9 +79,19 @@ public class EventArticle {
     @Column(nullable = false)
     private Long wishlistCount = 0L;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "activity_id", nullable = false, unique = true)
+    @Column(nullable = false)
+    private Long shareCount = 0L;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "activity_id", nullable = true)
     private Activity activity;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "article_type", nullable = false, length = 30)
+    private ArticleType articleType = ArticleType.ANNOUNCEMENT;
+
+    @Column(name = "is_primary", nullable = false)
+    private boolean isPrimary = false;
 
     @CreatedDate
     private LocalDateTime createdAt;

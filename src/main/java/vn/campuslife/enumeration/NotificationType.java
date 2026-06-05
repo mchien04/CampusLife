@@ -11,5 +11,6 @@ public enum NotificationType {
     SYSTEM_ANNOUNCEMENT, // Thông báo hệ thống
     PROFILE_UPDATE, // Cập nhật profile
     SCORE_UPDATE, // Cập nhật điểm số
-    GENERAL // Thông báo chung
+    GENERAL, // Thông báo chung
+    ARTICLE_PUBLISHED // Bài viết mới được xuất bản
 }

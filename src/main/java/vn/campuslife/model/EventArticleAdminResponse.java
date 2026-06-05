@@ -3,6 +3,7 @@ package vn.campuslife.model;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vn.campuslife.enumeration.ArticleType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -13,6 +14,9 @@ import java.util.List;
 public class EventArticleAdminResponse {
     private Long id;
     private Long activityId;
+    private String activityName;
+    private ArticleType articleType;
+    private boolean isPrimary;
     private String title;
     private String slug;
     private String thumbnailUrl;
