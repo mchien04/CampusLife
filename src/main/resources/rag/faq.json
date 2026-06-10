@@ -1,0 +1,270 @@
+﻿{
+    "version":  "1.0",
+    "updatedAt":  "2026-05-22",
+    "faqs":  [
+                 {
+                     "id":  "UNCONFIRMED_AFTER_ATTENDING",
+                     "order":  1,
+                     "title":  "Đã tham gia nhưng chưa được xác nhận",
+                     "questionPatterns":  [
+                                              "đã tham gia nhưng chưa được xác nhận",
+                                              "tham gia rồi mà chưa xác nhận",
+                                              "chưa cập nhật tham gia",
+                                              "tham gia xong ma he thong chua cap nhat",
+                                              "he thong chua cap nhat",
+                                              "tham gia roi ma chua cap nhat",
+                                              "tham gia xong nhung chua cap nhat"
+                                          ],
+                     "answer":  "Nếu sinh viên đã tham gia sự kiện nhưng chưa được xác nhận, cần kiểm tra trạng thái check-in/check-out và minh chứng. Nếu đã hoàn tất nhưng hệ thống chưa cập nhật, liên hệ ban tổ chức hoặc phòng CTSV, kèm mã sinh viên, tên sự kiện và minh chứng tham gia.",
+                     "requiredInfoWhenContactingSupport":  [
+                                                               "mã sinh viên",
+                                                               "tên sự kiện",
+                                                               "ảnh check-in/check-out hoặc minh chứng tham gia"
+                                                           ]
+                 },
+                 {
+                     "id":  "CANNOT_CHECK_IN",
+                     "order":  2,
+                     "title":  "Không check-in được",
+                     "questionPatterns":  [
+                                              "không check in được",
+                                              "không check-in được",
+                                              "quét qr không được",
+                                              "ticket code không hợp lệ"
+                                          ],
+                     "answer":  "Kiểm tra kết nối mạng, mã QR/ticket code, và thời gian check-in có nằm trong khung giờ sự kiện hay không. Nếu vẫn lỗi, chụp màn hình thông báo lỗi và liên hệ ban tổ chức hoặc admin hệ thống để được hỗ trợ mở khóa check-in.",
+                     "requiredInfoWhenContactingSupport":  [
+                                                               "mã sinh viên",
+                                                               "tên sự kiện",
+                                                               "ảnh lỗi hoặc mô tả lỗi",
+                                                               "thời điểm gặp lỗi"
+                                                           ]
+                 },
+                 {
+                     "id":  "SCORE_NOT_ADDED",
+                     "order":  3,
+                     "title":  "Chưa được cộng điểm",
+                     "questionPatterns":  [
+                                              "chưa được cộng điểm",
+                                              "điểm chưa cập nhật",
+                                              "tham gia rồi mà không có điểm"
+                                          ],
+                     "answer":  "Điểm thường được cập nhật sau khi hoàn tất quy trình xác nhận tham gia và duyệt minh chứng (nếu sự kiện yêu cầu). Nếu quá thời gian công bố kết quả mà vẫn chưa có điểm, liên hệ phòng CTSV hoặc khoa phụ trách để đối soát.",
+                     "requiredInfoWhenContactingSupport":  [
+                                                               "mã sinh viên",
+                                                               "tên sự kiện",
+                                                               "thời gian tham gia",
+                                                               "bằng chứng đã hoàn tất check-in/check-out"
+                                                           ]
+                 },
+                 {
+                     "id":  "INVALID_EVIDENCE_SUBMISSION",
+                     "order":  4,
+                     "title":  "Nộp minh chứng sai",
+                     "questionPatterns":  [
+                                              "nộp minh chứng sai",
+                                              "gửi nhầm file minh chứng",
+                                              "minh chứng không hợp lệ"
+                                          ],
+                     "answer":  "Nếu nộp sai minh chứng, sinh viên cần nộp lại đúng định dạng, đúng nội dung và trong thời hạn hệ thống cho phép. Trường hợp quá hạn hoặc bị khóa nộp lại, liên hệ ban tổ chức để xin mở lại lượt nộp.",
+                     "requiredInfoWhenContactingSupport":  [
+                                                               "mã sinh viên",
+                                                               "tên sự kiện",
+                                                               "file minh chứng đã nộp",
+                                                               "file minh chứng đúng cần thay thế"
+                                                           ]
+                 },
+                 {
+                     "id":  "CANCEL_REGISTRATION",
+                     "order":  5,
+                     "title":  "Muốn hủy đăng ký",
+                     "questionPatterns":  [
+                                              "muốn hủy đăng ký",
+                                              "hủy sự kiện đã đăng ký",
+                                              "xóa đăng ký sự kiện"
+                                          ],
+                     "answer":  "Sinh viên có thể hủy đăng ký nếu sự kiện chưa đóng cổng đăng ký và chưa check-in. Vào chi tiết sự kiện để kiểm tra nút hủy đăng ký. Nếu không thấy tùy chọn hủy, liên hệ ban tổ chức hoặc admin để xử lý thủ công.",
+                     "requiredInfoWhenContactingSupport":  [
+                                                               "mã sinh viên",
+                                                               "tên sự kiện",
+                                                               "lý do hủy đăng ký"
+                                                           ]
+                 },
+                 {
+                     "id":  "REGISTRATION_DEADLINE_PASSED",
+                     "order":  6,
+                     "title":  "Quá hạn đăng ký",
+                     "questionPatterns":  [
+                                              "quá hạn đăng ký",
+                                              "hết hạn đăng ký",
+                                              "đóng cổng đăng ký rồi"
+                                          ],
+                     "answer":  "Khi đã quá hạn đăng ký, hệ thống sẽ tự động đóng cổng đăng ký và không cho tạo đăng ký mới. Sinh viên có thể theo dõi sự kiện khác hoặc liên hệ ban tổ chức để hỏi về danh sách chờ/bổ sung (nếu có).",
+                     "requiredInfoWhenContactingSupport":  [
+                                                               "mã sinh viên",
+                                                               "tên sự kiện",
+                                                               "thời điểm muốn đăng ký"
+                                                           ]
+                 },
+                 {
+                     "id":  "CONTACT_CHANNELS",
+                     "order":  7,
+                     "title":  "Các cách thức liên lạc của khoa và admin",
+                     "questionPatterns":  [
+                                              "liên hệ khoa ở đâu",
+                                              "liên hệ admin như thế nào",
+                                              "có những cách thức liên lạc nào",
+                                              "kênh hỗ trợ",
+                                              "liên hệ ban tổ chức",
+                                              "liên hệ ban tổ chức khoa",
+                                              "liên hệ khoa xây dựng",
+                                              "ban tổ chức khoa xây dựng",
+                                              "thông tin liên hệ ban tổ chức",
+                                              "liên hệ hỗ trợ sự kiện",
+                                              "liên hệ khoa",
+                                              "liên hệ phòng",
+                                              "liên hệ admin",
+                                              "thông tin liên hệ",
+                                              "email khoa",
+                                              "số điện thoại khoa"
+                                          ],
+                     "answer":  "Sinh viên ưu tiên liên hệ theo thứ tự: kênh hỗ trợ trong app -\u003e email CTSV -\u003e email khoa phụ trách -\u003e hotline. Khi gửi yêu cầu, cần kèm mã sinh viên, tên sự kiện, vấn đề gặp phải, và ảnh minh chứng/màn hình lỗi để được xử lý nhanh.",
+                     "requiredWhenCreatingTicket":  [
+                                                        "mã sinh viên",
+                                                        "họ và tên",
+                                                        "tên sự kiện",
+                                                        "mô tả vấn đề",
+                                                        "ảnh màn hình lỗi hoặc minh chứng"
+                                                    ],
+                     "responseSlaHours":  {
+                                              "inAppAdmin":  4,
+                                              "ctsvEmail":  24,
+                                              "facultyEmail":  24,
+                                              "hotline":  1
+                                          },
+                     "escalationFlow":  [
+                                            "Bước 1: Tạo ticket trong app hoặc gửi email CTSV",
+                                            "Bước 2: Sau 24h chưa có phản hồi, chuyển tiếp cho khoa phụ trách",
+                                            "Bước 3: Sau 48h chưa xử lý xong, gọi hotline CTSV để ưu tiên"
+                                        ],
+                     "contactChannels":  [
+                                             {
+                                                 "unit":  "Khoa Công nghệ thông tin",
+                                                 "code":  "FIT",
+                                                 "officeHours":  "Thứ 2 - Thứ 6, 08:00-11:30, 13:30-16:30",
+                                                 "location":  "Tòa A1, tầng 2",
+                                                 "contactPoints":  [
+                                                                       {
+                                                                           "type":  "email",
+                                                                           "value":  "fit@hcmute.edu.vn",
+                                                                           "priority":  1
+                                                                       },
+                                                                       {
+                                                                           "type":  "phone",
+                                                                           "value":  "028 3722 2576",
+                                                                           "priority":  2
+                                                                       },
+                                                                       {
+                                                                           "type":  "facebook",
+                                                                           "value":  "https://facebook.com/fit.hcmute",
+                                                                           "priority":  3
+                                                                       }
+                                                                   ]
+                                             },
+                                             {
+                                                 "unit":  "Khoa Điện - Điện tử",
+                                                 "code":  "FEEE",
+                                                 "officeHours":  "Thứ 2 - Thứ 6, 08:00-11:30, 13:30-16:30",
+                                                 "location":  "Tòa A2, tầng 3",
+                                                 "contactPoints":  [
+                                                                       {
+                                                                           "type":  "email",
+                                                                           "value":  "fee@hcmute.edu.vn",
+                                                                           "priority":  1
+                                                                       },
+                                                                       {
+                                                                           "type":  "phone",
+                                                                           "value":  "028 3722 1223",
+                                                                           "priority":  2
+                                                                       },
+                                                                       {
+                                                                           "type":  "facebook",
+                                                                           "value":  "https://facebook.com/fee.hcmute",
+                                                                           "priority":  3
+                                                                       }
+                                                                   ]
+                                             },
+                                             {
+                                                 "unit":  "Khoa Cơ khí chế tạo máy",
+                                                 "code":  "FME",
+                                                 "officeHours":  "Thứ 2 - Thứ 6, 08:00-11:30, 13:30-16:30",
+                                                 "location":  "Tòa A3, tầng 2",
+                                                 "contactPoints":  [
+                                                                       {
+                                                                           "type":  "email",
+                                                                           "value":  "fme@hcmute.edu.vn",
+                                                                           "priority":  1
+                                                                       },
+                                                                       {
+                                                                           "type":  "phone",
+                                                                           "value":  "028 3722 1649",
+                                                                           "priority":  2
+                                                                       },
+                                                                       {
+                                                                           "type":  "facebook",
+                                                                           "value":  "https://facebook.com/fme.hcmute",
+                                                                           "priority":  3
+                                                                       }
+                                                                   ]
+                                             },
+                                             {
+                                                 "unit":  "Phòng Công tác sinh viên",
+                                                 "code":  "CTSV",
+                                                 "officeHours":  "Thứ 2 - Thứ 6, 07:30-11:30, 13:00-17:00",
+                                                 "location":  "Tòa Trung tâm, tầng 1, quầy một cửa",
+                                                 "contactPoints":  [
+                                                                       {
+                                                                           "type":  "email",
+                                                                           "value":  "ctsv@hcmute.edu.vn",
+                                                                           "priority":  1
+                                                                       },
+                                                                       {
+                                                                           "type":  "hotline",
+                                                                           "value":  "028 3722 2764",
+                                                                           "priority":  2
+                                                                       },
+                                                                       {
+                                                                           "type":  "zalo",
+                                                                           "value":  "https://zalo.me/ctsvhcmute",
+                                                                           "priority":  3
+                                                                       }
+                                                                   ]
+                                             },
+                                             {
+                                                 "unit":  "Admin hệ thống CampusLife",
+                                                 "code":  "SYSADMIN",
+                                                 "officeHours":  "Hỗ trợ online 08:00-22:00 hằng ngày",
+                                                 "location":  "Kênh trực tuyến",
+                                                 "contactPoints":  [
+                                                                       {
+                                                                           "type":  "in_app_ticket",
+                                                                           "value":  "Menu Hỗ trợ -\u003e Tạo yêu cầu",
+                                                                           "priority":  1
+                                                                       },
+                                                                       {
+                                                                           "type":  "email",
+                                                                           "value":  "campuslife-support@hcmute.edu.vn",
+                                                                           "priority":  2
+                                                                       },
+                                                                       {
+                                                                           "type":  "telegram",
+                                                                           "value":  "https://t.me/campuslife_support",
+                                                                           "priority":  3
+                                                                       }
+                                                                   ]
+                                             }
+                                         ],
+                     "lastVerifiedAt":  "2026-05-22"
+                 }
+             ]
+}
