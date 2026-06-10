@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.*;
 import vn.campuslife.service.EventArticleService;
 import vn.campuslife.service.StudentService;
+import vn.campuslife.service.ArticleCommentService;
 
 import java.util.List;
 
@@ -22,12 +23,25 @@ public class EventArticleAdminController {
 
     private final EventArticleService eventArticleService;
     private final StudentService studentService;
+    private final ArticleCommentService articleCommentService;
 
     @GetMapping
     public ResponseEntity<Page<ArticleListResponse>> getAllArticles(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long activityId,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) vn.campuslife.enumeration.ArticleType articleType,
+            @RequestParam(required = false) Boolean featured,
+            @RequestParam(required = false) Boolean pinned,
+            @RequestParam(required = false) Boolean primary,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<ArticleListResponse> articles = eventArticleService.getAllArticlesForAdmin(page, size);
+        Page<ArticleListResponse> articles = eventArticleService.getFilteredArticlesForAdmin(
+                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size
+        );
         return ResponseEntity.ok(articles);
     }
 
@@ -44,8 +58,14 @@ public class EventArticleAdminController {
     }
 
     @GetMapping("/by-activity/{activityId}")
-    public ResponseEntity<EventArticleAdminResponse> getArticleByActivityId(@PathVariable Long activityId) {
-        EventArticleAdminResponse response = eventArticleService.getArticleByActivityId(activityId);
+    public ResponseEntity<List<EventArticleAdminResponse>> getArticlesByActivityId(@PathVariable Long activityId) {
+        List<EventArticleAdminResponse> response = eventArticleService.getArticlesByActivityId(activityId);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{articleId}/set-primary")
+    public ResponseEntity<EventArticleAdminResponse> setPrimaryArticle(@PathVariable Long articleId) {
+        EventArticleAdminResponse response = eventArticleService.setPrimaryArticle(articleId);
         return ResponseEntity.ok(response);
     }
 
@@ -132,6 +152,57 @@ public class EventArticleAdminController {
     @DeleteMapping("/tags/{tagId}")
     public ResponseEntity<Void> deleteTag(@PathVariable Long tagId) {
         eventArticleService.deleteTag(tagId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportArticles(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long activityId,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(required = false) vn.campuslife.enumeration.ArticleType articleType,
+            @RequestParam(required = false) Boolean featured,
+            @RequestParam(required = false) Boolean pinned,
+            @RequestParam(required = false) Boolean primary,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+            
+        byte[] xlsxData = eventArticleService.exportArticlesToExcel(
+                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo
+        );
+        
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"articles.xlsx\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(xlsxData);
+    }
+
+    @GetMapping("/{articleId}/comments")
+    public ResponseEntity<Page<ArticleCommentResponse>> getArticleComments(
+            @PathVariable Long articleId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        EventArticleAdminResponse article = eventArticleService.getArticleById(articleId);
+        Page<ArticleCommentResponse> comments = articleCommentService.getArticleComments(article.getSlug(), true, page, size);
+        return ResponseEntity.ok(comments);
+    }
+
+    @PutMapping("/comments/{commentId}/hide")
+    public ResponseEntity<ArticleCommentResponse> hideComment(@PathVariable Long commentId) {
+        ArticleCommentResponse response = articleCommentService.hideComment(commentId, true);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/comments/{commentId}/unhide")
+    public ResponseEntity<ArticleCommentResponse> unhideComment(@PathVariable Long commentId) {
+        ArticleCommentResponse response = articleCommentService.hideComment(commentId, false);
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/comments/{commentId}")
+    public ResponseEntity<Void> deleteComment(@PathVariable Long commentId) {
+        articleCommentService.deleteComment(commentId, null, true);
         return ResponseEntity.noContent().build();
     }
 }

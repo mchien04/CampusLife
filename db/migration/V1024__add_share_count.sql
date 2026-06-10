@@ -1,0 +1,1 @@
+ALTER TABLE event_articles ADD COLUMN share_count BIGINT NOT NULL DEFAULT 0;

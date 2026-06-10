@@ -43,7 +43,11 @@ public interface EventArticleService {
 
     vn.campuslife.model.EventArticleAdminResponse getArticleById(Long articleId);
 
-    vn.campuslife.model.EventArticleAdminResponse getArticleByActivityId(Long activityId);
+    List<vn.campuslife.model.EventArticleAdminResponse> getArticlesByActivityId(Long activityId);
+
+    vn.campuslife.model.EventArticleAdminResponse setPrimaryArticle(Long articleId);
+
+    List<vn.campuslife.model.ArticleListResponse> getArticlesBySeriesId(Long seriesId);
 
     // Admin Statistics Dashboard
     vn.campuslife.model.ArticleStatisticsResponse getArticleStatistics();
@@ -76,4 +80,30 @@ public interface EventArticleService {
 
     // Analytics
     void trackView(String slug);
+
+    // Phase 3 Features
+    vn.campuslife.model.Response addReaction(String slug, String username, vn.campuslife.enumeration.ReactionType type);
+
+    vn.campuslife.model.Response removeReaction(String slug, String username);
+
+    java.util.Map<String, Long> getReactionCounts(String slug);
+
+    vn.campuslife.model.Response trackShare(String slug);
+
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleHistoryResponse> getReadingHistory(String username, int page, int size);
+
+    void deleteReadingHistory(String username, Long historyId);
+
+    void clearAllReadingHistory(String username);
+
+    java.util.List<vn.campuslife.model.ArticleListResponse> getTrendingArticles(int days, int limit);
+
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getFilteredArticlesForAdmin(
+            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            int page, int size);
+
+    byte[] exportArticlesToExcel(
+            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo);
 }

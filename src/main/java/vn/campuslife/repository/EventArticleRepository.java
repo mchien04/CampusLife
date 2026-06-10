@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 import vn.campuslife.entity.EventArticle;
 
@@ -12,12 +13,21 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface EventArticleRepository extends JpaRepository<EventArticle, Long> {
+public interface EventArticleRepository extends JpaRepository<EventArticle, Long>, JpaSpecificationExecutor<EventArticle> {
     Optional<EventArticle> findBySlugAndIsPublishedTrue(String slug);
 
-    Optional<EventArticle> findByActivityId(Long activityId);
+    List<EventArticle> findByActivityId(Long activityId);
 
-    Optional<EventArticle> findByActivityIdAndIsPublishedTrue(Long activityId);
+    List<EventArticle> findByActivityIdAndIsPublishedTrue(Long activityId);
+
+    Optional<EventArticle> findByActivityIdAndIsPrimaryTrue(Long activityId);
+
+    Page<EventArticle> findByActivityId(Long activityId, Pageable pageable);
+
+    @Query("SELECT ea FROM EventArticle ea JOIN ea.activity a " +
+           "WHERE a.seriesId = :seriesId AND ea.isPublished = true " +
+           "ORDER BY a.seriesOrder ASC, ea.publishedAt DESC")
+    List<EventArticle> findPublishedBySeriesId(@Param("seriesId") Long seriesId);
 
     boolean existsBySlug(String slug);
 

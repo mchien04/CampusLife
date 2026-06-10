@@ -3,6 +3,7 @@ package vn.campuslife.model;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vn.campuslife.enumeration.ArticleType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,7 +18,10 @@ public class ArticleListResponse {
     private String thumbnailUrl;
     private String seoDescription;
     private String registrationStatus;
-    private String registrationLink;
+    private Long activityId;
+    private String shareLink;
+    private ArticleType articleType;
+    private boolean isPrimary;
     private boolean isPublished;
     private boolean isFeatured;
     private boolean isPinned;
@@ -28,3 +32,4 @@ public class ArticleListResponse {
     private List<String> tags;
     private List<ArticleImageResponse> images;
 }
+

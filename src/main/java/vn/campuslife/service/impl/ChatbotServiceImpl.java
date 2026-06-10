@@ -580,14 +580,17 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         );}
 
     private ChatbotMessageResponse answerArticleForActivity(Activity activity) {
-        Optional<EventArticle> articleOpt = eventArticleRepository.findByActivityIdAndIsPublishedTrue(activity.getId());
-        if (articleOpt.isEmpty()) {
+        List<EventArticle> articles = eventArticleRepository.findByActivityIdAndIsPublishedTrue(activity.getId());
+        if (articles.isEmpty()) {
             ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(activity.getId(),
                     activity.getName());
             return new ChatbotMessageResponse(null, "Sự kiện này hiện chưa có bài viết được đăng.", resolvedActivity,
                     false, new ArrayList<>());
         }
-        EventArticle article = articleOpt.get();
+        EventArticle article = articles.stream()
+                .filter(EventArticle::isPrimary)
+                .findFirst()
+                .orElse(articles.get(0));
         ChatbotResolvedActivityResponse resolvedActivity = new ChatbotResolvedActivityResponse(activity.getId(),
                 activity.getName());
         String answer = "Sự kiện này có bài viết: " + article.getTitle() + "\nSlug: " + article.getSlug()
