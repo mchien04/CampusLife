@@ -162,6 +162,7 @@ public class SecurityConfig {
                         // Hien thi participations
                         .requestMatchers(HttpMethod.GET, "/api/participations").permitAll()
                         // Tasks and Assignments
+                        .requestMatchers(HttpMethod.GET, "/api/assignments/my").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/assignments/activity/*/student/*").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/tasks/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/assignments/student/**").authenticated()
