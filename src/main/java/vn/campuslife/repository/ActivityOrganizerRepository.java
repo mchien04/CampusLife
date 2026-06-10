@@ -12,6 +12,12 @@ import java.util.List;
 public interface ActivityOrganizerRepository extends JpaRepository<ActivityOrganizer, Long> {
     boolean existsByActivityIdAndStudentId(Long activityId, Long studentId);
 
+    boolean existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(Long activityId, Long studentId);
+
+    java.util.Optional<ActivityOrganizer> findByActivityIdAndStudentId(Long activityId, Long studentId);
+
+    List<ActivityOrganizer> findByActivityIdAndIsPrepSupervisorTrue(Long activityId);
+
     List<ActivityOrganizer> findByActivityId(Long activityId);
 
     long deleteByActivityIdAndStudentId(Long activityId, Long studentId);

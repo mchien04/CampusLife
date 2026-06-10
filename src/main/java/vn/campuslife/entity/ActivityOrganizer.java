@@ -29,6 +29,9 @@ public class ActivityOrganizer {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
+    @Column(nullable = false)
+    private boolean isPrepSupervisor = false;
+
     @CreatedDate
     private LocalDateTime createdAt;
 }

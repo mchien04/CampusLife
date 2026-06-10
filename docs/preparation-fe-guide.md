@@ -99,6 +99,7 @@ export type PreparationTaskDto = {
   allocatedAmount: string;
   isFinancial: boolean;
   status: PreparationTaskStatus;
+  completionProofUrls: string[];
 };
 
 export type PreparationTaskMemberDto = {
@@ -119,11 +120,13 @@ export type MyPreparationTaskDto = {
   isFinancial: boolean;
   status: PreparationTaskStatus;
   myRole: PreparationTaskMemberRole;
+  completionProofUrls: string[];
 };
 
 export type OrganizerDto = {
   studentId: number;
   fullName: string | null;
+  isPrepSupervisor: boolean;
 };
 
 export type PreparationDashboardDto = {
@@ -356,6 +359,10 @@ export type AdminDecisionAllocationAdjustmentRequest = {
 export type ApproveTaskCompletionRequest = { approved: boolean };
 
 export type TogglePreparationRequest = { enabled: boolean };
+
+export type RequestCompleteTaskRequest = {
+  proofUrls?: string[] | null;
+};
 ```
 
 ## 5. Endpoint usage theo role
@@ -409,16 +416,19 @@ export type TogglePreparationRequest = { enabled: boolean };
   - `GET /api/preparation/tasks/{taskId}/allocation-sources`
 - Nhận task / yêu cầu hoàn thành:
   - `PUT /api/preparation/tasks/{taskId}/accept` (member/leader)
-  - `PUT /api/preparation/tasks/{taskId}/request-complete`
+  - `PUT /api/preparation/tasks/{taskId}/request-complete` (chấp nhận body RequestCompleteTaskRequest tùy chọn)
+  - `POST /api/preparation/tasks/{taskId}/completion-proofs` (upload ảnh minh chứng hoàn thành, trả về UploadResultDto)
   - `PUT /api/preparation/tasks/{taskId}/status` (update status chung)
 
 ### 5.4. ADMIN/MANAGER
 - Upsert activity budget + categories:
   - `PUT /api/preparation/activities/{activityId}/budget`
-- Quản lý organizer:
+- Quản lý organizer & PrepSupervisor (cấp/thu hồi quyền bởi ADMIN/MANAGER):
   - `POST /api/preparation/activities/{activityId}/organizers` (body: `{ studentIds: number[] }`)
   - `POST /api/preparation/activities/{activityId}/organizers/{studentId}`
   - `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}`
+  - `PUT /api/preparation/activities/{activityId}/organizers/{studentId}/prep-supervisor` (gán quyền PrepSupervisor)
+  - `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}/prep-supervisor` (thu hồi quyền PrepSupervisor)
 - Tạo task:
   - `POST /api/preparation/activities/{activityId}/tasks`
 - Allocate amount cho task:

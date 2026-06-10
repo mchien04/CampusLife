@@ -335,7 +335,7 @@ public class PreparationExportServiceImpl implements PreparationExportService {
             int r = 0;
             Row h = s1.createRow(r++);
             writeRow(h, header, List.of("TaskId", "Title", "Owner", "Status", "Deadline", "IsFinancial",
-                    "AllocatedAmount", "Leaders", "MembersCount"));
+                    "AllocatedAmount", "Leaders", "MembersCount", "CompletionProofUrls"));
             for (PreparationTask t : safeList(tasks)) {
                 List<PreparationTaskMember> ms = membersByTaskId.getOrDefault(t.getId(), List.of());
                 String leaders = ms.stream()
@@ -356,8 +356,9 @@ public class PreparationExportServiceImpl implements PreparationExportService {
                 writeCell(row, 6, money, t.getAllocatedAmount());
                 writeCell(row, 7, text, leaders);
                 writeCell(row, 8, text, memberCount);
+                writeCell(row, 9, text, t.getCompletionProofUrls());
             }
-            autosize(s1, 9);
+            autosize(s1, 10);
 
             Sheet s2 = wb.createSheet("Workload");
             int r2 = 0;
@@ -696,10 +697,10 @@ public class PreparationExportServiceImpl implements PreparationExportService {
         doc.add(new Paragraph("GeneratedAt: " + LocalDateTime.now(), normal));
         doc.add(new Paragraph(" ", normal));
 
-        PdfPTable t1 = new PdfPTable(new float[] { 1, 4, 2, 2, 2, 2, 3 });
+        PdfPTable t1 = new PdfPTable(new float[] { 1, 3, 2, 2, 2, 2, 2, 4 });
         t1.setWidthPercentage(100);
         t1.setSpacingAfter(8);
-        addPdfHeader(t1, List.of("Id", "Title", "Owner", "Status", "Deadline", "Allocated", "Leaders"));
+        addPdfHeader(t1, List.of("Id", "Title", "Owner", "Status", "Deadline", "Allocated", "Leaders", "CompletionProofUrls"));
         for (PreparationTask t : safeList(tasks)) {
             List<PreparationTaskMember> ms = membersByTaskId.getOrDefault(t.getId(), List.of());
             String leaders = ms.stream()
@@ -715,7 +716,8 @@ public class PreparationExportServiceImpl implements PreparationExportService {
                     t.getStatus() != null ? t.getStatus().name() : "-",
                     t.getDeadline() != null ? String.valueOf(t.getDeadline()) : "-",
                     fmtMoney(t.getAllocatedAmount()),
-                    leaders.isBlank() ? "-" : leaders));
+                    leaders.isBlank() ? "-" : leaders,
+                    t.getCompletionProofUrls() != null ? t.getCompletionProofUrls() : "-"));
         }
         doc.add(new Paragraph("Task List", section));
         doc.add(t1);

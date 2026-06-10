@@ -51,6 +51,28 @@ public class PreparationSecurity {
         return preparationTaskMemberRepository.existsByTaskIdAndStudentId(taskId, studentId);
     }
 
+    public boolean isActivityPrepSupervisor(Long activityId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return activityOrganizerRepository
+                .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId);
+    }
+
+    public boolean isTaskPrepSupervisor(Long taskId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return preparationTaskRepository.findById(taskId)
+                .map(task -> task.getActivity() != null ? task.getActivity().getId() : null)
+                .map(activityId ->
+                    activityOrganizerRepository
+                            .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId))
+                .orElse(false);
+    }
+
     private Long getStudentId(Authentication authentication) {
         if (authentication == null) {
             return null;

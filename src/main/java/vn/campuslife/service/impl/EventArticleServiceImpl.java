@@ -131,7 +131,13 @@ public class EventArticleServiceImpl implements EventArticleService {
                 history.setArticle(article);
                 history.setStudent(studentRepository.getReferenceById(studentId));
                 articleViewHistoryRepository.save(history);
+                
+                article.setViewCount(article.getViewCount() + 1);
+                eventArticleRepository.save(article);
             }
+        } else {
+            article.setViewCount(article.getViewCount() + 1);
+            eventArticleRepository.save(article);
         }
 
         ArticleDetailResponse response = new ArticleDetailResponse();
@@ -993,11 +999,23 @@ public class EventArticleServiceImpl implements EventArticleService {
             throw new BadRequestException("Title is required");
         }
         if (request.getSlug() == null || request.getSlug().isBlank()) {
-            throw new BadRequestException("Slug is required");
+            request.setSlug(generateSlug(request.getTitle()));
         }
         if (request.getContent() == null || request.getContent().isBlank()) {
             throw new BadRequestException("Content is required");
         }
+    }
+
+    private String generateSlug(String title) {
+        if (title == null || title.isBlank()) return "";
+        String slug = java.text.Normalizer.normalize(title, java.text.Normalizer.Form.NFD);
+        slug = slug.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+        slug = slug.toLowerCase();
+        slug = slug.replaceAll("đ", "d");
+        slug = slug.replaceAll("[^a-z0-9\\-]", "-");
+        slug = slug.replaceAll("-+", "-");
+        slug = slug.replaceAll("^-|-$", "");
+        return slug;
     }
 
     private String normalizeSlug(String slug) {

@@ -20,7 +20,7 @@ public class PreparationExportController {
     private final PreparationExportService exportService;
 
     @GetMapping("/financial")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<byte[]> exportFinancial(
             @PathVariable Long activityId,
             @RequestParam(defaultValue = "xlsx") String format,
@@ -30,7 +30,7 @@ public class PreparationExportController {
     }
 
     @GetMapping("/operational")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<byte[]> exportOperational(
             @PathVariable Long activityId,
             @RequestParam(defaultValue = "xlsx") String format,
@@ -40,7 +40,7 @@ public class PreparationExportController {
     }
 
     @GetMapping("/audit")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<byte[]> exportAudit(
             @PathVariable Long activityId,
             @RequestParam(defaultValue = "xlsx") String format,
@@ -56,4 +56,3 @@ public class PreparationExportController {
         return ResponseEntity.ok().headers(headers).body(file.bytes());
     }
 }
-

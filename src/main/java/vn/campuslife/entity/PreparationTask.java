@@ -48,6 +48,9 @@ public class PreparationTask {
     @Column(nullable = false)
     private PreparationTaskStatus status = PreparationTaskStatus.PENDING;
 
+    @Column(columnDefinition = "TEXT")
+    private String completionProofUrls;
+
     @CreatedDate
     private LocalDateTime createdAt;
 }

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import vn.campuslife.entity.Expense;
 import vn.campuslife.entity.PreparationTask;
 import vn.campuslife.enumeration.PreparationTaskMemberRole;
+import vn.campuslife.repository.ActivityOrganizerRepository;
 import vn.campuslife.repository.ExpenseRepository;
 import vn.campuslife.repository.PreparationTaskMemberRepository;
 import vn.campuslife.repository.PreparationTaskRepository;
@@ -18,6 +19,7 @@ public class PreparationFinanceSecurity {
     private final PreparationTaskRepository preparationTaskRepository;
     private final PreparationTaskMemberRepository preparationTaskMemberRepository;
     private final ExpenseRepository expenseRepository;
+    private final ActivityOrganizerRepository activityOrganizerRepository;
 
     public boolean isTaskLeader(Long taskId, Authentication authentication) {
         Long studentId = getStudentId(authentication);
@@ -68,6 +70,42 @@ public class PreparationFinanceSecurity {
                 .map(Expense::getTask)
                 .map(PreparationTask::getId)
                 .map(taskId -> isTaskLeader(taskId, authentication))
+                .orElse(false);
+    }
+
+    public boolean isActivityPrepSupervisor(Long activityId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return activityOrganizerRepository
+                .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId);
+    }
+
+    public boolean isTaskPrepSupervisor(Long taskId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return preparationTaskRepository.findById(taskId)
+                .map(task -> task.getActivity() != null ? task.getActivity().getId() : null)
+                .map(activityId ->
+                    activityOrganizerRepository
+                            .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId))
+                .orElse(false);
+    }
+
+    public boolean isExpensePrepSupervisor(Long expenseId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return expenseRepository.findById(expenseId)
+                .map(Expense::getTask)
+                .map(task -> task.getActivity() != null ? task.getActivity().getId() : null)
+                .map(activityId ->
+                    activityOrganizerRepository
+                            .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId))
                 .orElse(false);
     }
 
