@@ -4,12 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class OrganizerDto {
-    private Long studentId;
-    private String fullName;
-    private boolean isPrepSupervisor;
+public class RequestCompleteTaskRequest {
+    private List<String> proofUrls;
 }
-

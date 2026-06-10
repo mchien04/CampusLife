@@ -7,15 +7,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import vn.campuslife.entity.PreparationTask;
-import vn.campuslife.entity.Student;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
+import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.PreparationService;
 import vn.campuslife.service.StudentService;
-
-import java.util.List;
 
 import java.util.List;
 
@@ -25,18 +22,18 @@ import java.util.List;
 public class PreparationController {
 
     private final PreparationService preparationService;
-
     private final StudentService userService;
+    private final FileUploadService fileUploadService;
 
     @PutMapping("/activities/{activityId}/toggle")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> togglePreparation(@PathVariable Long activityId, @RequestParam boolean enabled) {
         preparationService.togglePreparation(activityId, enabled);
         return ResponseEntity.ok(Response.success("Updated preparation flag"));
     }
 
     @GetMapping("/activities/{activityId}/dashboard")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> getPreparationDashboard(@PathVariable Long activityId) {
         PreparationDashboardDto dashboard = preparationService.getPreparationDashboard(activityId);
         return ResponseEntity.ok(Response.success("OK", dashboard));
@@ -50,20 +47,20 @@ public class PreparationController {
     }
 
     @GetMapping("/activities/{activityId}/organizers")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> listOrganizers(@PathVariable Long activityId) {
         return ResponseEntity.ok(Response.success("OK", preparationService.listOrganizers(activityId)));
     }
 
     @PostMapping("/activities/{activityId}/organizers/{studentId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> addOrganizer(@PathVariable Long activityId, @PathVariable Long studentId) {
         preparationService.addOrganizer(activityId, studentId);
         return ResponseEntity.ok(Response.success("Added organizer"));
     }
 
     @PostMapping("/activities/{activityId}/organizers")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> addOrganizers(
             @PathVariable Long activityId,
             @RequestBody @Valid BulkAddOrganizersRequest request) {
@@ -72,14 +69,14 @@ public class PreparationController {
     }
 
     @DeleteMapping("/activities/{activityId}/organizers/{studentId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> removeOrganizer(@PathVariable Long activityId, @PathVariable Long studentId) {
         preparationService.removeOrganizer(activityId, studentId);
         return ResponseEntity.ok(Response.success("Removed organizer"));
     }
 
     @PostMapping("/activities/{activityId}/tasks")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> assignTask(@PathVariable Long activityId,
             @RequestBody @Valid CreatePreparationTaskRequest req) {
         PreparationTaskDto dto = preparationService.assignTask(new CreatePreparationTaskRequest(
@@ -93,7 +90,7 @@ public class PreparationController {
     }
 
     @PutMapping("/tasks/{taskId}/status")
-    @PreAuthorize("@preparationSecurity.isAssignee(#taskId, authentication)")
+    @PreAuthorize("@preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isAssignee(#taskId, authentication)")
     public ResponseEntity<Response> updateMyTaskStatus(
             @PathVariable Long taskId,
             @RequestBody @Valid UpdatePreparationTaskStatusRequest req,
@@ -104,49 +101,53 @@ public class PreparationController {
     }
 
     @GetMapping("/tasks/{taskId}/members")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> listTaskMembers(@PathVariable Long taskId) {
         List<PreparationTaskMemberDto> members = preparationService.listTaskMembers(taskId);
         return ResponseEntity.ok(Response.success("OK", members));
     }
 
     @DeleteMapping("/tasks/{taskId}/members/{studentId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isAssignee(#taskId, authentication)")
     public ResponseEntity<Response> removeTaskMember(@PathVariable Long taskId, @PathVariable Long studentId) {
         preparationService.removeTaskMember(taskId, studentId);
         return ResponseEntity.ok(Response.success("OK"));
     }
 
     @PostMapping("/tasks/{taskId}/leaders/{studentId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isAssignee(#taskId, authentication)")
     public ResponseEntity<Response> promoteLeader(@PathVariable Long taskId, @PathVariable Long studentId) {
         preparationService.promoteTaskLeader(taskId, studentId);
         return ResponseEntity.ok(Response.success("OK"));
     }
 
     @DeleteMapping("/tasks/{taskId}/leaders/{studentId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isAssignee(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isAssignee(#taskId, authentication)")
     public ResponseEntity<Response> demoteLeader(@PathVariable Long taskId, @PathVariable Long studentId) {
         preparationService.demoteTaskLeader(taskId, studentId);
         return ResponseEntity.ok(Response.success("OK"));
     }
 
     @PutMapping("/tasks/{taskId}/accept")
-    @PreAuthorize("@preparationSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("@preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> acceptTask(@PathVariable Long taskId, Authentication authentication) {
         PreparationTaskDto dto = preparationService.acceptTask(taskId, authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @PutMapping("/tasks/{taskId}/request-complete")
-    @PreAuthorize("@preparationSecurity.isAssignee(#taskId, authentication)")
-    public ResponseEntity<Response> requestComplete(@PathVariable Long taskId, Authentication authentication) {
-        PreparationTaskDto dto = preparationService.requestCompleteTask(taskId, authentication.getName());
+    @PreAuthorize("@preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> requestComplete(
+            @PathVariable Long taskId,
+            @RequestBody(required = false) RequestCompleteTaskRequest request,
+            Authentication authentication) {
+        List<String> proofUrls = request != null ? request.getProofUrls() : null;
+        PreparationTaskDto dto = preparationService.requestCompleteTask(taskId, proofUrls, authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @PutMapping("/tasks/{taskId}/complete-decision")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isTaskPrepSupervisor(#taskId, authentication)")
     public ResponseEntity<Response> completeDecision(
             @PathVariable Long taskId,
             @RequestBody @Valid ApproveTaskCompletionRequest request) {
@@ -156,13 +157,12 @@ public class PreparationController {
     }
 
     @GetMapping("/activities/{activityId}/workload-warnings")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> getWorkloadWarnings(@PathVariable Long activityId) {
         List<WorkloadWarningDto> warnings = preparationService.getWorkloadWarnings(activityId);
         return ResponseEntity.ok(Response.success("OK", warnings));
     }
 
-    // new
     @GetMapping("/stats/{id}")
     public ResponseEntity<TaskStatsRespone> getStats(@PathVariable Long id) {
         TaskStatsRespone stats = preparationService.getStudentStats(id);
@@ -182,5 +182,32 @@ public class PreparationController {
             Authentication authentication) {
         List<MyPreparationTaskDto> tasks = preparationService.getPreparationTasks(activityId, authentication.getName());
         return ResponseEntity.ok(Response.success("OK", tasks));
+    }
+
+    @PostMapping("/tasks/{taskId}/completion-proofs")
+    @PreAuthorize("@preparationSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationSecurity.isAssignee(#taskId, authentication)")
+    public ResponseEntity<Response> uploadCompletionProof(
+            @PathVariable Long taskId,
+            @RequestParam("file") MultipartFile file) {
+        String url = fileUploadService.uploadFile(file);
+        return ResponseEntity.ok(Response.success("OK", new UploadResultDto(url)));
+    }
+
+    @PutMapping("/activities/{activityId}/organizers/{studentId}/prep-supervisor")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> grantPrepSupervisor(
+            @PathVariable Long activityId,
+            @PathVariable Long studentId) {
+        preparationService.grantPrepSupervisor(activityId, studentId);
+        return ResponseEntity.ok(Response.success("Granted PrepSupervisor"));
+    }
+
+    @DeleteMapping("/activities/{activityId}/organizers/{studentId}/prep-supervisor")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> revokePrepSupervisor(
+            @PathVariable Long activityId,
+            @PathVariable Long studentId) {
+        preparationService.revokePrepSupervisor(activityId, studentId);
+        return ResponseEntity.ok(Response.success("Revoked PrepSupervisor"));
     }
 }

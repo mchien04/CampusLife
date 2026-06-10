@@ -7,6 +7,7 @@ import vn.campuslife.enumeration.PreparationTaskStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -22,5 +23,5 @@ public class PreparationTaskDto {
     private BigDecimal allocatedAmount;
     private Boolean isFinancial;
     private PreparationTaskStatus status;
-
+    private List<String> completionProofUrls;
 }

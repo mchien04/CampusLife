@@ -13,6 +13,9 @@ import vn.campuslife.exception.*;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.repository.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationService;
 import java.math.RoundingMode;
@@ -36,6 +39,7 @@ public class PreparationServiceImpl implements PreparationService {
     private final ActivityBudgetRepository activityBudgetRepository;
     private final TaskAllocationRepository taskAllocationRepository;
     private final FundAdvanceRepository fundAdvanceRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -131,7 +135,8 @@ public class PreparationServiceImpl implements PreparationService {
                             dto.getAllocatedAmount(),
                             Boolean.TRUE.equals(dto.getIsFinancial()),
                             dto.getStatus(),
-                            role
+                            role,
+                            dto.getCompletionProofUrls()
                     );
                 })
                 .toList();
@@ -214,7 +219,7 @@ public class PreparationServiceImpl implements PreparationService {
             return acceptTask(taskId, username);
         }
         if (status == PreparationTaskStatus.COMPLETION_REQUESTED) {
-            return requestCompleteTask(taskId, username);
+            return requestCompleteTask(taskId, null, username);
         }
         throw new BadRequestException("Status update is not supported");
     }
@@ -317,7 +322,7 @@ public class PreparationServiceImpl implements PreparationService {
 
     @Override
     @Transactional
-    public PreparationTaskDto requestCompleteTask(Long taskId, String username) {
+    public PreparationTaskDto requestCompleteTask(Long taskId, List<String> proofUrls, String username) {
         Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
         PreparationTask task = preparationTaskRepository.findById(taskId)
@@ -332,6 +337,16 @@ public class PreparationServiceImpl implements PreparationService {
         }
         if (task.getStatus() != PreparationTaskStatus.ACCEPTED) {
             throw new BadRequestException("Task must be accepted before requesting completion");
+        }
+        if (proofUrls != null && !proofUrls.isEmpty()) {
+            if (proofUrls.size() > 10) {
+                throw new BadRequestException("Maximum 10 proof photos allowed");
+            }
+            try {
+                task.setCompletionProofUrls(objectMapper.writeValueAsString(proofUrls));
+            } catch (JsonProcessingException e) {
+                throw new BadRequestException("Invalid proof URLs format");
+            }
         }
         task.setStatus(PreparationTaskStatus.COMPLETION_REQUESTED);
         return toTaskDto(preparationTaskRepository.save(task));
@@ -440,7 +455,7 @@ public class PreparationServiceImpl implements PreparationService {
             organizer.setActivity(activity);
             organizer.setStudent(student);
             activityOrganizerRepository.save(organizer);
-            added.add(new OrganizerDto(student.getId(), student.getFullName()));
+            added.add(new OrganizerDto(student.getId(), student.getFullName(), false));
 
             if (student.getUser() != null) {
                 String title = "Bạn đã được thêm vào BTC";
@@ -473,8 +488,31 @@ public class PreparationServiceImpl implements PreparationService {
         return activityOrganizerRepository.findByActivityId(activityId).stream()
                 .map(ao -> new OrganizerDto(
                         ao.getStudent() != null ? ao.getStudent().getId() : null,
-                        ao.getStudent() != null ? ao.getStudent().getFullName() : null))
+                        ao.getStudent() != null ? ao.getStudent().getFullName() : null,
+                        ao.isPrepSupervisor()))
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public void grantPrepSupervisor(Long activityId, Long studentId) {
+        ActivityOrganizer organizer = activityOrganizerRepository
+                .findByActivityIdAndStudentId(activityId, studentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "Student is not an organizer of this activity"));
+        organizer.setPrepSupervisor(true);
+        activityOrganizerRepository.save(organizer);
+    }
+
+    @Override
+    @Transactional
+    public void revokePrepSupervisor(Long activityId, Long studentId) {
+        ActivityOrganizer organizer = activityOrganizerRepository
+                .findByActivityIdAndStudentId(activityId, studentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "Student is not an organizer of this activity"));
+        organizer.setPrepSupervisor(false);
+        activityOrganizerRepository.save(organizer);
     }
 
     private Activity getActiveActivity(Long activityId) {
@@ -487,6 +525,7 @@ public class PreparationServiceImpl implements PreparationService {
         String ownerName = owner != null ? owner.getFullName() : null;
         Long activityId = task.getActivity() != null ? task.getActivity().getId() : null;
         Long ownerId = owner != null ? owner.getId() : null;
+        List<String> proofUrls = parseProofUrls(task.getCompletionProofUrls());
         return new PreparationTaskDto(
                 task.getId(),
                 activityId,
@@ -497,7 +536,19 @@ public class PreparationServiceImpl implements PreparationService {
                 task.getDeadline(),
                 task.getAllocatedAmount(),
                 task.isFinancial(),
-                task.getStatus());
+                task.getStatus(),
+                proofUrls);
+    }
+
+    private List<String> parseProofUrls(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (JsonProcessingException e) {
+            return List.of();
+        }
     }
 
     private ActivityBudgetDto toActivityBudgetDto(ActivityBudget budget) {

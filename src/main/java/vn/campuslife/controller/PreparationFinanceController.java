@@ -24,7 +24,7 @@ public class PreparationFinanceController {
     private final FileUploadService fileUploadService;
 
     @PutMapping("/activities/{activityId}/budget")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> upsertActivityBudget(
             @PathVariable Long activityId,
             @RequestBody @Valid UpsertActivityBudgetRequest request) {
@@ -33,14 +33,14 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/activities/{activityId}/budget")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> getActivityBudget(@PathVariable Long activityId) {
         ActivityBudgetDto dto = financeService.getActivityBudget(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @PutMapping("/tasks/{taskId}/allocation")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication)")
     public ResponseEntity<Response> allocateTaskAmount(
             @PathVariable Long taskId,
             @RequestBody @Valid AllocateTaskAmountRequest request) {
@@ -49,7 +49,7 @@ public class PreparationFinanceController {
     }
 
     @PostMapping("/tasks/{taskId}/allocation-adjustments")
-    @PreAuthorize("@preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> createAllocationAdjustmentRequest(
             @PathVariable Long taskId,
             @RequestBody @Valid CreateAllocationAdjustmentRequest request,
@@ -60,7 +60,7 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/activities/{activityId}/allocation-adjustments")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> listAllocationAdjustmentRequests(
             @PathVariable Long activityId,
             @RequestParam(required = false) AllocationAdjustmentStatus status) {
@@ -107,14 +107,14 @@ public class PreparationFinanceController {
     }
 
     @PostMapping("/tasks/{taskId}/members/{studentId}")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
     public ResponseEntity<Response> addTaskMember(@PathVariable Long taskId, @PathVariable Long studentId) {
         financeService.addTaskMember(taskId, studentId);
         return ResponseEntity.ok(Response.success("OK"));
     }
 
     @PostMapping("/tasks/{taskId}/fund-advances")
-    @PreAuthorize("@preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
     public ResponseEntity<Response> requestFundAdvance(
             @PathVariable Long taskId,
             @RequestBody @Valid CreateFundAdvanceRequest request,
@@ -146,14 +146,14 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/tasks/{taskId}/fund-advances")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
     public ResponseEntity<Response> listFundAdvances(@PathVariable Long taskId) {
         List<FundAdvanceDto> dtos = financeService.listFundAdvancesByTask(taskId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @GetMapping("/tasks/{taskId}/fund-advance-source-suggestions")
-    @PreAuthorize("@preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
     public ResponseEntity<Response> suggestFundAdvanceSources(
             @PathVariable Long taskId,
             @RequestParam(required = false) String amount) {
@@ -162,14 +162,14 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/tasks/{taskId}/allocation-sources")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> listTaskAllocationSources(@PathVariable Long taskId) {
         List<TaskAllocationSourceDto> dtos = financeService.listTaskAllocationSources(taskId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @GetMapping("/tasks/{taskId}/expense-category-suggestions")
-    @PreAuthorize("@preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> suggestExpenseCategories(
             @PathVariable Long taskId,
             @RequestParam(required = false) String amount,
@@ -190,7 +190,7 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/activities/{activityId}/fund-advance-debts")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> listFundAdvanceDebts(
             @PathVariable Long activityId,
             @RequestParam(required = false) Long studentId) {
@@ -199,7 +199,7 @@ public class PreparationFinanceController {
     }
 
     @PostMapping("/tasks/{taskId}/expenses/evidence")
-    @PreAuthorize("@preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> uploadExpenseEvidence(
             @PathVariable Long taskId,
             @RequestParam("file") MultipartFile file) {
@@ -208,7 +208,7 @@ public class PreparationFinanceController {
     }
 
     @PostMapping("/tasks/{taskId}/expenses")
-    @PreAuthorize("@preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
     public ResponseEntity<Response> createExpense(
             @PathVariable Long taskId,
             @RequestBody @Valid CreateExpenseRequest request,
@@ -221,7 +221,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/expenses/{expenseId}/leader-decision")
-    @PreAuthorize("@preparationFinanceSecurity.canLeaderDecideExpense(#expenseId, authentication)")
+    @PreAuthorize("@preparationFinanceSecurity.isExpensePrepSupervisor(#expenseId, authentication) or @preparationFinanceSecurity.canLeaderDecideExpense(#expenseId, authentication)")
     public ResponseEntity<Response> leaderDecision(
             @PathVariable Long expenseId,
             @RequestBody @Valid ApproveExpenseRequest request,
@@ -232,7 +232,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/expenses/{expenseId}/admin-decision")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isExpensePrepSupervisor(#expenseId, authentication)")
     public ResponseEntity<Response> adminDecision(
             @PathVariable Long expenseId,
             @RequestBody @Valid ApproveExpenseRequest request,
@@ -243,7 +243,7 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/activities/{activityId}/expenses")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> listExpenses(
             @PathVariable Long activityId,
             @RequestParam(required = false) ExpenseStatus status) {
@@ -252,21 +252,21 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/activities/{activityId}/financial-report")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> getFinancialReport(@PathVariable Long activityId) {
         FinancialReportDto dto = financeService.getFinancialReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/activities/{activityId}/reports/finance-overview")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> getFinanceOverviewReport(@PathVariable Long activityId) {
         FinanceOverviewReportDto dto = financeService.getFinanceOverviewReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/activities/{activityId}/reports/cash-flow")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isOrganizer(#activityId, authentication)")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> getCashFlowReport(@PathVariable Long activityId) {
         CashFlowReportDto dto = financeService.getCashFlowReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));

@@ -20,6 +20,9 @@ import vn.campuslife.exception.OverBudgetException;
 import vn.campuslife.exception.ResourceNotFoundException;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.repository.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationFinanceService;
 
@@ -50,6 +53,7 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final ObjectMapper objectMapper;
 
     private static final String DEFAULT_WALLET_NAME = "Tổng";
     private static final String RESIDUAL_WALLET_NAME = "Khác";
@@ -1376,6 +1380,7 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
 
     private PreparationTaskDto toTaskDto(PreparationTask task) {
         Student owner = task.getOwner();
+        List<String> proofUrls = parseProofUrls(task.getCompletionProofUrls());
         return new PreparationTaskDto(
                 task.getId(),
                 task.getActivity() != null ? task.getActivity().getId() : null,
@@ -1386,7 +1391,19 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                 task.getDeadline(),
                 zeroIfNull(task.getAllocatedAmount()),
                 task.isFinancial(),
-                task.getStatus());
+                task.getStatus(),
+                proofUrls);
+    }
+
+    private List<String> parseProofUrls(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (JsonProcessingException e) {
+            return List.of();
+        }
     }
 
     private ExpenseDto toExpenseDto(Expense expense) {

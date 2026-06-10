@@ -55,7 +55,8 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Xem member trong task | `GET /api/preparation/tasks/{taskId}/members` | Response: `PreparationTaskMemberDto[]` | Hiển thị role LEADER/MEMBER |
 | Xem allocation sources theo task | `GET /api/preparation/tasks/{taskId}/allocation-sources` | Response: `TaskAllocationSourceDto[]` | Hiển thị quota theo từng ví |
 | Accept task | `PUT /api/preparation/tasks/{taskId}/accept` | Response: `PreparationTaskDto` | Hiện cho member/leader |
-| Request complete (leader/owner) | `PUT /api/preparation/tasks/{taskId}/request-complete` | Response: `PreparationTaskDto` | Chỉ leader/owner |
+| Request complete (leader/owner) | `PUT /api/preparation/tasks/{taskId}/request-complete` | Request: `RequestCompleteTaskRequest` (tùy chọn) / Response: `PreparationTaskDto` | Chỉ leader/owner, có thể truyền ảnh minh chứng |
+| Upload ảnh minh chứng hoàn thành | `POST /api/preparation/tasks/{taskId}/completion-proofs` | Response: `UploadResultDto` | Upload ảnh minh chứng trước khi yêu cầu hoàn thành |
 | Upload chứng từ | `POST /api/preparation/tasks/{taskId}/expenses/evidence` | Response: `UploadResultDto` | Multipart file |
 | Tạo expense | `POST /api/preparation/tasks/{taskId}/expenses` | Request: `CreateExpenseRequest` / Response: `ExpenseDto` | Nếu vượt allocate: 409 + `OverBudgetInfoDto` |
 | Gợi ý ví để tạo expense | `GET /api/preparation/tasks/{taskId}/expense-category-suggestions?amount=...` | Response: `ExpenseCategorySuggestionDto[]` | Nếu task chỉ allocate 1 ví thì FE auto-select |
@@ -73,6 +74,8 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Add organizers (bulk) | `POST /api/preparation/activities/{activityId}/organizers` | Request: `BulkAddOrganizersRequest` / Response: `BulkAddOrganizersResultDto` | Chọn nhiều người, add 1 lần |
 | Add organizer | `POST /api/preparation/activities/{activityId}/organizers/{studentId}` | Response: wrapper body null | |
 | Remove organizer | `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}` | Response: wrapper body null | |
+| Gán quyền PrepSupervisor | `PUT /api/preparation/activities/{activityId}/organizers/{studentId}/prep-supervisor` | Response: wrapper body null | Admin/Manager gán quyền quản lý preparation |
+| Thu hồi PrepSupervisor | `DELETE /api/preparation/activities/{activityId}/organizers/{studentId}/prep-supervisor` | Response: wrapper body null | Admin/Manager thu hồi quyền |
 | Tạo task | `POST /api/preparation/activities/{activityId}/tasks` | Request: `CreatePreparationTaskRequest` / Response: `PreparationTaskDto` | Owner được set leader mặc định |
 | Quản lý member task | `POST/DELETE /api/preparation/tasks/{taskId}/members/{studentId}` | Response: wrapper body null | |
 | Promote/demote leader | `POST/DELETE /api/preparation/tasks/{taskId}/leaders/{studentId}` | Response: wrapper body null | Financial task phải còn ≥ 1 leader |
