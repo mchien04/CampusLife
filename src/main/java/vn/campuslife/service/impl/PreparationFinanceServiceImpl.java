@@ -620,20 +620,52 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
             throw new BadRequestException("Expense is not pending leader approval");
         }
 
-        if (approved) {
-            expense.setStatus(ExpenseStatus.PENDING_ADMIN);
-        } else {
+        if (!approved) {
             expense.setStatus(ExpenseStatus.REJECTED);
-        }
-
-        Expense saved = expenseRepository.save(expense);
-        writeAudit(leader.getUser(), "LEADER_DECISION", "Expense", saved.getId(), "approved=" + approved);
-
-        if (saved.getStatus() == ExpenseStatus.PENDING_ADMIN) {
-            notifyAdminsForPendingAdmin(saved);
-        } else {
+            Expense saved = expenseRepository.save(expense);
+            writeAudit(leader.getUser(), "LEADER_DECISION", "Expense", saved.getId(), "approved=false");
             notifyCreatorForDecision(saved);
+            return toExpenseDto(saved);
         }
+
+        PreparationTask task = expense.getTask();
+        if (task.getActivity() == null) {
+            throw new BadRequestException("Expense has no activity");
+        }
+        if (expense.getCategory() == null) {
+            throw new BadRequestException("Expense has no category");
+        }
+
+        BigDecimal spentTask = expenseRepository.sumApprovedAmountByTaskId(task.getId());
+        BigDecimal newSpentTask = spentTask.add(zeroIfNull(expense.getAmount()));
+
+        BigDecimal allocatedAmount = zeroIfNull(task.getAllocatedAmount());
+        if (allocatedAmount.compareTo(newSpentTask) < 0) {
+            throw new InsufficientBudgetException("Insufficient task allocated amount");
+        }
+
+        BudgetCategory category = expense.getCategory();
+        BigDecimal remainingCategory = zeroIfNull(category.getAllocatedAmount())
+                .subtract(zeroIfNull(category.getUsedAmount()));
+        if (remainingCategory.compareTo(zeroIfNull(expense.getAmount())) < 0) {
+            throw new InsufficientBudgetException("Insufficient category budget remaining");
+        }
+
+        ensureSufficientFundAdvance(task.getId(), expense.getCreatedBy().getId(), category.getId(),
+                expense.getAmount());
+
+        expense.setStatus(ExpenseStatus.APPROVED);
+        Expense saved = expenseRepository.save(expense);
+
+        deductFromFundAdvances(task.getId(), expense.getCreatedBy().getId(), category.getId(), expense.getAmount());
+        category.setUsedAmount(zeroIfNull(category.getUsedAmount()).add(zeroIfNull(expense.getAmount())));
+        budgetCategoryRepository.save(category);
+
+        writeAudit(leader.getUser(), "LEADER_DECISION", "Expense", saved.getId(), "approved=true");
+
+        notifyCreatorForDecision(saved);
+        notifyBudgetLowIfNeeded(leader.getUser(), task, category);
+        notifyTaskThresholdIfNeeded(leader.getUser(), task, newSpentTask);
 
         return toExpenseDto(saved);
     }

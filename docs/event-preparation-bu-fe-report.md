@@ -60,7 +60,7 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Upload chứng từ | `POST /api/preparation/tasks/{taskId}/expenses/evidence` | Response: `UploadResultDto` | Multipart file |
 | Tạo expense | `POST /api/preparation/tasks/{taskId}/expenses` | Request: `CreateExpenseRequest` / Response: `ExpenseDto` | Nếu vượt allocate: 409 + `OverBudgetInfoDto` |
 | Gợi ý ví để tạo expense | `GET /api/preparation/tasks/{taskId}/expense-category-suggestions?amount=...` | Response: `ExpenseCategorySuggestionDto[]` | Nếu task chỉ allocate 1 ví thì FE auto-select |
-| Duyệt expense cấp 1 (leader) | `PUT /api/preparation/expenses/{expenseId}/leader-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | Approve → PENDING_ADMIN |
+| Duyệt expense cấp 1 (leader) | `PUT /api/preparation/expenses/{expenseId}/leader-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | Approve → APPROVED (bỏ qua PENDING_ADMIN) |
 | Xin bổ sung allocate | `POST /api/preparation/tasks/{taskId}/allocation-adjustments` | Request: `CreateAllocationAdjustmentRequest` / Response: `AllocationAdjustmentRequestDto` | Member/leader gửi request (amount + description) |
 | Gợi ý nguồn ví để ứng (leader) | `GET /api/preparation/tasks/{taskId}/fund-advance-source-suggestions?amount=...` | Response: `FundAdvanceSourceSuggestionDto[]` | Hiển thị maxAdvanceAmount theo ví |
 | Tạo yêu cầu ứng (leader) | `POST /api/preparation/tasks/{taskId}/fund-advances` | Request: `CreateFundAdvanceRequest` / Response: `FundAdvanceDto` | Status REQUESTED |
@@ -85,7 +85,7 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 | Allocate theo ví | `PUT /api/preparation/tasks/{taskId}/allocation` | Request: `AllocateTaskAmountRequest` / Response: `PreparationTaskDto` | TaskAllocation theo category |
 | Xem allocation sources theo task | `GET /api/preparation/tasks/{taskId}/allocation-sources` | Response: `TaskAllocationSourceDto[]` | Admin kiểm quota theo ví trước khi duyệt/ứng |
 | List expenses theo activity | `GET /api/preparation/activities/{activityId}/expenses?status=...` | Response: `ExpenseDto[]` | Pending invoices = PENDING_ADMIN |
-| Duyệt expense cấp cuối | `PUT /api/preparation/expenses/{expenseId}/admin-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | Có thể duyệt khi expense đang `PENDING_ADMIN` hoặc `PENDING_LEADER` |
+| Duyệt expense cấp quản trị | `PUT /api/preparation/expenses/{expenseId}/admin-decision` | Request: `ApproveExpenseRequest` / Response: `ExpenseDto` | (Tùy chọn) Có thể duyệt đè/từ chối khi expense đang `PENDING_LEADER` hoặc sửa lại `APPROVED` |
 | List request bổ sung allocate | `GET /api/preparation/activities/{activityId}/allocation-adjustments?status=...` | Response: `AllocationAdjustmentRequestDto[]` | |
 | Auto split nguồn ví cho request | `GET /api/preparation/allocation-adjustments/{requestId}/source-plan` | Response: `AllocationAdjustmentSourcePlanDto[]` | 1-click tạo `sources[]` cho approve |
 | Duyệt/từ chối bổ sung allocate | `PUT /api/preparation/allocation-adjustments/{requestId}/admin-decision` | Request: `AdminDecisionAllocationAdjustmentRequest` / Response: `AllocationAdjustmentRequestDto` | Approve có thể dùng 1 nguồn `categoryId` hoặc nhiều nguồn `sources[]` |
@@ -122,7 +122,7 @@ Hai bảng dưới đây là checklist triển khai UI cho FE. Mỗi dòng: thao
 Các tab khuyến nghị:
 1) **Budget setup** (ActivityBudget + ví)
 2) **Task allocation** (cấp phát theo ví)
-3) **Pending invoices** (PENDING_ADMIN)
+3) **Pending invoices** (Các chứng từ `PENDING_LEADER` hoặc đã `APPROVED`)
 4) **Allocation adjustment requests** (xin bổ sung allocate)
 5) **Fund advances** (duyệt REQUESTED, hoàn ứng, nợ tạm ứng)
 6) **Reports** (Budget vs Actual, Cash Flow)
@@ -185,14 +185,15 @@ Trong Task:
   - Form: category dropdown (từ ActivityBudget), amount, description, evidenceUrl.
   - List của user: filter theo status.
 
-#### 3.3. Duyệt expense 2 cấp
+#### 3.3. Duyệt expense
 - Leader:
   - `PUT /api/preparation/expenses/{expenseId}/leader-decision` (body `{approved}`)
-- Admin:
+  - LƯU Ý: Khi Leader duyệt (approve = true), Expense sẽ chuyển ngay sang `APPROVED`, trừ tạm ứng và tính ngay vào chi phí thực tế.
+- Admin / PrepSupervisor (Tùy chọn/Ghi đè):
   - `PUT /api/preparation/expenses/{expenseId}/admin-decision` (body `{approved}`)
 - UI:
   - Leader tab: “Chờ duyệt” → approve/reject.
-  - Admin tab: “Chờ kế toán/Admin” → approve/reject.
+  - Admin tab: Theo dõi Expense đã duyệt hoặc can thiệp các Expense đang chờ.
 
 Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay HOLDING”. Hiện hệ thống đã nâng cấp theo Phase 5 (2 bước request/approve), xem Phase 5 bên dưới.
 
@@ -389,7 +390,7 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
 - UI:
   - Pie chart: cashInsideWallet vs cashOutsideWallet.
   - List debts (FundAdvanceDebtDto).
-  - Invoice status summary (PENDING_LEADER/PENDING_ADMIN/APPROVED/REJECTED).
+  - Invoice status summary (PENDING_LEADER/APPROVED/REJECTED).
 
 #### 3.20. Notification theo ngưỡng
 - Trigger (server-side):
@@ -415,8 +416,8 @@ Ghi chú: tài liệu Phase 1 ban đầu có “FundAdvance do ADMIN tạo ngay 
 ### 4.2. Vận hành (Leader/Member/Admin)
 1) Leader request ứng (Phase 5) — nên dùng suggestions (Phase 5.1) để chọn ví.
 2) Admin approve ứng → HOLDING.
-3) Member tạo expense (Phase 4) → không vượt allocate; leader/admin duyệt.
-4) Admin approve expense → trừ FundAdvance của đúng ví và tăng usedAmount ví.
+3) Member tạo expense (Phase 4) → không vượt allocate; leader duyệt.
+4) Khi Leader (hoặc Admin) approve expense → tự động trừ FundAdvance của đúng ví và tăng usedAmount ví, status chuyển `APPROVED`.
 5) Nếu dư tiền: Admin hoàn ứng (Phase 5 return) → đưa HOLDING về 0.
 
 ## 5. Mapping nhanh: “chức năng → API”

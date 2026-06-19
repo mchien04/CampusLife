@@ -10,6 +10,10 @@ import vn.campuslife.repository.ActivityOrganizerRepository;
 import vn.campuslife.repository.ExpenseRepository;
 import vn.campuslife.repository.PreparationTaskMemberRepository;
 import vn.campuslife.repository.PreparationTaskRepository;
+import vn.campuslife.repository.AllocationAdjustmentRequestRepository;
+import vn.campuslife.repository.FundAdvanceRepository;
+import vn.campuslife.entity.AllocationAdjustmentRequest;
+import vn.campuslife.entity.FundAdvance;
 import vn.campuslife.service.StudentService;
 
 @Component("preparationFinanceSecurity")
@@ -20,6 +24,8 @@ public class PreparationFinanceSecurity {
     private final PreparationTaskMemberRepository preparationTaskMemberRepository;
     private final ExpenseRepository expenseRepository;
     private final ActivityOrganizerRepository activityOrganizerRepository;
+    private final AllocationAdjustmentRequestRepository allocationAdjustmentRequestRepository;
+    private final FundAdvanceRepository fundAdvanceRepository;
 
     public boolean isTaskLeader(Long taskId, Authentication authentication) {
         Long studentId = getStudentId(authentication);
@@ -102,6 +108,34 @@ public class PreparationFinanceSecurity {
         }
         return expenseRepository.findById(expenseId)
                 .map(Expense::getTask)
+                .map(task -> task.getActivity() != null ? task.getActivity().getId() : null)
+                .map(activityId ->
+                    activityOrganizerRepository
+                            .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId))
+                .orElse(false);
+    }
+
+    public boolean isAllocationAdjustmentPrepSupervisor(Long requestId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return allocationAdjustmentRequestRepository.findById(requestId)
+                .map(AllocationAdjustmentRequest::getTask)
+                .map(task -> task.getActivity() != null ? task.getActivity().getId() : null)
+                .map(activityId ->
+                    activityOrganizerRepository
+                            .existsByActivityIdAndStudentIdAndIsPrepSupervisorTrue(activityId, studentId))
+                .orElse(false);
+    }
+
+    public boolean isFundAdvancePrepSupervisor(Long fundAdvanceId, Authentication authentication) {
+        Long studentId = getStudentId(authentication);
+        if (studentId == null) {
+            return false;
+        }
+        return fundAdvanceRepository.findById(fundAdvanceId)
+                .map(FundAdvance::getTask)
                 .map(task -> task.getActivity() != null ? task.getActivity().getId() : null)
                 .map(activityId ->
                     activityOrganizerRepository
