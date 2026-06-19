@@ -38,6 +38,7 @@ public class ScoreServiceImpl implements ScoreService {
     private final ActivityRepository activityRepository;
     private final ActivitySeriesRepository seriesRepository;
     private final SemesterHelperService semesterHelperService;
+    private final vn.campuslife.service.ScoreEntryService scoreEntryService;
 
     @Override
     @Transactional
@@ -292,14 +293,11 @@ public class ScoreServiceImpl implements ScoreService {
     @Transactional
     public Response recalculateStudentScore(Long studentId, Long semesterId) {
         try {
-            // Validate student
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {
                 return Response.error("Student not found");
             }
-            Student student = studentOpt.get();
 
-            // Get semester
             Semester semester;
             if (semesterId != null) {
                 Optional<Semester> semesterOpt = semesterRepository.findById(semesterId);
@@ -308,7 +306,6 @@ public class ScoreServiceImpl implements ScoreService {
                 }
                 semester = semesterOpt.get();
             } else {
-                // Get current semester
                 semester = semesterRepository.findAll().stream()
                         .filter(Semester::isOpen)
                         .findFirst()
@@ -318,149 +315,14 @@ public class ScoreServiceImpl implements ScoreService {
                 }
             }
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("studentId", studentId);
-            result.put("studentCode", student.getStudentCode());
-            result.put("studentName", student.getFullName());
-            result.put("semesterId", semester.getId());
-            result.put("semesterName", semester.getName());
-
-            List<Map<String, Object>> updatedScores = new ArrayList<>();
-
-            // Get all ActivityParticipation COMPLETED của student trong semester được chỉ định
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            final Semester targetSemester = semester;
-            List<ActivityParticipation> participations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> {
-                        if (!p.getRegistration().getStudent().getId().equals(studentId)) {
-                            return false;
-                        }
-                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
-                            return false;
-                        }
-                        if (p.getRegistration().getActivity().getScoreType() == null) {
-                            return false;
-                        }
-                        // ✅ Filter theo semester
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(
-                                p.getRegistration().getActivity());
-                        return pSemester != null && pSemester.getId().equals(targetSemester.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            // Group by scoreType và tính tổng điểm từ participations
-            Map<ScoreType, BigDecimal> participationScores = participations.stream()
-                    .collect(Collectors.groupingBy(
-                            p -> p.getRegistration().getActivity().getScoreType(),
-                            Collectors.reducing(
-                                    BigDecimal.ZERO,
-                                    p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO,
-                                    BigDecimal::add)));
-
-            // Get milestone points từ StudentSeriesProgress
-            // ✅ UPDATED: Filter theo semester dựa vào activity đầu tiên của series
-            List<StudentSeriesProgress> allProgress = progressRepository.findAll()
-                    .stream()
-                    .filter(p -> p.getStudent().getId().equals(studentId))
-                    .collect(Collectors.toList());
-
-            Map<ScoreType, BigDecimal> milestoneScores = new HashMap<>();
-            for (StudentSeriesProgress progress : allProgress) {
-                ActivitySeries series = progress.getSeries();
-                if (series.getScoreType() != null && progress.getPointsEarned() != null) {
-                    // ✅ Filter series theo semester dựa vào activity đầu tiên
-                    List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId());
-                    if (!seriesActivities.isEmpty()) {
-                        Activity firstActivity = seriesActivities.stream()
-                                .filter(a -> a.getStartDate() != null)
-                                .min(java.util.Comparator.comparing(Activity::getStartDate))
-                                .orElse(seriesActivities.get(0));
-                        Semester seriesSemester = semesterHelperService.getSemesterForActivity(firstActivity);
-                        if (seriesSemester == null || !seriesSemester.getId().equals(targetSemester.getId())) {
-                            continue; // Skip series không thuộc semester này
-                        }
-                    }
-
-                    ScoreType scoreType = series.getScoreType();
-                    BigDecimal currentMilestone = milestoneScores.getOrDefault(scoreType, BigDecimal.ZERO);
-                    milestoneScores.put(scoreType, currentMilestone.add(progress.getPointsEarned()));
-                }
+            for (ScoreType type : ScoreType.values()) {
+                scoreEntryService.refreshStudentScore(studentId, semester.getId(), type);
             }
 
-            // Combine participation scores và milestone scores
-            Set<ScoreType> allScoreTypes = new HashSet<>();
-            allScoreTypes.addAll(participationScores.keySet());
-            allScoreTypes.addAll(milestoneScores.keySet());
-
-            // Get system user for history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
-                    .findFirst()
-                    .orElse(userRepository.findById(1L).orElse(null));
-
-            for (ScoreType scoreType : allScoreTypes) {
-                BigDecimal participationTotal = participationScores.getOrDefault(scoreType, BigDecimal.ZERO);
-                BigDecimal milestoneTotal = milestoneScores.getOrDefault(scoreType, BigDecimal.ZERO);
-                BigDecimal totalScore = participationTotal.add(milestoneTotal);
-
-                // Get or create StudentScore
-                Optional<StudentScore> scoreOpt = studentScoreRepository
-                        .findByStudentIdAndSemesterIdAndScoreType(studentId, semester.getId(), scoreType);
-
-                StudentScore score;
-                BigDecimal oldScore = BigDecimal.ZERO;
-                if (scoreOpt.isPresent()) {
-                    score = scoreOpt.get();
-                    oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-                } else {
-                    // Create new StudentScore if not exists
-                    score = new StudentScore();
-                    score.setStudent(student);
-                    score.setSemester(semester);
-                    score.setScoreType(scoreType);
-                    score.setScore(BigDecimal.ZERO);
-                }
-
-                // Update score
-                score.setScore(totalScore);
-                studentScoreRepository.save(score);
-
-                // Create history if score changed
-                if (oldScore.compareTo(totalScore) != 0) {
-                    ScoreHistory history = new ScoreHistory();
-                    history.setScore(score);
-                    history.setOldScore(oldScore);
-                    history.setNewScore(totalScore);
-                    history.setChangedBy(systemUser);
-                    history.setChangeDate(LocalDateTime.now());
-                    history.setReason("Recalculated " + scoreType + " score: Participation (" + participationTotal + ") + Milestone (" + milestoneTotal + ") for semester " + semester.getName());
-                    // Note: activityId is null for recalculation (affects multiple activities)
-                    history.setActivityId(null);
-                    scoreHistoryRepository.save(history);
-                }
-
-                Map<String, Object> scoreInfo = new HashMap<>();
-                scoreInfo.put("scoreType", scoreType.name());
-                scoreInfo.put("participationScore", participationTotal);
-                scoreInfo.put("milestoneScore", milestoneTotal);
-                scoreInfo.put("totalScore", totalScore);
-                scoreInfo.put("oldScore", oldScore);
-                scoreInfo.put("updated", oldScore.compareTo(totalScore) != 0);
-                updatedScores.add(scoreInfo);
-
-                logger.info("Recalculated {} score for student {}: {} -> {} (participation: {}, milestone: {})",
-                        scoreType, studentId, oldScore, totalScore, participationTotal, milestoneTotal);
-            }
-
-            result.put("updatedScores", updatedScores);
-            result.put("totalScoreTypes", updatedScores.size());
-
-            return Response.success("Recalculated student score successfully", result);
+            return Response.success("Score recalculated successfully");
         } catch (Exception e) {
-            logger.error("Failed to recalculate student score: {}", e.getMessage(), e);
-            return Response.error("Failed to recalculate student score: " + e.getMessage());
+            logger.error("Failed to recalculate score", e);
+            return Response.error("Failed to recalculate score: " + e.getMessage());
         }
     }
 
@@ -716,3 +578,5 @@ public class ScoreServiceImpl implements ScoreService {
         }
     }
 }
+
+

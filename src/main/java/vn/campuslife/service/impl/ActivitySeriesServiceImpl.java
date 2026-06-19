@@ -20,7 +20,10 @@ import vn.campuslife.model.SeriesProgressItemResponse;
 import vn.campuslife.model.SeriesProgressListResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.ScoreEntryService;
 import vn.campuslife.service.SemesterHelperService;
+import vn.campuslife.enumeration.ScoreEntrySourceType;
+import vn.campuslife.model.ScoreEntryCommand;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -48,6 +51,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final ActivityRegistrationRepository registrationRepository;
     private final DepartmentRepository departmentRepository;
     private final SemesterHelperService semesterHelperService;
+    private final ScoreEntryService scoreEntryService;
 
     @Override
     @Transactional
@@ -144,15 +148,14 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         } else {
             activity.setType(null); // Mặc định null cho activity thường
         }
-        activity.setScoreType(null); // Lấy từ series (không dùng scoreType riêng của activity)
-        activity.setMaxPoints(null); // Không dùng để tính điểm
+
         activity.setRegistrationStartDate(series.getRegistrationStartDate()); // Lấy từ series
         activity.setRegistrationDeadline(series.getRegistrationDeadline()); // Lấy từ series
         activity.setRequiresApproval(series.isRequiresApproval()); // Lấy từ series
         activity.setTicketQuantity(series.getTicketQuantity()); // Lấy từ series
         activity.setImportant(false); // Không cần
         activity.setMandatoryForFacultyStudents(false); // Không cần
-        activity.setPenaltyPointsIncomplete(null); // Không cần
+
         activity.setRequiresSubmission(false);
         activity.setDraft(false); // Mặc định published
         activity.setDeleted(false);
@@ -639,70 +642,29 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 return;
             }
 
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(studentId, semester.getId(), scoreType);
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No {} score record found for student {}", scoreType, studentId);
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-            BigDecimal oldTotalScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-
-            // QUAN TRỌNG: Logic tính điểm milestone - tính theo mốc cuối đạt, KHÔNG cộng
-            // dồn
-            // Ví dụ: Mốc 1 = 5đ, Mốc 2 = 10đ
-            // - Đạt mốc 1 → tổng = 5đ
-            // - Đạt mốc 2 → tổng = 10đ (KHÔNG phải 5+10=15đ)
-            //
-            // Công thức: newTotal = (oldTotal - oldMilestone) + newMilestone
-            // oldTotal đã bao gồm: participations (từ activities đơn lẻ) + oldMilestone
-            // newTotal sẽ là: participations (từ activities đơn lẻ) + newMilestone
-
-            // Sử dụng oldPoints đã truyền vào (không lấy lại từ progress vì đã được cập
-            // nhật)
-            BigDecimal oldMilestonePoints = oldPoints != null ? oldPoints : BigDecimal.ZERO;
-
-            // Tổng điểm MỚI = (tổng điểm cũ - milestone cũ) + milestone mới
-            // Đảm bảo không cộng dồn milestone
-            BigDecimal updatedScore = oldTotalScore.subtract(oldMilestonePoints).add(newPoints);
-
-            // Đảm bảo điểm không âm
-            if (updatedScore.compareTo(BigDecimal.ZERO) < 0) {
-                logger.warn("Calculated score is negative: {}. Setting to 0.", updatedScore);
-                updatedScore = BigDecimal.ZERO;
-            }
-            score.setScore(updatedScore);
-            studentScoreRepository.save(score);
-
-            // Tạo history
             User systemUser = userRepository.findAll().stream()
                     .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
                             || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
                     .findFirst()
-                    .orElse(null);
+                    .orElseGet(() -> userRepository.findById(1L).orElse(null));
 
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldTotalScore);
-            history.setNewScore(updatedScore);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason(scoreType + " milestone from series '" + series.getName() + "' (ID: " + seriesId +
-                            "). Old milestone: " + oldMilestonePoints + ", New milestone: " + newPoints +
-                            ". Semester: " + semester.getName());
-            // For series milestone, activityId is null (affects multiple activities in series)
-            history.setActivityId(null);
-            scoreHistoryRepository.save(history);
+            ScoreEntryCommand command = ScoreEntryCommand.builder()
+                    .studentId(studentId)
+                    .semesterId(semester.getId())
+                    .scoreType(scoreType)
+                    .sourceType(ScoreEntrySourceType.SERIES_PROGRESS)
+                    .sourceId(seriesId)
+                    .points(newPoints)
+                    .reason(scoreType + " milestone from series '" + series.getName() + "' (ID: " + seriesId + ")")
+                    .actor(systemUser)
+                    .build();
 
-            logger.info("Updated {} score from milestone: {} -> {} for student {} (oldMilestone: {}, newMilestone: {})",
-                    scoreType, oldTotalScore, updatedScore, studentId, oldMilestonePoints, newPoints);
+            scoreEntryService.upsertEntry(command);
+
+            logger.info("Upserted {} score entry from milestone: {} for student {}", scoreType, newPoints, studentId);
         } catch (Exception e) {
-            logger.error("Failed to update score from milestone for student {} in series {} (scoreType: {}): {}",
+            logger.error("Failed to update score entry from milestone for student {} in series {} (scoreType: {}): {}",
                     studentId, seriesId, scoreType, e.getMessage(), e);
-            // Không throw exception để không làm gián đoạn flow chính
-            // Nhưng log đầy đủ để debug
         }
     }
 

@@ -17,7 +17,6 @@ import java.util.Set;
 
 import org.hibernate.annotations.Comment;
 import vn.campuslife.enumeration.ActivityType;
-import vn.campuslife.enumeration.ScoreType;
 
 @Entity
 @Table(name = "activities")
@@ -38,12 +37,6 @@ public class Activity {
     @Column(nullable = true)
     @Comment("Loại hoạt động (enum) - null nếu thuộc series")
     private ActivityType type;
-
-    /** Kiểu tính điểm cho hoạt động (tham gia, nộp minh chứng, sản phẩm, ...). */
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = true)
-    @Comment("Kiểu tính điểm - null nếu thuộc series (lấy từ series)")
-    private ScoreType scoreType;
 
     /** Tên hoạt động hiển thị cho sinh viên. */
     @Column(nullable = false)
@@ -70,10 +63,6 @@ public class Activity {
 
     @Column(nullable = false)
     private boolean hasPreparation = false;
-
-    /** Điểm tối đa sinh viên có thể đạt được. */
-    @Comment("Điểm tối đa")
-    private BigDecimal maxPoints;
 
     /** Ngày mở đăng ký tham gia. */
     @Comment("Ngày bắt đầu đăng ký")
@@ -152,11 +141,6 @@ public class Activity {
     @Column(nullable = false)
     @Comment("Bắt buộc cho sinh viên thuộc khoa")
     private boolean mandatoryForFacultyStudents = false;
-
-    /** Điểm trừ khi tham gia nhưng không hoàn thành yêu cầu. */
-    @Column(precision = 10, scale = 2)
-    @Comment("Điểm trừ khi không hoàn thành")
-    private BigDecimal penaltyPointsIncomplete;
 
     /** Danh sách đơn vị tổ chức (nhiều Department cho 1 Activity). */
     @ManyToMany

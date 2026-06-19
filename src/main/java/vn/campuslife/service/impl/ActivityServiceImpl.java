@@ -148,12 +148,12 @@ public class ActivityServiceImpl implements ActivityService {
         Activity copy = new Activity();
         copy.setName(src.getName() + " (Copy)");
         copy.setType(src.getType());
-        copy.setScoreType(src.getScoreType());
+        
         copy.setDescription(src.getDescription());
         copy.setStartDate(src.getStartDate() == null ? null : src.getStartDate().plusDays(days));
         copy.setEndDate(src.getEndDate() == null ? null : src.getEndDate().plusDays(days));
         copy.setRequiresSubmission(src.isRequiresSubmission());
-        copy.setMaxPoints(src.getMaxPoints());
+        
         copy.setRegistrationStartDate(src.getRegistrationStartDate() == null ? null : src.getRegistrationStartDate().plusDays(days));
         copy.setRegistrationDeadline(src.getRegistrationDeadline() == null ? null : src.getRegistrationDeadline().plusDays(days));
         copy.setShareLink(src.getShareLink());
@@ -165,7 +165,7 @@ public class ActivityServiceImpl implements ActivityService {
         copy.setRequirements(src.getRequirements());
         copy.setContactInfo(src.getContactInfo());
         copy.setMandatoryForFacultyStudents(src.isMandatoryForFacultyStudents());
-        copy.setPenaltyPointsIncomplete(src.getPenaltyPointsIncomplete());
+        
         copy.setRequiresApproval(src.isRequiresApproval());
         copy.setDraft(true); // new copy starts as draft
 
@@ -342,8 +342,8 @@ public class ActivityServiceImpl implements ActivityService {
             result.put("requiresSubmission", activity.isRequiresSubmission());
             result.put("isImportant", activity.isImportant());
             result.put("mandatoryForFacultyStudents", activity.isMandatoryForFacultyStudents());
-            result.put("maxPoints", activity.getMaxPoints());
-            result.put("scoreType", activity.getScoreType());
+            
+            
 
             return new Response(true, "Submission requirement checked successfully", result);
         } catch (Exception e) {
@@ -398,8 +398,6 @@ public class ActivityServiceImpl implements ActivityService {
             return "Activity name is required";
         if (r.getType() == null)
             return "Activity type is required";
-        if (r.getScoreType() == null)
-            return "Score type is required";
         if (r.getStartDate() == null || r.getEndDate() == null)
             return "Start date and end date are required";
         if (r.getStartDate().isAfter(r.getEndDate()))
@@ -414,13 +412,13 @@ public class ActivityServiceImpl implements ActivityService {
     private void applyRequestToEntity(CreateActivityRequest req, Activity a) {
         a.setName(req.getName());
         a.setType(req.getType());
-        a.setScoreType(req.getScoreType());
+        
         a.setDescription(req.getDescription());
         a.setStartDate(req.getStartDate());
         a.setEndDate(req.getEndDate());
 
         a.setRequiresSubmission(Boolean.TRUE.equals(req.getRequiresSubmission()));
-        a.setMaxPoints(req.getMaxPoints());
+        
 
         a.setRegistrationStartDate(req.getRegistrationStartDate());
         a.setRegistrationDeadline(req.getRegistrationDeadline());
@@ -443,7 +441,7 @@ public class ActivityServiceImpl implements ActivityService {
         a.setContactInfo(req.getContactInfo());
         if (req.getRequiresApproval() != null) a.setRequiresApproval(req.getRequiresApproval());
         a.setMandatoryForFacultyStudents(Boolean.TRUE.equals(req.getMandatoryForFacultyStudents()));
-        a.setPenaltyPointsIncomplete(req.getPenaltyPointsIncomplete());
+        
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
@@ -463,7 +461,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setId(a.getId());
         dto.setName(a.getName());
         dto.setType(a.getType());
-        dto.setScoreType(a.getScoreType());
+        
         dto.setDescription(a.getDescription());
         dto.setStartDate(a.getStartDate());
         dto.setEndDate(a.getEndDate());
@@ -471,7 +469,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setHasPreparation(a.isHasPreparation());
 
         dto.setRequiresSubmission(a.isRequiresSubmission());
-        dto.setMaxPoints(a.getMaxPoints());
+        
 
         dto.setRegistrationStartDate(a.getRegistrationStartDate());
         dto.setRegistrationDeadline(a.getRegistrationDeadline());
@@ -490,7 +488,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setCheckInCode(a.getCheckInCode());
         dto.setRequiresApproval(a.isRequiresApproval());
         dto.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
-        dto.setPenaltyPointsIncomplete(a.getPenaltyPointsIncomplete());
+        
         dto.setOrganizerIds(a.getOrganizers() == null ? List.of()
                 : a.getOrganizers().stream().map(Department::getId).toList());
 
@@ -838,3 +836,4 @@ public class ActivityServiceImpl implements ActivityService {
         }
     }
 }
+

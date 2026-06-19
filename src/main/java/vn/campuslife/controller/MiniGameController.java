@@ -7,6 +7,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.CreateMiniGameRequest;
+import vn.campuslife.model.UpdateMiniGameRequest;
+import jakarta.validation.Valid;
 import vn.campuslife.service.MiniGameService;
 
 import java.math.BigDecimal;
@@ -26,26 +29,9 @@ public class MiniGameController {
      * Tạo minigame với quiz
      */
     @PostMapping
-    public ResponseEntity<Response> createMiniGame(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Response> createMiniGame(@RequestBody @Valid CreateMiniGameRequest request) {
         try {
-            Long activityId = Long.valueOf(request.get("activityId").toString());
-            String title = (String) request.get("title");
-            String description = (String) request.get("description");
-            Integer questionCount = Integer.valueOf(request.get("questionCount").toString());
-            Integer timeLimit = request.get("timeLimit") != null 
-                    ? Integer.valueOf(request.get("timeLimit").toString()) : null;
-            Integer requiredCorrectAnswers = request.get("requiredCorrectAnswers") != null 
-                    ? Integer.valueOf(request.get("requiredCorrectAnswers").toString()) : null;
-            BigDecimal rewardPoints = request.get("rewardPoints") != null 
-                    ? new BigDecimal(request.get("rewardPoints").toString()) : null;
-            Integer maxAttempts = request.get("maxAttempts") != null 
-                    ? Integer.valueOf(request.get("maxAttempts").toString()) : null;
-            
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> questions = (List<Map<String, Object>>) request.get("questions");
-
-            Response response = miniGameService.createMiniGame(activityId, title, description, questionCount,
-                    timeLimit, requiredCorrectAnswers, rewardPoints, maxAttempts, questions);
+            Response response = miniGameService.createMiniGame(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to create minigame: {}", e.getMessage(), e);
@@ -194,26 +180,9 @@ public class MiniGameController {
     @PutMapping("/{miniGameId}")
     public ResponseEntity<Response> updateMiniGame(
             @PathVariable Long miniGameId,
-            @RequestBody Map<String, Object> request) {
+            @RequestBody @Valid UpdateMiniGameRequest request) {
         try {
-            String title = (String) request.get("title");
-            String description = (String) request.get("description");
-            Integer questionCount = request.get("questionCount") != null
-                    ? Integer.valueOf(request.get("questionCount").toString()) : null;
-            Integer timeLimit = request.get("timeLimit") != null
-                    ? Integer.valueOf(request.get("timeLimit").toString()) : null;
-            Integer requiredCorrectAnswers = request.get("requiredCorrectAnswers") != null
-                    ? Integer.valueOf(request.get("requiredCorrectAnswers").toString()) : null;
-            BigDecimal rewardPoints = request.get("rewardPoints") != null
-                    ? new BigDecimal(request.get("rewardPoints").toString()) : null;
-            Integer maxAttempts = request.get("maxAttempts") != null
-                    ? Integer.valueOf(request.get("maxAttempts").toString()) : null;
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> questions = (List<Map<String, Object>>) request.get("questions");
-
-            Response response = miniGameService.updateMiniGame(miniGameId, title, description, questionCount,
-                    timeLimit, requiredCorrectAnswers, rewardPoints, maxAttempts, questions);
+            Response response = miniGameService.updateMiniGame(miniGameId, request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to update minigame: {}", e.getMessage(), e);

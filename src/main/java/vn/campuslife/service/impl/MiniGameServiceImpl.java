@@ -16,6 +16,7 @@ import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.MiniGameService;
 import vn.campuslife.service.SemesterHelperService;
+import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.util.UrlUtils;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -49,13 +50,22 @@ public class MiniGameServiceImpl implements MiniGameService {
     private final UserRepository userRepository;
     private final ActivitySeriesService activitySeriesService;
     private final SemesterHelperService semesterHelperService;
+    private final ScoreRuleEngine scoreRuleEngine;
 
     @Override
     @Transactional
-    public Response createMiniGame(Long activityId, String title, String description, Integer questionCount,
-            Integer timeLimit, Integer requiredCorrectAnswers, BigDecimal rewardPoints, Integer maxAttempts,
-            List<Map<String, Object>> questions) {
+    public Response createMiniGame(CreateMiniGameRequest request) {
         try {
+            Long activityId = request.getActivityId();
+            String title = request.getTitle();
+            String description = request.getDescription();
+            Integer questionCount = request.getQuestionCount();
+            Integer timeLimit = request.getTimeLimit();
+            Integer requiredCorrectAnswers = request.getRequiredCorrectAnswers();
+            BigDecimal rewardPoints = request.getRewardPoints();
+            Integer maxAttempts = request.getMaxAttempts();
+            List<CreateMiniGameRequest.QuestionRequest> questions = request.getQuestions();
+
             Optional<Activity> activityOpt = activityRepository.findById(activityId);
             if (activityOpt.isEmpty()) {
                 return Response.error("Activity not found");
@@ -66,17 +76,13 @@ public class MiniGameServiceImpl implements MiniGameService {
                 return Response.error("Activity type must be MINIGAME");
             }
 
-            // Validation: Nếu activity đơn lẻ (không thuộc series), rewardPoints nên có giá
-            // trị
-            // Nếu activity thuộc series, rewardPoints có thể null (sẽ tính từ milestone)
+            // Validation: Nếu activity đơn lẻ (không thuộc series), rewardPoints nên có giá trị
             if (activity.getSeriesId() == null
                     && (rewardPoints == null || rewardPoints.compareTo(BigDecimal.ZERO) <= 0)) {
                 logger.warn("Standalone minigame should have rewardPoints > 0. Activity: {}", activityId);
-                // Không fail, chỉ warning (có thể có trường hợp đặc biệt)
             }
 
-            // Kiểm tra xem activity đã có minigame chưa (đảm bảo 1 activity chỉ có 1
-            // minigame)
+            // Kiểm tra xem activity đã có minigame chưa (đảm bảo 1 activity chỉ có 1 minigame)
             Optional<MiniGame> existingMiniGameOpt = miniGameRepository.findByActivityId(activityId);
             if (existingMiniGameOpt.isPresent()) {
                 return Response.error("Activity already has a minigame. Use update API to modify it.");
@@ -103,30 +109,29 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             // Tạo questions và options
             int order = 0;
-            for (Map<String, Object> questionData : questions) {
-                MiniGameQuizQuestion question = new MiniGameQuizQuestion();
-                question.setQuestionText((String) questionData.get("questionText"));
-                // Normalize imageUrl to relative path for storage (extract from full URL if
-                // needed)
-                String imageUrl = (String) questionData.get("imageUrl");
-                if (imageUrl != null && !imageUrl.trim().isEmpty()) {
-                    imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);
-                }
-                question.setImageUrl(imageUrl);
-                question.setMiniGameQuiz(savedQuiz);
-                question.setDisplayOrder(order++);
-                MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
+            if (questions != null) {
+                for (CreateMiniGameRequest.QuestionRequest questionData : questions) {
+                    MiniGameQuizQuestion question = new MiniGameQuizQuestion();
+                    question.setQuestionText(questionData.getQuestionText());
+                    String imageUrl = questionData.getImageUrl();
+                    if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+                        imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);
+                    }
+                    question.setImageUrl(imageUrl);
+                    question.setMiniGameQuiz(savedQuiz);
+                    question.setDisplayOrder(order++);
+                    MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
 
-                // Tạo options
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> options = (List<Map<String, Object>>) questionData.get("options");
-                if (options != null) {
-                    for (Map<String, Object> optionData : options) {
-                        MiniGameQuizOption option = new MiniGameQuizOption();
-                        option.setText((String) optionData.get("text"));
-                        option.setCorrect((Boolean) optionData.getOrDefault("isCorrect", false));
-                        option.setQuestion(savedQuestion);
-                        optionRepository.save(option);
+                    // Tạo options
+                    List<CreateMiniGameRequest.QuestionRequest.OptionRequest> options = questionData.getOptions();
+                    if (options != null) {
+                        for (CreateMiniGameRequest.QuestionRequest.OptionRequest optionData : options) {
+                            MiniGameQuizOption option = new MiniGameQuizOption();
+                            option.setText(optionData.getText());
+                            option.setCorrect(Boolean.TRUE.equals(optionData.getIsCorrect()));
+                            option.setQuestion(savedQuestion);
+                            optionRepository.save(option);
+                        }
                     }
                 }
             }
@@ -443,7 +448,7 @@ public class MiniGameServiceImpl implements MiniGameService {
                 // Activity đơn lẻ → cập nhật StudentScore
                 // Chỉ update nếu có điểm (pointsEarned > 0)
                 if (pointsEarned.compareTo(BigDecimal.ZERO) > 0) {
-                    updateStudentScoreFromParticipation(participation);
+                    scoreRuleEngine.applyMiniGamePassed(attempt, attempt.getStudent().getUser());
                 } else {
                     logger.warn("Standalone quiz has no rewardPoints, skipping score update. Activity: {}",
                             activity.getId());
@@ -459,208 +464,8 @@ public class MiniGameServiceImpl implements MiniGameService {
         }
     }
 
-    /**
-     * Helper method để cập nhật StudentScore từ ActivityParticipation
-     */
-    private void updateStudentScoreFromParticipation(ActivityParticipation participation) {
-        try {
-            Student student = participation.getRegistration().getStudent();
-            Activity activity = participation.getRegistration().getActivity();
 
-            // Use SemesterHelperService to find semester based on activity timing
-            Semester semester = semesterHelperService.getSemesterForActivity(activity);
 
-            if (semester == null) {
-                logger.warn("No semester found for score aggregation");
-                return;
-            }
-
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(
-                            student.getId(),
-                            semester.getId(),
-                            activity.getScoreType());
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No score record found for student {} scoreType {} in semester {}",
-                        student.getId(), activity.getScoreType(), semester.getId());
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-
-            // Tính lại tổng điểm từ tất cả ActivityParticipation COMPLETED trong cùng
-            // semester
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            List<ActivityParticipation> allParticipations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> {
-                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
-                            return false;
-                        }
-                        if (!p.getRegistration().getActivity().getScoreType().equals(activity.getScoreType())) {
-                            return false;
-                        }
-                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
-                            return false;
-                        }
-                        // Filter theo semester
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(
-                                p.getRegistration().getActivity());
-                        return pSemester != null && pSemester.getId().equals(semester.getId());
-                    })
-                    .collect(java.util.stream.Collectors.toList());
-
-            BigDecimal totalFromParticipations = allParticipations.stream()
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // QUAN TRỌNG: Giữ nguyên điểm milestone từ series (nếu có)
-            // Tính điểm milestone = điểm hiện tại - điểm từ participations cũ
-            BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-
-            // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
-            BigDecimal oldParticipationScore = allParticipations.stream()
-                    .filter(p -> !p.getId().equals(participation.getId())) // Loại bỏ participation hiện tại
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // Điểm milestone = điểm hiện tại - điểm từ participations cũ
-            BigDecimal milestonePoints = oldScore.subtract(oldParticipationScore);
-            if (milestonePoints.compareTo(BigDecimal.ZERO) < 0) {
-                milestonePoints = BigDecimal.ZERO; // Không cho âm
-            }
-
-            // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone (giữ nguyên)
-            BigDecimal total = totalFromParticipations.add(milestonePoints);
-
-            // Cập nhật
-            score.setScore(total);
-            studentScoreRepository.save(score);
-
-            // Tạo history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
-                            || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
-                    .findFirst()
-                    .orElse(null);
-
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldScore);
-            history.setNewScore(total);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason("Score from minigame quiz: " + activity.getName());
-            history.setActivityId(activity.getId());
-            scoreHistoryRepository.save(history);
-
-            logger.info(
-                    "Updated student score from minigame participation: {} -> {} for student {} (participation: {}, milestone: {})",
-                    oldScore, total, student.getId(), totalFromParticipations, milestonePoints);
-        } catch (Exception e) {
-            logger.error("Failed to update student score: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Helper method để trừ điểm khi xóa participation cũ (re-attempt)
-     */
-    private void updateStudentScoreFromParticipationRemoval(ActivityParticipation participation) {
-        try {
-            Activity activity = participation.getRegistration().getActivity();
-            Student student = participation.getRegistration().getStudent();
-            ScoreType scoreType = activity.getScoreType();
-
-            if (scoreType == null) {
-                logger.warn("Activity {} has no scoreType, skipping score update", activity.getId());
-                return;
-            }
-
-            // ✅ USE: SemesterHelperService to find semester based on activity timing
-            Semester semester = semesterHelperService.getSemesterForActivity(activity);
-
-            if (semester == null) {
-                logger.warn("No semester found for score update");
-                return;
-            }
-
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(student.getId(), semester.getId(), scoreType);
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No {} score record found for student {} in semester {}",
-                        scoreType, student.getId(), semester.getId());
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-
-            // Lấy tất cả participations của student cho scoreType này trong semester này
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            List<ActivityParticipation> allParticipations = participationRepository
-                    .findByStudentIdAndScoreType(student.getId(), scoreType)
-                    .stream()
-                    .filter(p -> {
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(
-                                p.getRegistration().getActivity());
-                        return pSemester != null && pSemester.getId().equals(semester.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            // Tính tổng điểm từ tất cả participations (trừ participation đang xóa)
-            BigDecimal totalFromParticipations = allParticipations.stream()
-                    .filter(p -> p.getId() == null || !p.getId().equals(participation.getId()))
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // QUAN TRỌNG: Giữ nguyên điểm milestone từ series (nếu có)
-            BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-
-            // Tính điểm từ participations CŨ (bao gồm participation đang xóa)
-            BigDecimal oldParticipationScore = allParticipations.stream()
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // Điểm milestone = điểm hiện tại - điểm từ participations cũ
-            BigDecimal milestonePoints = oldScore.subtract(oldParticipationScore);
-            if (milestonePoints.compareTo(BigDecimal.ZERO) < 0) {
-                milestonePoints = BigDecimal.ZERO; // Không cho âm
-            }
-
-            // Tổng điểm MỚI = điểm từ participations MỚI (đã trừ participation xóa) + điểm
-            // milestone (giữ nguyên)
-            BigDecimal total = totalFromParticipations.add(milestonePoints);
-
-            // Cập nhật
-            score.setScore(total);
-            studentScoreRepository.save(score);
-
-            // ✅ Tạo history để ghi lại việc xóa participation
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
-                            || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
-                    .findFirst()
-                    .orElse(null);
-
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldScore);
-            history.setNewScore(total);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason("Removed minigame participation (re-attempt). Activity: " + activity.getName() +
-                            ". Milestone preserved: " + milestonePoints);
-            history.setActivityId(activity.getId());
-            scoreHistoryRepository.save(history);
-
-            logger.info("Removed participation score, updated {} score: {} -> {} for student {} in semester {}",
-                    scoreType, oldScore, total, student.getId(), semester.getId());
-        } catch (Exception e) {
-            logger.error("Failed to remove participation score: {}", e.getMessage(), e);
-        }
-    }
 
     @Override
     @Transactional(readOnly = true)
@@ -749,9 +554,7 @@ public class MiniGameServiceImpl implements MiniGameService {
 
     @Override
     @Transactional
-    public Response updateMiniGame(Long miniGameId, String title, String description, Integer questionCount,
-            Integer timeLimit, Integer requiredCorrectAnswers, BigDecimal rewardPoints,
-            Integer maxAttempts, List<Map<String, Object>> questions) {
+    public Response updateMiniGame(Long miniGameId, UpdateMiniGameRequest request) {
         try {
             Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
             if (miniGameOpt.isEmpty()) {
@@ -761,22 +564,23 @@ public class MiniGameServiceImpl implements MiniGameService {
             MiniGame miniGame = miniGameOpt.get();
 
             // Cập nhật thông tin cơ bản
-            if (title != null)
-                miniGame.setTitle(title);
-            if (description != null)
-                miniGame.setDescription(description);
-            if (questionCount != null)
-                miniGame.setQuestionCount(questionCount);
-            if (timeLimit != null)
-                miniGame.setTimeLimit(timeLimit);
-            if (requiredCorrectAnswers != null)
-                miniGame.setRequiredCorrectAnswers(requiredCorrectAnswers);
-            if (rewardPoints != null)
-                miniGame.setRewardPoints(rewardPoints);
-            if (maxAttempts != null)
-                miniGame.setMaxAttempts(maxAttempts);
+            if (request.getTitle() != null)
+                miniGame.setTitle(request.getTitle());
+            if (request.getDescription() != null)
+                miniGame.setDescription(request.getDescription());
+            if (request.getQuestionCount() != null)
+                miniGame.setQuestionCount(request.getQuestionCount());
+            if (request.getTimeLimit() != null)
+                miniGame.setTimeLimit(request.getTimeLimit());
+            if (request.getRequiredCorrectAnswers() != null)
+                miniGame.setRequiredCorrectAnswers(request.getRequiredCorrectAnswers());
+            if (request.getRewardPoints() != null)
+                miniGame.setRewardPoints(request.getRewardPoints());
+            if (request.getMaxAttempts() != null)
+                miniGame.setMaxAttempts(request.getMaxAttempts());
 
             // Nếu có questions mới, xóa cũ và tạo mới
+            List<CreateMiniGameRequest.QuestionRequest> questions = request.getQuestions();
             if (questions != null && !questions.isEmpty()) {
                 // Lấy quiz hiện tại
                 Optional<MiniGameQuiz> quizOpt = quizRepository.findByMiniGameId(miniGameId);
@@ -784,8 +588,7 @@ public class MiniGameServiceImpl implements MiniGameService {
                     MiniGameQuiz quiz = quizOpt.get();
                     // Xóa tất cả answers liên quan tới quiz này để tránh lỗi FK khi xóa options
                     answerRepository.deleteByQuizId(quiz.getId());
-                    // Xóa tất cả questions và options cũ (cascade sẽ xóa options sau khi answers đã
-                    // bị xóa)
+                    // Xóa tất cả questions và options cũ
                     questionRepository.deleteAll(quiz.getQuestions());
                     quiz.getQuestions().clear();
                 }
@@ -798,12 +601,10 @@ public class MiniGameServiceImpl implements MiniGameService {
                 });
 
                 int order = 0;
-                for (Map<String, Object> questionData : questions) {
+                for (CreateMiniGameRequest.QuestionRequest questionData : questions) {
                     MiniGameQuizQuestion question = new MiniGameQuizQuestion();
-                    question.setQuestionText((String) questionData.get("questionText"));
-                    // Normalize imageUrl to relative path for storage (extract from full URL if
-                    // needed)
-                    String imageUrl = (String) questionData.get("imageUrl");
+                    question.setQuestionText(questionData.getQuestionText());
+                    String imageUrl = questionData.getImageUrl();
                     if (imageUrl != null && !imageUrl.trim().isEmpty()) {
                         imageUrl = UrlUtils.toRelativePath(imageUrl, publicUrl);
                     }
@@ -812,13 +613,12 @@ public class MiniGameServiceImpl implements MiniGameService {
                     question.setDisplayOrder(order++);
                     MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
 
-                    @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> options = (List<Map<String, Object>>) questionData.get("options");
+                    List<CreateMiniGameRequest.QuestionRequest.OptionRequest> options = questionData.getOptions();
                     if (options != null) {
-                        for (Map<String, Object> optionData : options) {
+                        for (CreateMiniGameRequest.QuestionRequest.OptionRequest optionData : options) {
                             MiniGameQuizOption option = new MiniGameQuizOption();
-                            option.setText((String) optionData.get("text"));
-                            option.setCorrect((Boolean) optionData.getOrDefault("isCorrect", false));
+                            option.setText(optionData.getText());
+                            option.setCorrect(Boolean.TRUE.equals(optionData.getIsCorrect()));
                             option.setQuestion(savedQuestion);
                             optionRepository.save(option);
                         }
@@ -950,3 +750,5 @@ public class MiniGameServiceImpl implements MiniGameService {
     }
 
 }
+
+

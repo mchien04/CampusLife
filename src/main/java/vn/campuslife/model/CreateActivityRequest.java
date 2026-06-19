@@ -2,7 +2,6 @@ package vn.campuslife.model;
 
 import lombok.Data;
 import vn.campuslife.enumeration.ActivityType;
-import vn.campuslife.enumeration.ScoreType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -12,13 +11,12 @@ import java.util.List;
 public class CreateActivityRequest {
     private String name;
     private ActivityType type;
-    private ScoreType scoreType;
+
     private String description;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private Boolean requiresSubmission;
-    private BigDecimal maxPoints;
-    private BigDecimal penaltyPointsIncomplete;
+    private List<ActivityScoreRuleRequest> scoreRules;
     private LocalDateTime registrationStartDate;
     private LocalDateTime registrationDeadline;
     private String shareLink;

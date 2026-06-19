@@ -32,16 +32,18 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
 
         // Lấy tất cả participation theo studentId, semesterId và scoreType
         @Query("SELECT ap FROM ActivityParticipation ap " +
+                "JOIN ActivityScoreRule r ON r.activity = ap.registration.activity " +
                 "WHERE ap.registration.student.id = :studentId " +
-                "AND ap.registration.activity.scoreType = :scoreType")
+                "AND r.scoreType = :scoreType")
         List<ActivityParticipation> findByStudentIdAndScoreType(
                 @Param("studentId") Long studentId,
                 @Param("scoreType") ScoreType scoreType);
         
         // Lấy participation với pagination theo studentId và scoreType (chỉ COMPLETED)
         @Query("SELECT ap FROM ActivityParticipation ap " +
+                "JOIN ActivityScoreRule r ON r.activity = ap.registration.activity " +
                 "WHERE ap.registration.student.id = :studentId " +
-                "AND ap.registration.activity.scoreType = :scoreType " +
+                "AND r.scoreType = :scoreType " +
                 "AND ap.participationType = 'COMPLETED' " +
                 "ORDER BY ap.date DESC")
         org.springframework.data.domain.Page<ActivityParticipation> findByRegistration_StudentIdAndRegistration_Activity_ScoreType(
@@ -50,10 +52,10 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
                 org.springframework.data.domain.Pageable pageable);
         
         // Lấy participation với pagination theo studentId (chỉ COMPLETED, không filter scoreType)
-        @Query("SELECT ap FROM ActivityParticipation ap " +
+        @Query("SELECT DISTINCT ap FROM ActivityParticipation ap " +
+                "JOIN ActivityScoreRule r ON r.activity = ap.registration.activity " +
                 "WHERE ap.registration.student.id = :studentId " +
                 "AND ap.participationType = 'COMPLETED' " +
-                "AND ap.registration.activity.scoreType IS NOT NULL " +
                 "ORDER BY ap.date DESC")
         org.springframework.data.domain.Page<ActivityParticipation> findByRegistration_StudentId_Completed(
                 @Param("studentId") Long studentId,

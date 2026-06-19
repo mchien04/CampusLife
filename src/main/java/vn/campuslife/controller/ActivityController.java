@@ -34,7 +34,6 @@ public class ActivityController {
             logger.info("=== CREATE ACTIVITY REQUEST ===");
             logger.info("Name: {}", request.getName());
             logger.info("Type: {}", request.getType());
-            logger.info("ScoreType: {}", request.getScoreType());
             logger.info("BannerUrl: {}", request.getBannerUrl());
             logger.info("===============================");
             Response response = activityService.createActivity(request);

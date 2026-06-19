@@ -172,7 +172,7 @@ public class EventArticleServiceImpl implements EventArticleService {
             activityInfo.setEndDate(activity.getEndDate());
             activityInfo.setRegistrationStartDate(activity.getRegistrationStartDate());
             activityInfo.setRegistrationDeadline(activity.getRegistrationDeadline());
-            activityInfo.setScoreType(activity.getScoreType());
+            
             activityInfo.setShareLink(activity.getShareLink());
             response.setActivityInfo(activityInfo);
         }
@@ -1281,3 +1281,4 @@ public class EventArticleServiceImpl implements EventArticleService {
         }
     }
 }
+

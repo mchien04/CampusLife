@@ -24,7 +24,8 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
 
   Optional<Activity> findByIdAndIsDeletedFalse(Long id);
 
-  List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(ScoreType scoreType);
+  @Query("SELECT DISTINCT a FROM ActivityScoreRule r JOIN r.activity a WHERE r.scoreType = :scoreType AND a.isDeleted = false ORDER BY a.startDate ASC")
+  List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(@Param("scoreType") ScoreType scoreType);
 
   List<Activity> findByIsDeletedFalseOrderByStartDateAsc();
 
@@ -73,7 +74,7 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
   /**
    * Đếm số activities theo scoreType
    */
-  @Query("SELECT COUNT(a) FROM Activity a WHERE a.scoreType = :scoreType AND a.isDeleted = false")
+  @Query("SELECT COUNT(DISTINCT a) FROM ActivityScoreRule r JOIN r.activity a WHERE r.scoreType = :scoreType AND a.isDeleted = false")
   Long countByScoreType(@Param("scoreType") ScoreType scoreType);
 
   /**
@@ -173,10 +174,10 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
     Page<Activity> findPastPublished(@Param("now") LocalDateTime now, Pageable pageable);
 
     @Query("""
-    select a from Activity a
+    select DISTINCT a from ActivityScoreRule r JOIN r.activity a
     where a.isDeleted = false
       and a.isDraft = false
-      and a.scoreType = :scoreType
+      and r.scoreType = :scoreType
     order by a.startDate desc
     """)
     Page<Activity> findPublishedByScoreType(@Param("scoreType") ScoreType scoreType, Pageable pageable);
