@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS reminder_schedule (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    target_type VARCHAR(20) NOT NULL,
+    target_id BIGINT NOT NULL,
+    reminder_code VARCHAR(50) NOT NULL,
+    remind_at DATETIME NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    recipient_email VARCHAR(255) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    sent_at DATETIME NULL,
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT uk_reminder_schedule UNIQUE (user_id, target_type, target_id, reminder_code),
+    CONSTRAINT fk_reminder_schedule_user FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_reminder_schedule_status_time (status, remind_at),
+    INDEX idx_reminder_schedule_target (target_type, target_id),
+    INDEX idx_reminder_schedule_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

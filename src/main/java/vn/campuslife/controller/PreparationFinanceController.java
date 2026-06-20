@@ -69,7 +69,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/allocation-adjustments/{requestId}/admin-decision")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','STUDENT')")
     public ResponseEntity<Response> adminDecisionAllocationAdjustment(
             @PathVariable Long requestId,
             @RequestBody @Valid AdminDecisionAllocationAdjustmentRequest request,
@@ -100,7 +100,7 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/allocation-adjustments/{requestId}/source-plan")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','STUDENT')")
     public ResponseEntity<Response> planAllocationAdjustmentSources(@PathVariable Long requestId) {
         List<AllocationAdjustmentSourcePlanDto> dtos = financeService.planAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -124,7 +124,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/fund-advances/{fundAdvanceId}/admin-decision")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','STUDENT')")
     public ResponseEntity<Response> adminDecisionFundAdvance(
             @PathVariable Long fundAdvanceId,
             @RequestBody @Valid ApproveFundAdvanceRequest request,
