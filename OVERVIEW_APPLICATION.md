@@ -1,529 +1,191 @@
 # 📱 CampusLife - Báo Cáo Sơ Lược Ứng Dụng
 
-## 🎯 Tổng Quan
+## Agent Quick Start Context
 
-**CampusLife** là một nền tảng quản lý hoạt động sinh viên toàn diện được xây dựng bằng **Spring Boot 3** với cơ sở dữ liệu **MySQL**. Ứng dụng giúp sinh viên:
-- Đăng ký tham gia các hoạt động ngoại khóa
-- Tham gia minigame giáo dục
-- Nộp báo cáo/minh chứng hoàn thành
-- Xem điểm tích lũy theo các hạng mục
-- Nhận thông báo nhắc nhở
+Đọc phần này trước khi bắt đầu một conversation mới. Đây là bản tóm lược nhanh để agent nắm dự án trong vài phút, trước khi đi sâu vào controller/service cụ thể.
 
-**Mục đích:** Tính điểm rèn luyện dựa trên hoạt động thực tế của sinh viên, bao gồm:
-- Điểm Rèn Luyện (REN_LUYEN)
-- Điểm Công Tác Xã Hội (CONG_TAC_XA_HOI)
-- Điểm Chuyên Đề Doanh Nghiệp (CHUYEN_DE)
+### Dự Án Là Gì
 
----
+CampusLife là backend **Spring Boot 3.5.5 / Java 21 / Maven / MySQL** cho hệ thống quản lý hoạt động sinh viên. Backend cung cấp REST API cho frontend/mobile để quản lý sinh viên, khoa/lớp, học kỳ, hoạt động ngoại khóa, đăng ký/check-in, bài nộp, điểm rèn luyện, minigame, bài viết sự kiện, thông báo, email, FCM và báo cáo.
 
-## 📊 Cấu Trúc Dữ Liệu
+Ba role chính hiện tại:
+- `ADMIN`: quản trị hệ thống, user, học kỳ, dữ liệu nền.
+- `MANAGER`: quản lý hoạt động, check-in, chấm điểm, minigame, bài viết, preparation.
+- `STUDENT`: đăng ký hoạt động, check-in, nộp minh chứng, làm quiz, xem điểm/thông báo.
 
-### 🔗 Các Bảng Chính
+Nếu bổ sung role mới, lưu ý DB thực tế dùng MySQL `ENUM` cho `users.role`, nên phải có migration `ALTER TABLE users MODIFY COLUMN role ENUM(...)`.
 
-```
-┌─────────────────────────────────────────┐
-│ User (Người dùng: Admin, Giảng viên)     │
-│ - email, password, role                  │
-└────────┬────────────────────────────────┘
-         │
-         ├──→ Student (Sinh viên)
-         │    - studentCode, fullName
-         │    - department, class
-         │    - phone, dob, gender, avatar
-         │
-         └──→ Department (Khoa)
-              - name, type
+### Cấu Trúc Cần Nhớ
 
-┌────────────────────────────────────────────────────┐
-│ Semester (Học kỳ)                                   │
-│ - academicYear, semesterNumber                      │
-│ - startDate, endDate                                │
-└────────────────────────────────────────────────────┘
-         │
-         └──→ StudentScore (Bảng điểm sinh viên)
-              - student, semester
-              - scoreType (REN_LUYEN / CONG_TAC_XA_HOI / CHUYEN_DE)
-              - score (tổng điểm)
-
-┌────────────────────────────────────────────────────┐
-│ Activity (Hoạt động/Sự kiện)                        │
-│ - name, description                                 │
-│ - type (SUKIEN, MINIGAME, CONG_TAC_XA_HOI, etc.)   │
-│ - scoreType (loại điểm cộng)                        │
-│ - maxPoints, requiresSubmission                     │
-│ - startDate, endDate, registrationDates             │
-└───────┬──────────────────────────────────────────┘
-        │
-        ├──→ ActivityRegistration (Đăng ký tham gia)
-        │    - student, status
-        │    - registeredDate, ticketCode
-        │
-        ├──→ ActivityParticipation (Tham gia thực tế)
-        │    - participationType (CHECK_IN, COMPLETE, etc.)
-        │    - pointsEarned (điểm được cộng)
-        │    - isCompleted (true/false/null)
-        │    - date, checkInTime, checkOutTime
-        │
-        └──→ TaskAssignment (Bài tập nộp)
-             - submissions
-
-┌────────────────────────────────────────────────────┐
-│ ActivitySeries (Chuỗi sự kiện - Dự án lớn)        │
-│ - name, description                                 │
-│ - scoreType, milestonePoints                        │
-│ - registrationDates, ticketQuantity                 │
-│ - requiresApproval                                  │
-└────────────────────────────────────────────────────┘
-         │
-         └──→ StudentSeriesProgress (Tiến độ sinh viên)
-              - student, series
-              - completedActivities, milestoneReached
-
-┌────────────────────────────────────────────────────┐
-│ MiniGame (Mini-game học tập)                        │
-│ - title, description                                │
-│ - questionCount, timeLimit                          │
-│ - type (QUIZ, MATCH_PAIR, etc.)                     │
-│ - rewardPoints (điểm thưởng nếu PASS)              │
-│ - requiredCorrectAnswers, maxAttempts               │
-└───────┬──────────────────────────────────────────┘
-        │
-        ├──→ MiniGameQuiz (Câu hỏi)
-        │    - content, correctAnswer
-        │    - options (MiniGameQuizOption)
-        │
-        └──→ MiniGameAttempt (Lần làm quiz)
-             - student, attemptStatus
-             - correctAnswerCount, score
-
-┌────────────────────────────────────────────────────┐
-│ TaskSubmission (Nộp bài)                            │
-│ - student, taskAssignment                           │
-│ - submissionFile, submissionStatus                  │
-│ - isApproved, score                                 │
-└────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────┐
-│ Notification (Thông báo)                            │
-│ - recipient, type, status                           │
-│ - title, content, isRead                            │
-└────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────┐
-│ ScoreHistory (Lịch sử ghi điểm)                     │
-│ - student, semester, scoreType                      │
-│ - oldScore, newScore, reason                        │
-│ - changedAt                                         │
-└────────────────────────────────────────────────────┘
-```
-
----
-
-## 🏗️ Kiến Trúc Ứng Dụng
-
-### Layers (Tầng)
-
-```
-┌─────────────────────────────────────────┐
-│     REST API Controllers                 │  ← HTTP Request/Response
-│   (ActivityController, StudentController) │
-└──────────────────┬──────────────────────┘
-                   │
-                   ↓
-┌──────────────────────────────────────────────────┐
-│     Business Logic (Services)                     │  ← Xử lý logic
-│   - ActivityService                               │
-│   - ActivityRegistrationService                   │
-│   - StudentScoreService                           │
-│   - MiniGameService                               │
-│   - TaskSubmissionService                         │
-│   - EmailService, NotificationService             │
-│   - SemesterHelperService (xác định học kỳ)      │
-└──────────────────┬───────────────────────────────┘
-                   │
-                   ↓
-┌──────────────────────────────────────────────────┐
-│     Database Access (Repository - JPA)            │  ← SQL Queries
-│   - StudentRepository                             │
-│   - ActivityRepository                            │
-│   - StudentScoreRepository                        │
-│   - etc...                                         │
-└──────────────────┬───────────────────────────────┘
-                   │
-                   ↓
-              ┌─────────────┐
-              │  MySQL DB   │
-              └─────────────┘
-```
-
-### Thư Mục Chính
-
-```
+```text
 src/main/java/vn/campuslife/
-├── entity/                    # 32 lớp đại diện bảng trong DB
-├── repository/                # 30+ interfaces JPA (truy vấn)
-├── service/                   # Business logic (27 interfaces)
-│   └── impl/                  # Triển khai service
-├── controller/                # REST API endpoints (24+ controllers)
-├── enumeration/               # 15 loại liệt kê (ScoreType, ActivityType, etc.)
-├── config/                    # Cấu hình (Security, Database, etc.)
-├── filter/                    # JWT Authentication Filter
-├── model/                     # DTO (Data Transfer Objects)
-└── util/                      # Các lớp tiện ích
+├─ controller/      REST endpoint, không nên chứa business logic nặng
+├─ service/         Service interface
+├─ service/impl/    Business logic, transaction, tính điểm, duyệt tiền
+├─ repository/      Spring Data JPA query
+├─ entity/          JPA entity
+├─ model/           DTO request/response
+├─ enumeration/     Role/status/type enum
+├─ config/          Security, CORS, Firebase, JPA, upload static files
+├─ filter/          JwtAuthenticationFilter
+├─ util/            JWT, email, Excel, ticket, URL helper
+└─ exception/       GlobalExceptionHandler và custom exceptions
 ```
+
+Các thư mục ngoài source:
+- `db/migration/`: migration SQL chính.
+- `docs/`: tài liệu API, sequence diagram, preparation reports, FE guide.
+- `uploads/`: file runtime do app tạo, không nên xem là source code.
+- `.github/workflows/`: CI/CD GitHub Actions.
+- `Dockerfile`: build/deploy app, hiện dùng Java 21.
+
+### Luồng Nghiệp Vụ Cốt Lõi
+
+```text
+ADMIN/MANAGER tạo học kỳ, khoa/lớp, activity/series/minigame
+→ STUDENT đăng ký activity hoặc series
+→ STUDENT check-in bằng ticket/code/QR hoặc nộp submission
+→ MANAGER/ADMIN xác nhận/chấm điểm
+→ Service cập nhật ActivityParticipation/TaskSubmission/MiniGameAttempt
+→ Service cập nhật StudentScore theo semester + ScoreType
+→ Ghi ScoreHistory
+→ Gửi Notification/Email/FCM nếu nghiệp vụ yêu cầu
+→ Statistics/export đọc dữ liệu đã ghi nhận
+```
+
+Ba loại điểm chính:
+- `REN_LUYEN`
+- `CONG_TAC_XA_HOI`
+- `CHUYEN_DE`
+
+Điểm có thể đến từ participation, graded submission, minigame reward và milestone của activity series. Khi sửa logic điểm, luôn kiểm tra `ScoreServiceImpl`, `ActivityRegistrationServiceImpl`, `TaskSubmissionServiceImpl`, `MiniGameServiceImpl`, `ActivitySeriesServiceImpl` và `ScoreHistory`.
+
+### Module Chính
+
+- **Auth/User**: `AuthController`, `AuthServiceImpl`, `UserManagementController`, `UserManagementServiceImpl`, `JwtAuthenticationFilter`, `SecurityConfig`.
+- **Academic**: năm học/học kỳ, auto-init `StudentScore`.
+- **Student/Class/Department**: quản lý sinh viên, khoa, lớp, profile.
+- **Activity**: tạo/sửa/xóa/publish hoạt động, ảnh hoạt động, tháng/upcoming.
+- **Registration/Participation**: đăng ký, hủy đăng ký, check-in, QR, report, grading.
+- **Submission/TaskAssignment**: giao task/nộp minh chứng/chấm bài.
+- **ActivitySeries**: chuỗi hoạt động, đăng ký series, milestone progress/points.
+- **MiniGame**: quiz, attempt, reward point, max attempts.
+- **Score**: xem điểm, ranking, history, recalculate.
+- **Notification/Email/DeviceToken/FCM**: thông báo trong app, email, push.
+- **EventArticle**: bài viết sự kiện, category, tag, image, wishlist/waitlist.
+- **Preparation**: bật chuẩn bị sự kiện, BTC, task, leader/member, workload, ngân sách, tạm ứng, chi phí, duyệt hai cấp, audit, export Excel/PDF.
+- **Statistics**: dashboard và thống kê theo activity/student/score/series/minigame.
+
+### Files Nên Mở Đầu Tiên Khi Debug
+
+```text
+pom.xml
+src/main/resources/application.properties
+src/main/java/vn/campuslife/config/SecurityConfig.java
+src/main/java/vn/campuslife/entity/User.java
+src/main/java/vn/campuslife/enumeration/Role.java
+src/main/java/vn/campuslife/enumeration/ScoreType.java
+src/main/java/vn/campuslife/enumeration/ActivityType.java
+src/main/java/vn/campuslife/service/impl/ActivityRegistrationServiceImpl.java
+src/main/java/vn/campuslife/service/impl/ScoreServiceImpl.java
+src/main/java/vn/campuslife/service/impl/PreparationServiceImpl.java
+src/main/java/vn/campuslife/service/impl/PreparationFinanceServiceImpl.java
+src/main/java/vn/campuslife/service/impl/PreparationExportServiceImpl.java
+docs/preparation-overview.md
+docs/preparation-fe-guide.md
+```
+
+### Quy Tắc Khi Sửa Code
+
+- Controller chỉ điều phối request/response; logic nghiệp vụ đặt trong service.
+- Method ghi dữ liệu nên có `@Transactional`.
+- API mới phải cập nhật `SecurityConfig`.
+- Không trả entity phức tạp trực tiếp nếu dễ dính lazy loading/recursive JSON; ưu tiên DTO trong `model/`.
+- Thay đổi điểm phải ghi `ScoreHistory`.
+- Thay đổi tài chính/preparation quan trọng phải ghi `AuditLog` nếu là hành động duyệt/phân bổ/chi tiêu.
+- Không sửa migration cũ đã chạy; thêm migration mới.
+- Không commit secret trong `application.properties`; production dùng env vars.
+- Không coi `uploads/` là dữ liệu nguồn ổn định.
+- Nếu thay đổi enum lưu trong MySQL `ENUM`, phải thêm migration `ALTER TABLE ... MODIFY COLUMN ... ENUM(...)`.
+
+### Build/Test Nhanh
+
+```bash
+./mvnw test
+./mvnw -DskipTests clean package
+```
+
+Trên Windows có thể dùng:
+
+```powershell
+.\mvnw.cmd test
+.\mvnw.cmd -DskipTests clean package
+```
+
+CI hiện chạy test và package qua GitHub Actions. CD trigger Render deploy hook khi push `main`.
+
+### Ghi Chú Hiện Trạng Quan Trọng
+
+- `application.properties` vẫn có `spring.jpa.hibernate.ddl-auto=update`; production nên dựa vào migration rõ ràng hơn là Hibernate tự update schema.
+- `users.role` trong DB thực tế là MySQL `ENUM`, không chỉ là `VARCHAR`.
+- `PreparationExportServiceImpl.exportOperational` hiện có section task status trong Excel sheet `Tasks` và PDF section `Task List`.
+- Nếu cần export `completionProofUrls`, hiện code chưa có field này trong `PreparationTask`; cần thêm entity field, migration, request/service cập nhật dữ liệu rồi mới thêm cột export.
 
 ---
 
-## 🎮 Các Chức Năng Chính
+## Chi Tiết Mô Hình & Nghiệp Vụ (Dành cho việc tra cứu sâu)
 
-### 1️⃣ **Quản Lý Người Dùng & Xác Thực**
-- **Đăng ký/Đăng nhập**: Sử dụng JWT token
-- **Quên mật khẩu**: Gửi email reset password
-- **Quản lý hồ sơ**: Sinh viên cập nhật thông tin cá nhân (avatar, địa chỉ, SĐT)
-- **Phân quyền**: Admin, Giảng viên, Sinh viên
+Phần này tóm lược cấu trúc dữ liệu và các luồng nghiệp vụ phức tạp để hỗ trợ xử lý bug hoặc phát triển tính năng mới.
 
-### 2️⃣ **Quản Lý Hoạt Động**
-- **Tạo sự kiện**: Admin tạo hoạt động với thông tin:
-  - Tên, mô tả, thời gian, địa điểm
-  - Loại (Sự kiện thường, Minigame, Công tác xã hội, Chuyên đề doanh nghiệp)
-  - Điểm tối đa, có yêu cầu nộp báo cáo
-  - Hạn đăng ký
+### 1. Mô Hình Dữ Liệu Chính (Data Model)
 
-- **Đăng ký tham gia**: Sinh viên đăng ký tham gia sự kiện
-  - Tạo ticket code để check-in
-  - Xem trạng thái đăng ký
+```text
+User (email, password, role) 
+  ├── Student (studentCode, fullName, department, class)
+  └── Department (name, type)
 
-- **Check-in/Check-out**: Sinh viên check-in khi tới sự kiện
-  - Thường: Quét mã QR hoặc nhập mã
-  - Tự động cập nhật tham gia (pointsEarned)
+Semester (academicYear, semesterNumber, startDate, endDate)
+  └── StudentScore (student, semester, scoreType, score)
 
-### 3️⃣ **Chuỗi Sự Kiện (Activity Series)**
-- **Tạo chuỗi sự kiện**: Tập hợp nhiều hoạt động thành một dự án lớn
-  - Ví dụ: "Dự án tổng vệ sinh" gồm 5 hoạt động liên quan
-  
-- **Milestone Points**: Thưởng điểm extra khi hoàn thành mốc
-  - Ví dụ: Hoàn thành 3 hoạt động → cộng 5 điểm thưởng
-  - Hoàn thành 4 hoạt động → cộng 7 điểm thưởng
-  - Hoàn thành 5 hoạt động → cộng 10 điểm thưởng
+Activity (name, type, scoreType, maxPoints, requiresSubmission)
+  ├── ActivityRegistration (student, status, ticketCode)
+  ├── ActivityParticipation (participationType, pointsEarned, isCompleted)
+  └── TaskAssignment → TaskSubmission (submissionFile, score, isApproved)
 
-- **Tiến độ theo dõi**: Xem sinh viên đã hoàn thành bao nhiêu hoạt động
+ActivitySeries (name, milestonePoints)
+  └── StudentSeriesProgress (completedActivities, milestoneReached)
 
-### 4️⃣ **Minigame Học Tập**
-- **Tạo minigame**: Admin tạo quiz với câu hỏi trắc nghiệm
-  - Ví dụ: "Quiz Đạo Đức Cộng Hòa Xã Hội Chủ Nghĩa"
-  - Có thời gian giới hạn
-  - Điểm thưởng nếu đạt
+MiniGame (questionCount, timeLimit, rewardPoints, maxAttempts)
+  ├── MiniGameQuiz → options
+  └── MiniGameAttempt (attemptStatus, score)
 
-- **Làm minigame**: Sinh viên làm bài
-  - PASS lần đầu: Cộng điểm thưởng (rewardPoints)
-  - Re-attempt: Không cộng thêm, chỉ update cao nhất
-  - Có thể giới hạn số lần làm
+ScoreHistory (student, semester, scoreType, oldScore, newScore, reason)
+Notification (recipient, type, title, content)
+```
 
-### 5️⃣ **Nộp Báo Cáo/Minh Chứng**
-- **Yêu cầu nộp**: Một số sự kiện bắt buộc nộp báo cáo
-- **Nộp bài**: Sinh viên upload file (ảnh, PDF, etc.)
-- **Chấm bài**: Giảng viên xem, chấm điểm, phê duyệt
-- **Cập nhật điểm**: Khi chấm đạt → cộng điểm vào StudentScore
+### 2. Chi Tiết Logic Tính Điểm
 
-### 6️⃣ **Tính Điểm & Bảng Điểm**
-- **Ba loại điểm**:
-  - **REN_LUYEN**: Rèn luyện (từ các sự kiện thường)
-  - **CONG_TAC_XA_HOI**: Công tác xã hội
-  - **CHUYEN_DE**: Chuyên đề doanh nghiệp (có thể cộng kép vào REN_LUYEN nếu loại sự kiện là CHUYEN_DE_DOANH_NGHIEP)
+**Quy trình ghi nhận điểm chung:**
+1. Sinh viên đăng ký → `ActivityRegistration`
+2. Tham gia (check-in) → `ActivityParticipation` (với `pointsEarned`)
+3. Nếu `requiresSubmission = true`: nộp `TaskSubmission` → Giảng viên chấm điểm (`score`), set `isCompleted = true`. Nếu không yêu cầu nộp, check-in có thể được xem là hoàn thành tùy cấu hình.
+4. Hệ thống cập nhật `StudentScore` (tìm theo `student`, `semester`, `scoreType`).
+5. Nếu thuộc chuỗi sự kiện (`ActivitySeries`) và đạt mốc tiến độ → cộng thêm `milestonePoints`.
+6. Ghi lại `ScoreHistory` mỗi khi có thay đổi điểm.
 
-- **Tính điểm từ nhiều nguồn**:
-  - Tham gia sự kiện (participation points)
-  - Nộp báo cáo được chấm (submission score)
-  - Minigame PASS (reward points)
-  - **Milestone từ series**: Thưởng extra khi hoàn thành mốc
+**Các nghiệp vụ đặc thù cần lưu ý:**
+- **Xác định Học kỳ (Semester):** Sử dụng `SemesterHelperService.getSemesterForActivity(activity)` dựa vào `startDate` của hoạt động để xác định điểm sẽ được cộng vào học kỳ nào, kể cả khi hiện tại đang ở học kỳ khác.
+- **Dual-Score (Cộng điểm kép):** Nếu `ActivityType` là `CHUYEN_DE_DOANH_NGHIEP`, hệ thống sẽ cộng điểm vào cả 2 loại: `REN_LUYEN` và `CHUYEN_DE`.
+- **Bảo toàn Milestone:** Nếu sinh viên bị hủy một `participation` hoặc update lại điểm, các điểm thưởng (milestone) đã đạt từ series không bị ảnh hưởng. Logic update điểm tổng phải tách bạch phần điểm tham gia sự kiện với điểm milestone.
+- **Re-attempt Minigame:** Sinh viên vượt qua (`PASS`) minigame lần đầu sẽ được cộng `rewardPoints`. Các lần sau chỉ cập nhật điểm cao nhất (`best score`) và số câu đúng, không cộng dồn thêm điểm vào `StudentScore`.
+- **Auto-Score Init:** Khi Admin tạo `Semester` mới, hệ thống tự khởi tạo các bản ghi `StudentScore` với `score = 0` cho toàn bộ sinh viên đang hoạt động.
 
-- **Giữ nguyên milestone**: Khi một sự kiện bị xóa hoặc điểm được cập nhật, milestone points phải được bảo toàn
+### 3. Quy Ước Hệ Thống Khác
 
-- **Theo học kỳ**: Mỗi StudentScore được ghi theo `(student, semester, scoreType)`
-
-### 7️⃣ **Thông Báo & Email**
-- **Email**: Gửi khi đăng ký thành công, reset mật khẩu, chấm bài hoàn thành
-- **Thông báo trong app**: Nhắc nhở sự kiện sắp diễn ra, cập nhật điểm
-- **Push notification**: Thông báo qua Firebase Cloud Messaging (FCM)
-
-### 8️⃣ **Thống Kê & Báo Cáo**
-- **Xem điểm cá nhân**: Sinh viên xem tổng điểm từng loại theo học kỳ
-- **Lịch sử ghi điểm** (ScoreHistory): Ghi log từng lần cộng/trừ điểm
-- **Thống kê quản trị**: Admin xem thống kê hoạt động, tỷ lệ tham gia
+- **Bảo mật:** Sử dụng JWT (qua `JwtAuthenticationFilter`) và Spring Security (phân quyền theo `ROLE_ADMIN`, `ROLE_MANAGER`, `ROLE_STUDENT`).
+- **Xóa Dữ Liệu:** Đa số sử dụng **Soft Delete** (`isDeleted = true`) thay vì xóa vật lý khỏi database.
+- **Mật khẩu:** Mã hóa một chiều bằng thuật toán BCrypt.
+- **Thông báo:** Hệ thống hỗ trợ đa kênh qua App Notification nội bộ, Email (Spring Mail) và Push Notification (Firebase Cloud Messaging - FCM).
 
 ---
-
-## 🔄 Quy Trình Cộng Điểm
-
-### Quy Trình Chung
-
-```
-1. Sinh viên đăng ký sự kiện
-   ↓
-2. Sinh viên tham gia (check-in)
-   ↓
-3. Tham gia được ghi nhận → pointsEarned được set
-   ↓
-4. (Nếu requiresSubmission = true)
-   └→ Sinh viên nộp báo cáo
-      └→ Giảng viên chấm → score được set
-      └→ isCompleted = true/false
-   (Nếu requiresSubmission = false)
-   └→ Tham gia = hoàn thành, isCompleted = true
-   ↓
-5. StudentScore được cập nhật (cộng pointsEarned vào score)
-   ↓
-6. Nếu thuộc series và đạt mốc → milestone points được cộng
-   ↓
-7. ScoreHistory ghi lại lần cộng điểm này
-```
-
-### Ví Dụ Cụ Thể
-
-**Trường hợp 1: Sự kiện thường (SUKIEN)**
-```
-Activity: "Lớp học thêm tiếng Anh"
-- scoreType: REN_LUYEN
-- maxPoints: 5
-- requiresSubmission: false
-
-Sinh viên A:
-1. Đăng ký → ActivityRegistration tạo
-2. Check-in → ActivityParticipation: participationType=CHECK_IN
-3. Check-out → pointsEarned = 5
-4. StudentScore (REN_LUYEN, học kỳ 1): score += 5
-5. ScoreHistory: "Cộng 5 điểm từ sự kiện Lớp học..."
-```
-
-**Trường hợp 2: Sự kiện có nộp báo cáo (requiresSubmission=true)**
-```
-Activity: "Báo cáo dự án"
-- scoreType: CONG_TAC_XA_HOI
-- maxPoints: 10
-- requiresSubmission: true
-
-Sinh viên B:
-1. Đăng ký → ActivityRegistration tạo
-2. Check-in → ActivityParticipation: participationType=CHECK_IN
-3. Nộp báo cáo → TaskSubmission: submissionStatus=PENDING
-4. Giảng viên chấm → score=8, isApproved=true
-5. StudentScore (CONG_TAC_XA_HOI, học kỳ 1): score += 8
-6. ScoreHistory: "Cộng 8 điểm từ báo cáo dự án..."
-```
-
-**Trường hợp 3: Minigame**
-```
-MiniGame: "Quiz Tư Tưởng"
-- rewardPoints: 3
-- requiredCorrectAnswers: 7 (trên 10 câu)
-
-Sinh viên C:
-1. Làm lần 1: Đúng 8/10 → PASS → MiniGameAttempt ghi nhận
-2. StudentScore (REN_LUYEN, học kỳ 1): score += 3
-3. Làm lần 2: Đúng 7/10 → PASS → MiniGameAttempt ghi nhận
-   (Không cộng thêm vì đã PASS lần 1, chỉ update best score)
-```
-
-**Trường hợp 4: Series với Milestone**
-```
-ActivitySeries: "Dự án tổng vệ sinh"
-- scoreType: REN_LUYEN
-- milestonePoints: {"3": 5, "4": 7, "5": 10}
-
-Sinh viên D:
-1. Hoàn thành hoạt động 1 → score += 2
-2. Hoàn thành hoạt động 2 → score += 2 (tổng: 4)
-3. Hoàn thành hoạt động 3 → score += 2, + MILESTONE 5 (tổng: 11)
-4. Hoàn thành hoạt động 4 → score += 2, + MILESTONE 7 (tổng: 20)
-5. Hoàn thành hoạt động 5 → score += 2, + MILESTONE 10 (tổng: 32)
-```
-
----
-
-## 📁 Luồng Xử Lý Chính
-
-### 1. Đăng Ký Tham Gia
-```
-ActivityRegistrationController.registerActivity()
-  ↓
-ActivityRegistrationService.registerActivity()
-  ├→ Kiểm tra hạn đăng ký
-  ├→ Tạo ActivityRegistration
-  ├→ Tạo ticketCode
-  ├→ Nếu series:
-  │   └→ Tạo đăng ký cho tất cả activities trong series
-  └→ Gửi email thông báo
-```
-
-### 2. Check-in
-```
-ActivityRegistrationController.checkIn() / checkInWithQR()
-  ↓
-ActivityRegistrationService.processCheckIn()
-  ├→ Kiểm tra time (phải trong startDate - endDate)
-  ├→ Tạo ActivityParticipation: participationType=CHECK_IN
-  ├→ Set pointsEarned (nếu là sự kiện đơn)
-  │   └→ Gọi updateStudentScoreFromParticipation()
-  └→ Gửi notification
-```
-
-### 3. Tính Điểm (Cập nhật StudentScore)
-```
-updateStudentScoreFromParticipation() / createScoreFromSubmission()
-  ├→ Xác định semester từ activity.startDate (SemesterHelperService)
-  ├→ Kiểm tra ActivityParticipation đã hoàn thành (isCompleted=true)
-  ├→ Tìm StudentScore (student, semester, scoreType)
-  ├→ Nếu chưa tồn tại:
-  │   └→ Tạo mới với score=0
-  ├→ Cộng pointsEarned vào score
-  ├→ Ghi ScoreHistory (oldScore, newScore, reason)
-  └→ Save StudentScore
-```
-
-### 4. Cập Nhật Milestone (Series)
-```
-ActivitySeriesService.updateStudentProgress()
-  ├→ Đếm số hoạt động hoàn thành
-  ├→ Kiểm tra có đạt mốc nào không
-  ├→ Nếu có mốc mới:
-  │   ├→ Tính milestone points từ config
-  │   ├→ Cộng vào StudentScore
-  │   ├→ Ghi ScoreHistory
-  │   └→ Ghi StudentSeriesProgress
-  └→ Gửi notification "Bạn đạt mốc..."
-```
-
----
-
-## 🔐 Bảo Mật
-
-- **JWT Token**: Xác thực người dùng qua token trong header
-- **Spring Security**: Kiểm soát quyền truy cập (ROLE_ADMIN, ROLE_STUDENT, etc.)
-- **Filter**: JwtAuthenticationFilter kiểm tra token mỗi request
-- **Hashed Password**: Mật khẩu được mã hóa bằng BCrypt
-- **Soft Delete**: Dữ liệu không xóa vật lý, chỉ đánh dấu `isDeleted=true`
-
----
-
-## 🚀 Công Nghệ
-
-| Thành Phần | Công Nghệ |
-|---|---|
-| **Framework** | Spring Boot 3.5.5 |
-| **Database** | MySQL 8.0+ |
-| **ORM** | JPA/Hibernate |
-| **Authentication** | JWT (jjwt 0.11.5) |
-| **Security** | Spring Security |
-| **Email** | Spring Mail |
-| **Push Notification** | Firebase Cloud Messaging (FCM) |
-| **Code Generator** | Lombok |
-| **API Documentation** | REST API |
-| **Build Tool** | Maven |
-
----
-
-## 📊 Luồng Điểm Chi Tiết
-
-### Các Loại Điểm
-
-| Loại | Viết tắt | Mô tả | Nguồn |
-|---|---|---|---|
-| **Rèn Luyện** | REN_LUYEN | Từ các hoạt động ngoại khóa | SUKIEN, MINIGAME (nếu type=SUKIEN) |
-| **Công Tác Xã Hội** | CONG_TAC_XA_HOI | Từ các hoạt động xã hội | ActivityType.CONG_TAC_XA_HOI |
-| **Chuyên Đề** | CHUYEN_DE | Từ hoạt động chuyên đề doanh nghiệp | ActivityType.CHUYEN_DE_DOANH_NGHIEP |
-
-### Cách Xác Định Semester
-
-Khi cộng điểm, hệ thống dùng `SemesterHelperService.getSemesterForActivity(activity)`:
-
-```java
-Semester semester = semesterHelperService.getSemesterForActivity(activity);
-```
-
-Nguyên tắc:
-- Dựa vào `activity.startDate` để xác định thuộc học kỳ nào
-- Nếu startDate nằm giữa `semester.startDate` và `semester.endDate` → thuộc semester đó
-- Nếu startDate nằm ngoài → tìm semester gần nhất hoặc semester mở
-
-### Bảo Toàn Milestone
-
-Khi cập nhật điểm (ví dụ: sinh viên xóa participation):
-
-```
-oldScore = 20 (bao gồm: 15 từ participations + 5 milestone)
-↓
-Xóa participation -5 points
-↓
-oldParticipationScore = 15
-milestonePoints = 20 - 15 = 5 ✓ (bảo toàn)
-↓
-newScore = 10 (new participation points) + 5 (milestone) = 15
-```
-
----
-
-## 📌 Các Tính Năng Đặc Biệt
-
-### ✅ Dual-Score (CHUYEN_DE_DOANH_NGHIEP)
-
-Khi activity có `ActivityType.CHUYEN_DE_DOANH_NGHIEP`:
-- Cộng điểm vào cả **REN_LUYEN** và **CHUYEN_DE**
-- Không phải lỗi, đây là thiết kế có chủ ý
-
-### ✅ Auto-Score Init
-
-Khi tạo semester mới:
-- Tự động tạo StudentScore cho tất cả sinh viên
-- scoreType: REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE
-- score: 0 (khởi tạo)
-
-### ✅ Re-attempt Minigame
-
-- PASS lần 1: Cộng reward points
-- PASS lần 2+: Không cộng thêm, chỉ update best score
-- Được kiểm soát bằng `MiniGame.maxAttempts`
-
-### ✅ Series Milestone
-
-- Khi hoàn thành mốc số X activity → thưởng extra points
-- Config dạng JSON: `{"3": 5, "4": 7, "5": 10}`
-- Milestone points được cộng riêng, không trùng với participation points
-
----
-
-## 🎓 Lưu Ý Khi Sử Dụng
-
-### Cho Admin
-1. **Tạo semester** → Auto-init StudentScore cho tất cả sinh viên
-2. **Tạo activity** → Set rõ `scoreType`, `maxPoints`, `requiresSubmission`
-3. **Tạo series** → Cấu hình `milestonePoints` dạng JSON
-4. **Tạo minigame** → Set `rewardPoints`, `requiredCorrectAnswers`, `maxAttempts`
-
-### Cho Sinh Viên
-1. **Đăng ký hoạt động** → Nhận ticketCode để check-in
-2. **Check-in đúng giờ** → Tự động cộng điểm
-3. **Nộp báo cáo (nếu yêu cầu)** → Upload file, chờ giáo viên chấm
-4. **Xem bảng điểm** → Theo dõi tiến độ từng loại điểm
-
-### Cho Giáo Viên
-1. **Quản lý hoạt động** → Tạo, sửa, xóa hoạt động
-2. **Check-in/Check-out** → Quét QR code, xác nhận tham gia
-3. **Chấm báo cáo** → Xem file nộp, ghi điểm, phê duyệt
-
----
-
-## 📞 Hỗ Trợ & Liên Lạc
-
-- **Lỗi báo cáo**: Debug controller có sẵn
-- **Cấu hình email**: Trong `application.properties`
-- **Firebase FCM**: Cần setup Firebase project và credentials
-
----
-
-**Phiên Bản**: 0.0.1-SNAPSHOT  
-**Ngôn Ngữ**: Java 21  
-**Framework**: Spring Boot 3.5.5  
-**Cơ Sở Dữ Liệu**: MySQL  
-**Tác Giả**: CampusLife Team  
-**Cập Nhật**: 14/03/2026
-
+**Phiên Bản**: 0.0.1-SNAPSHOT | **Ngôn Ngữ**: Java 21 | **Framework**: Spring Boot 3.5.5 | **Cơ Sở Dữ Liệu**: MySQL

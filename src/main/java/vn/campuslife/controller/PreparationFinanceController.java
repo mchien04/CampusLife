@@ -69,7 +69,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/allocation-adjustments/{requestId}/admin-decision")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isAllocationAdjustmentPrepSupervisor(#requestId, authentication)")
     public ResponseEntity<Response> adminDecisionAllocationAdjustment(
             @PathVariable Long requestId,
             @RequestBody @Valid AdminDecisionAllocationAdjustmentRequest request,
@@ -93,14 +93,14 @@ public class PreparationFinanceController {
     }
 
     @GetMapping("/allocation-adjustments/{requestId}/source-suggestions")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isAllocationAdjustmentPrepSupervisor(#requestId, authentication)")
     public ResponseEntity<Response> suggestAllocationAdjustmentSources(@PathVariable Long requestId) {
         List<AllocationSourceSuggestionDto> dtos = financeService.suggestAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @GetMapping("/allocation-adjustments/{requestId}/source-plan")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isAllocationAdjustmentPrepSupervisor(#requestId, authentication)")
     public ResponseEntity<Response> planAllocationAdjustmentSources(@PathVariable Long requestId) {
         List<AllocationAdjustmentSourcePlanDto> dtos = financeService.planAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -124,7 +124,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/fund-advances/{fundAdvanceId}/admin-decision")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER','STUDENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isFundAdvancePrepSupervisor(#fundAdvanceId, authentication)")
     public ResponseEntity<Response> adminDecisionFundAdvance(
             @PathVariable Long fundAdvanceId,
             @RequestBody @Valid ApproveFundAdvanceRequest request,
@@ -137,7 +137,7 @@ public class PreparationFinanceController {
     }
 
     @PutMapping("/fund-advances/{fundAdvanceId}/return")
-    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isFundAdvancePrepSupervisor(#fundAdvanceId, authentication)")
     public ResponseEntity<Response> adminReturnFundAdvance(
             @PathVariable Long fundAdvanceId,
             Authentication authentication) {
