@@ -23,6 +23,7 @@ import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
 import vn.campuslife.service.ActivityTaskService;
+import vn.campuslife.service.ReminderScheduleService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -44,6 +45,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final StudentRepository studentRepository;
     private final TaskSubmissionRepository taskSubmissionRepository;
+    private final ReminderScheduleService reminderScheduleService;
 
     @Override
     @Transactional
@@ -71,6 +73,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             task.setDeadline(request.getDeadline());
 
             ActivityTask savedTask = activityTaskRepository.save(task);
+            reminderScheduleService.syncTaskRemindersForTask(savedTask);
             ActivityTaskResponse response = toTaskResponse(savedTask);
 
             return new Response(true, "Task created successfully", response);
@@ -149,6 +152,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             task.setDeadline(request.getDeadline());
 
             ActivityTask savedTask = activityTaskRepository.save(task);
+            reminderScheduleService.syncTaskRemindersForTask(savedTask);
             ActivityTaskResponse response = toTaskResponse(savedTask);
 
             return new Response(true, "Task updated successfully", response);
@@ -214,6 +218,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                     .collect(Collectors.toList());
 
             List<TaskAssignment> savedAssignments = taskAssignmentRepository.saveAll(assignments);
+            savedAssignments.forEach(reminderScheduleService::createTaskRemindersForAssignment);
             List<TaskAssignmentResponse> responses = savedAssignments.stream()
                     .map(this::toAssignmentResponse)
                     .collect(Collectors.toList());
@@ -291,6 +296,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             taskAssignmentRepository.deleteById(assignmentId);
+            reminderScheduleService.cancelPendingTaskRemindersForAssignment(assignmentOpt.get());
             return new Response(true, "Task assignment removed successfully", null);
         } catch (Exception e) {
             logger.error("Failed to remove task assignment {}: {}", assignmentId, e.getMessage(), e);
@@ -334,7 +340,8 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                         assignment.setTask(task);
                         assignment.setStudent(student);
                         assignment.setStatus(TaskStatus.PENDING);
-                        taskAssignmentRepository.save(assignment);
+                        TaskAssignment savedAssignment = taskAssignmentRepository.save(assignment);
+                        reminderScheduleService.createTaskRemindersForAssignment(savedAssignment);
                         totalAssignments++;
                     }
                 }
@@ -487,6 +494,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
             // Save assignments
             List<TaskAssignment> savedAssignments = taskAssignmentRepository.saveAll(assignments);
+            savedAssignments.forEach(reminderScheduleService::createTaskRemindersForAssignment);
             List<TaskAssignmentResponse> responses = savedAssignments.stream()
                     .map(this::toAssignmentResponse)
                     .collect(Collectors.toList());

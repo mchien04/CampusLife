@@ -34,6 +34,7 @@ import java.math.BigDecimal;
 import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.NotificationService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.util.UrlUtils;
 import vn.campuslife.enumeration.NotificationType;
@@ -65,6 +66,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final ReminderScheduleService reminderScheduleService;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final UploadProperties uploadProperties;
 
@@ -106,6 +108,7 @@ public class ActivityServiceImpl implements ActivityService {
                     saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(),
                     saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
+            reminderScheduleService.syncEventRemindersForActivity(saved);
 
             return new Response(true, "Activity created successfully", toResponse(saved));
         } catch (Exception e) {
@@ -134,6 +137,7 @@ public class ActivityServiceImpl implements ActivityService {
         if (wasDraft && (saved.isImportant() || saved.isMandatoryForFacultyStudents())) {
             try {
                 autoRegisterStudents(saved);
+                reminderScheduleService.syncEventRemindersForActivity(saved);
                 logger.info("Auto-registered students after publishing activity: {}", saved.getName());
             } catch (Exception e) {
                 logger.error("Failed to auto-register students after publishing activity {}: {}",
@@ -323,6 +327,7 @@ public class ActivityServiceImpl implements ActivityService {
                     saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(),
                     saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
+            reminderScheduleService.syncEventRemindersForActivity(saved);
 
             return new Response(true, "Activity updated successfully", toResponse(saved));
         } catch (Exception e) {
