@@ -10,9 +10,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.*;
-import vn.campuslife.model.*;
+import vn.campuslife.model.EmailAttachmentResponse;
+import vn.campuslife.model.EmailHistoryResponse;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.SendEmailRequest;
+import vn.campuslife.model.SendNotificationOnlyRequest;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.EmailService;
 import vn.campuslife.service.NotificationService;
@@ -45,12 +50,7 @@ public class EmailServiceImpl implements EmailService {
     private final StudentClassRepository studentClassRepository;
     private final DepartmentRepository departmentRepository;
     private final NotificationService notificationService;
-
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
-
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
+    private final UploadProperties uploadProperties;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -684,7 +684,7 @@ public class EmailServiceImpl implements EmailService {
         }
 
         try {
-            Path attachmentDir = Paths.get(uploadDir, "email-attachments");
+            Path attachmentDir = Paths.get(uploadProperties.getDir(), "email-attachments");
             if (emailHistoryId != null) {
                 attachmentDir = attachmentDir.resolve(emailHistoryId.toString());
             }
@@ -769,7 +769,7 @@ public class EmailServiceImpl implements EmailService {
         EmailAttachmentResponse response = new EmailAttachmentResponse();
         response.setId(attachment.getId());
         response.setFileName(attachment.getFileName());
-        response.setFileUrl(publicUrl + "/api/emails/attachments/" + attachment.getId() + "/download");
+        response.setFileUrl(uploadProperties.getPublicUrl() + "/api/emails/attachments/" + attachment.getId() + "/download");
         response.setFileSize(attachment.getFileSize());
         response.setContentType(attachment.getContentType());
         return response;

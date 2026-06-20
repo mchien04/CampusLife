@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.ActivityScoreRule;
 import vn.campuslife.entity.Semester;
-import vn.campuslife.exception.ResourceNotFoundException;
 import vn.campuslife.repository.SemesterRepository;
 import vn.campuslife.service.ScoreSemesterResolver;
 import vn.campuslife.service.SemesterHelperService;
@@ -28,7 +27,10 @@ public class ScoreSemesterResolverImpl implements ScoreSemesterResolver {
                 }
                 throw new IllegalStateException("Explicit semester is required");
             case CURRENT_OPEN_SEMESTER:
-                return semesterHelperService.getSemesterForDate(eventTime.toLocalDate());
+                return semesterRepository.findAll().stream()
+                        .filter(Semester::isOpen)
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException("No open semester found"));
             case ACTIVITY_SEMESTER:
             default:
                 return semesterHelperService.getSemesterForActivity(activity);

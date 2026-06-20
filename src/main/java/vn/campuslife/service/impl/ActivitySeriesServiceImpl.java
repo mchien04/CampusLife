@@ -10,27 +10,43 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.campuslife.entity.*;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.ActivitySeries;
+import vn.campuslife.entity.Department;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.StudentSeriesProgress;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
-import vn.campuslife.model.SeriesOverviewResponse;
-import vn.campuslife.model.SeriesProgressItemResponse;
-import vn.campuslife.model.SeriesProgressListResponse;
-import vn.campuslife.repository.*;
+import vn.campuslife.model.activity.series.SeriesOverviewResponse;
+import vn.campuslife.model.activity.series.SeriesProgressItemResponse;
+import vn.campuslife.model.activity.series.SeriesProgressListResponse;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivitySeriesRepository;
+import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivitySeriesService;
-import vn.campuslife.service.ScoreEntryService;
+import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.service.SemesterHelperService;
-import vn.campuslife.enumeration.ScoreEntrySourceType;
-import vn.campuslife.model.ScoreEntryCommand;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.UUID;
-import java.util.Comparator;
 
 @Service
 @RequiredArgsConstructor
@@ -43,15 +59,11 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final StudentSeriesProgressRepository progressRepository;
     private final ActivityRepository activityRepository;
     private final StudentRepository studentRepository;
-    private final StudentScoreRepository studentScoreRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
-    private final SemesterRepository semesterRepository;
-    private final UserRepository userRepository;
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRegistrationRepository registrationRepository;
     private final DepartmentRepository departmentRepository;
     private final SemesterHelperService semesterHelperService;
-    private final ScoreEntryService scoreEntryService;
+    private final ScoreRuleEngine scoreRuleEngine;
 
     @Override
     @Transactional
@@ -496,7 +508,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 progress.setCompletedCount(completedIds.size());
                 progress.setCompletedActivityIds(objectMapper.writeValueAsString(completedIds));
                 progress.setLastUpdated(LocalDateTime.now());
-                progressRepository.save(progress);
+                progress = progressRepository.save(progress);
 
                 // Tính lại milestone points
                 calculateMilestonePoints(studentId, activity.getSeriesId());
@@ -532,56 +544,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 return Response.success("No milestone points configured", null);
             }
 
-            // Parse milestone points JSON
-            Map<String, Integer> milestonePoints;
-            try {
-                milestonePoints = objectMapper.readValue(series.getMilestonePoints(),
-                        new TypeReference<Map<String, Integer>>() {
-                        });
-            } catch (Exception e) {
-                logger.error("Failed to parse milestone points: {}", e.getMessage());
-                return Response.error("Invalid milestone points format");
-            }
-
-            // Tìm điểm milestone phù hợp với số sự kiện đã tham gia
-            Integer completedCount = progress.getCompletedCount();
-            BigDecimal pointsToAward = BigDecimal.ZERO;
-
-            // Tìm milestone cao nhất mà student đã đạt được
-            for (Map.Entry<String, Integer> entry : milestonePoints.entrySet()) {
-                try {
-                    Integer milestoneCount = Integer.parseInt(entry.getKey());
-                    if (completedCount >= milestoneCount) {
-                        Integer milestonePointsValue = entry.getValue();
-                        if (milestonePointsValue > pointsToAward.intValue()) {
-                            pointsToAward = BigDecimal.valueOf(milestonePointsValue);
-                        }
-                    }
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid milestone key: {}", entry.getKey());
-                }
-            }
-
-            // Cập nhật pointsEarned nếu có thay đổi (>= thay vì > để đảm bảo cập nhật khi
-            // bằng nhau)
-            BigDecimal currentPointsEarned = progress.getPointsEarned() != null
-                    ? progress.getPointsEarned()
-                    : BigDecimal.ZERO;
-            if (pointsToAward.compareTo(currentPointsEarned) >= 0) {
-                BigDecimal oldPoints = currentPointsEarned;
-                progress.setPointsEarned(pointsToAward);
-                progressRepository.save(progress);
-
-                // Cập nhật StudentScore (theo scoreType của series)
-                updateRenLuyenScoreFromMilestone(studentId, seriesId, oldPoints, pointsToAward);
-
-                logger.info("Awarded milestone points {} (was {}) to student {} for series {}",
-                        pointsToAward, oldPoints, studentId, seriesId);
-            } else {
-                logger.warn(
-                        "Milestone points {} is less than current points {} for student {} in series {}. Skipping update.",
-                        pointsToAward, currentPointsEarned, studentId, seriesId);
-            }
+            scoreRuleEngine.applySeriesMilestone(progress, progress.getStudent().getUser());
+            progress = progressRepository.findByStudentIdAndSeriesId(studentId, seriesId).orElse(progress);
+            logger.info("Applied series milestone via engine for student {} in series {}", studentId, seriesId);
 
             return Response.success("Milestone points calculated", progress);
         } catch (Exception e) {
@@ -597,75 +562,6 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         // This would need additional fields in ActivitySeries: minimumRequired,
         // penaltyPoints
         return Response.success("Minimum requirement check not yet implemented", null);
-    }
-
-    /**
-     * Cập nhật điểm từ milestone (dùng scoreType từ series)
-     */
-    private void updateRenLuyenScoreFromMilestone(Long studentId, Long seriesId, BigDecimal oldPoints,
-            BigDecimal newPoints) {
-        ScoreType scoreType = null;
-        try {
-            // Lấy series để lấy scoreType
-            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
-            if (seriesOpt.isEmpty()) {
-                logger.warn("Series not found: {}", seriesId);
-                return;
-            }
-            ActivitySeries series = seriesOpt.get();
-            scoreType = series.getScoreType();
-
-            // Use SemesterHelperService to find semester from first activity in series
-            List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-
-            Semester semester = null;
-            if (!seriesActivities.isEmpty()) {
-                // Lấy activity có startDate sớm nhất
-                Activity firstActivity = seriesActivities.stream()
-                        .filter(a -> a.getStartDate() != null)
-                        .min(Comparator.comparing(Activity::getStartDate))
-                        .orElse(seriesActivities.get(0));
-
-                semester = semesterHelperService.getSemesterForActivity(firstActivity);
-            }
-
-            // Fallback: Dùng semester đang mở
-            if (semester == null) {
-                semester = semesterRepository.findAll().stream()
-                        .filter(Semester::isOpen)
-                        .findFirst()
-                        .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
-            }
-
-            if (semester == null) {
-                logger.warn("No semester found for milestone score update");
-                return;
-            }
-
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
-                            || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
-                    .findFirst()
-                    .orElseGet(() -> userRepository.findById(1L).orElse(null));
-
-            ScoreEntryCommand command = ScoreEntryCommand.builder()
-                    .studentId(studentId)
-                    .semesterId(semester.getId())
-                    .scoreType(scoreType)
-                    .sourceType(ScoreEntrySourceType.SERIES_PROGRESS)
-                    .sourceId(seriesId)
-                    .points(newPoints)
-                    .reason(scoreType + " milestone from series '" + series.getName() + "' (ID: " + seriesId + ")")
-                    .actor(systemUser)
-                    .build();
-
-            scoreEntryService.upsertEntry(command);
-
-            logger.info("Upserted {} score entry from milestone: {} for student {}", scoreType, newPoints, studentId);
-        } catch (Exception e) {
-            logger.error("Failed to update score entry from milestone for student {} in series {} (scoreType: {}): {}",
-                    studentId, seriesId, scoreType, e.getMessage(), e);
-        }
     }
 
     @Override
@@ -1293,3 +1189,4 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     }
 
 }
+

@@ -3,16 +3,20 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.Role;
-import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.model.*;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.StudentResponse;
+import vn.campuslife.model.activity.ActivityParticipationRequest;
+import vn.campuslife.model.activity.ActivityParticipationResponse;
+import vn.campuslife.model.activity.ActivityRegistrationRequest;
+import vn.campuslife.model.activity.ActivityRegistrationResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.NotificationService;
@@ -31,17 +35,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityRegistrationServiceImpl.class);
 
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
-
+    private final UploadProperties uploadProperties;
     private final ActivityRegistrationRepository registrationRepository;
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRepository activityRepository;
     private final StudentRepository studentRepository;
-    private final StudentScoreRepository studentScoreRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
-    private final SemesterRepository semesterRepository;
-    private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
     private final SemesterHelperService semesterHelperService;
@@ -711,7 +709,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
         for (ActivityRegistration reg : approvedRegs) {
             Student s = reg.getStudent();
-            StudentResponse dto = StudentResponse.fromEntity(s, publicUrl);
+            StudentResponse dto = StudentResponse.fromEntity(s, uploadProperties.getPublicUrl());
 
             if (checkedInStudentIds.contains(s.getId())) {
                 attended.add(dto);

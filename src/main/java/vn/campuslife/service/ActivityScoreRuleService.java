@@ -2,8 +2,8 @@ package vn.campuslife.service;
 
 import vn.campuslife.entity.ActivityScoreRule;
 import vn.campuslife.enumeration.ScoreRuleTrigger;
-import vn.campuslife.model.ActivityScoreRuleRequest;
-import vn.campuslife.model.ActivityScoreRuleResponse;
+import vn.campuslife.model.score.ActivityScoreRuleRequest;
+import vn.campuslife.model.score.ActivityScoreRuleResponse;
 import java.util.List;
 
 public interface ActivityScoreRuleService {

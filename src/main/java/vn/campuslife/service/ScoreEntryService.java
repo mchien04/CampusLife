@@ -4,7 +4,7 @@ import vn.campuslife.entity.ScoreEntry;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.model.ScoreEntryCommand;
+import vn.campuslife.model.score.ScoreEntryCommand;
 
 public interface ScoreEntryService {
     ScoreEntry upsertEntry(ScoreEntryCommand command);

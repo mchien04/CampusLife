@@ -11,7 +11,11 @@ import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.enumeration.TaskStatus;
-import vn.campuslife.model.*;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.task.ActivityTaskResponse;
+import vn.campuslife.model.activity.task.CreateActivityTaskRequest;
+import vn.campuslife.model.activity.task.TaskAssignmentRequest;
+import vn.campuslife.model.activity.task.TaskAssignmentResponse;
 import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityTaskRepository;
@@ -561,3 +565,4 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         }
     }
 }
+

@@ -6,44 +6,56 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import vn.campuslife.entity.*;
+import vn.campuslife.config.UploadProperties;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.ActivityTask;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.TaskAssignment;
+import vn.campuslife.entity.TaskSubmission;
+import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.SubmissionStatus;
+import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
-import vn.campuslife.model.TaskSubmissionResponse;
-import vn.campuslife.repository.*;
+import vn.campuslife.model.activity.task.TaskSubmissionResponse;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityTaskRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.TaskAssignmentRepository;
+import vn.campuslife.repository.TaskSubmissionRepository;
+import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.TaskSubmissionService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ScoreRuleEngine;
-import vn.campuslife.util.UrlUtils;
-import org.springframework.beans.factory.annotation.Value;
+import vn.campuslife.service.UploadStorageService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskSubmissionServiceImpl.class);
-    private static final String UPLOAD_DIR = "uploads/submissions";
 
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
+    private final UploadProperties uploadProperties;
+    private final UploadStorageService uploadStorageService;
 
     private final TaskSubmissionRepository taskSubmissionRepository;
     private final ActivityTaskRepository activityTaskRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
-    private final StudentScoreRepository studentScoreRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
-    private final SemesterRepository semesterRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
@@ -53,7 +65,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     @Transactional
-    public Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files) {
+    public Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files,
+            List<MultipartFile> images) {
         try {
             // Validate task exists
             Optional<ActivityTask> taskOpt = activityTaskRepository.findById(taskId);
@@ -81,19 +94,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             submission.setContent(content);
             submission.setStatus(SubmissionStatus.SUBMITTED);
 
-            // Handle file uploads
-            if (files != null && !files.isEmpty()) {
-                List<String> fileUrls = new ArrayList<>();
-                for (MultipartFile file : files) {
-                    if (!file.isEmpty()) {
-                        String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
-                        Path filePath = Paths.get(UPLOAD_DIR, fileName);
-                        Files.createDirectories(filePath.getParent());
-                        Files.copy(file.getInputStream(), filePath);
-                        fileUrls.add("/uploads/submissions/" + fileName);
-                    }
-                }
-                submission.setFileUrls(String.join(",", fileUrls));
+            List<String> attachmentUrls = storeSubmissionAttachments(files, images);
+            if (!attachmentUrls.isEmpty()) {
+                submission.setFileUrls(String.join(",", attachmentUrls));
             }
 
             taskSubmissionRepository.save(submission);
@@ -126,7 +129,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     @Transactional
-    public Response updateSubmission(Long submissionId, Long studentId, String content, List<MultipartFile> files) {
+    public Response updateSubmission(Long submissionId, Long studentId, String content, List<MultipartFile> files,
+            List<MultipartFile> images) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
             if (submissionOpt.isEmpty()) {
@@ -140,19 +144,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             submission.setContent(content);
 
-            // Handle file uploads
-            if (files != null && !files.isEmpty()) {
-                List<String> fileUrls = new ArrayList<>();
-                for (MultipartFile file : files) {
-                    if (!file.isEmpty()) {
-                        String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
-                        Path filePath = Paths.get(UPLOAD_DIR, fileName);
-                        Files.createDirectories(filePath.getParent());
-                        Files.copy(file.getInputStream(), filePath);
-                        fileUrls.add("/uploads/submissions/" + fileName);
-                    }
-                }
-                submission.setFileUrls(String.join(",", fileUrls));
+            List<String> attachmentUrls = storeSubmissionAttachments(files, images);
+            if (!attachmentUrls.isEmpty()) {
+                submission.setFileUrls(String.join(",", attachmentUrls));
             }
 
             taskSubmissionRepository.save(submission);
@@ -337,16 +331,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             TaskSubmission submission = submissionOpt.get();
-            List<String> fileUrls = new ArrayList<>();
-            if (submission.getFileUrls() != null && !submission.getFileUrls().isEmpty()) {
-                // Convert relative paths to full URLs
-                List<String> relativeUrls = Arrays.asList(submission.getFileUrls().split(","));
-                fileUrls = relativeUrls.stream()
-                        .map(url -> UrlUtils.toFullUrl(url.trim(), publicUrl))
-                        .collect(java.util.stream.Collectors.toList());
-            }
-
-            return new Response(true, "Submission files retrieved successfully", fileUrls);
+            return new Response(true, "Submission files retrieved successfully",
+                    buildAttachmentItems(submission.getFileUrls()));
         } catch (Exception e) {
             logger.error("Failed to get submission files: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submission files: " + e.getMessage(), null);
@@ -373,10 +359,11 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             // Convert relative paths to full URLs
             List<String> fileUrls = Arrays.asList(submission.getFileUrls().split(","));
             List<String> fullUrls = fileUrls.stream()
-                    .map(url -> UrlUtils.toFullUrl(url.trim(), publicUrl))
+                    .map(url -> uploadStorageService.toPublicUrl(url.trim()))
                     .collect(java.util.stream.Collectors.toList());
             dto.setFileUrls(fullUrls);
         }
+        dto.setAttachments(buildAttachmentItems(submission.getFileUrls()));
 
         dto.setScore(submission.getScore());
         dto.setIsCompleted(submission.getIsCompleted());
@@ -393,4 +380,65 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         return dto;
     }
 
+    private List<String> storeSubmissionAttachments(List<MultipartFile> files, List<MultipartFile> images)
+            throws IOException {
+        List<String> attachmentUrls = new ArrayList<>();
+        String submissionDirectory = uploadProperties.getPaths().getSubmissions();
+        attachmentUrls.addAll(storeFiles(files, submissionDirectory, false));
+        attachmentUrls.addAll(storeFiles(images, submissionDirectory, true));
+        return attachmentUrls;
+    }
+
+    private List<String> storeFiles(List<MultipartFile> files, String relativeDirectory, boolean imageOnly)
+            throws IOException {
+        List<String> storedPaths = new ArrayList<>();
+        if (files == null || files.isEmpty()) {
+            return storedPaths;
+        }
+
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                continue;
+            }
+            storedPaths.add(uploadStorageService.store(file, relativeDirectory, imageOnly));
+        }
+        return storedPaths;
+    }
+
+    private List<TaskSubmissionResponse.AttachmentItem> buildAttachmentItems(String storedUrls) {
+        List<TaskSubmissionResponse.AttachmentItem> attachments = new ArrayList<>();
+        if (storedUrls == null || storedUrls.isBlank()) {
+            return attachments;
+        }
+
+        List<String> relativeUrls = Arrays.asList(storedUrls.split(","));
+        for (String relativeUrl : relativeUrls) {
+            String trimmedUrl = relativeUrl == null ? "" : relativeUrl.trim();
+            if (trimmedUrl.isEmpty()) {
+                continue;
+            }
+
+            TaskSubmissionResponse.AttachmentItem attachmentItem = new TaskSubmissionResponse.AttachmentItem();
+            attachmentItem.setUrl(uploadStorageService.toPublicUrl(trimmedUrl));
+            attachmentItem.setType(detectAttachmentType(trimmedUrl));
+            attachments.add(attachmentItem);
+        }
+        return attachments;
+    }
+
+    private String detectAttachmentType(String path) {
+        String normalized = path == null ? "" : path.toLowerCase(Locale.ROOT);
+        if (normalized.endsWith(".jpg")
+                || normalized.endsWith(".jpeg")
+                || normalized.endsWith(".png")
+                || normalized.endsWith(".gif")
+                || normalized.endsWith(".webp")
+                || normalized.endsWith(".bmp")
+                || normalized.endsWith(".svg")) {
+            return "image";
+        }
+        return "file";
+    }
+
 }
+

@@ -28,4 +28,10 @@ public interface ScoreEntryRepository extends JpaRepository<ScoreEntry, Long> {
             @Param("semesterId") Long semesterId, 
             @Param("scoreType") ScoreType scoreType, 
             @Param("status") ScoreEntryStatus status);
+
+    List<ScoreEntry> findByStudentIdAndSemesterIdAndStatusOrderByCreatedAtAsc(
+            Long studentId, Long semesterId, ScoreEntryStatus status);
+
+    List<ScoreEntry> findByStudentIdAndSemesterIdAndScoreTypeAndStatusOrderByCreatedAtAsc(
+            Long studentId, Long semesterId, ScoreType scoreType, ScoreEntryStatus status);
 }

@@ -1,8 +1,8 @@
 package vn.campuslife.service;
 
 import vn.campuslife.model.Response;
-import vn.campuslife.model.CreateMiniGameRequest;
-import vn.campuslife.model.UpdateMiniGameRequest;
+import vn.campuslife.model.activity.quiz.CreateMiniGameRequest;
+import vn.campuslife.model.activity.quiz.UpdateMiniGameRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -74,4 +74,5 @@ public interface MiniGameService {
      */
     Response getQuestionsForEdit(Long miniGameId);
 }
+
 
