@@ -6,53 +6,70 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import vn.campuslife.entity.*;
+import vn.campuslife.config.UploadProperties;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.ActivityTask;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.TaskAssignment;
+import vn.campuslife.entity.TaskSubmission;
+import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.SubmissionStatus;
+import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
-import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.model.activity.task.TaskSubmissionResponse;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityTaskRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.TaskAssignmentRepository;
+import vn.campuslife.repository.TaskSubmissionRepository;
+import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.TaskSubmissionService;
 import vn.campuslife.service.SemesterHelperService;
-import vn.campuslife.util.UrlUtils;
-import org.springframework.beans.factory.annotation.Value;
+import vn.campuslife.service.ScoreRuleEngine;
+import vn.campuslife.service.UploadStorageService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskSubmissionServiceImpl.class);
-    private static final String UPLOAD_DIR = "uploads/submissions";
 
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
+    private final UploadProperties uploadProperties;
+    private final UploadStorageService uploadStorageService;
 
     private final TaskSubmissionRepository taskSubmissionRepository;
     private final ActivityTaskRepository activityTaskRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
-    private final StudentScoreRepository studentScoreRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
-    private final SemesterRepository semesterRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final SemesterHelperService semesterHelperService;
     private final ReminderScheduleService reminderScheduleService;
+    private final ScoreRuleEngine scoreRuleEngine;
+    private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
 
     @Override
     @Transactional
-    public Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files) {
+    public Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files,
+            List<MultipartFile> images) {
         try {
             // Validate task exists
             Optional<ActivityTask> taskOpt = activityTaskRepository.findById(taskId);
@@ -80,19 +97,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             submission.setContent(content);
             submission.setStatus(SubmissionStatus.SUBMITTED);
 
-            // Handle file uploads
-            if (files != null && !files.isEmpty()) {
-                List<String> fileUrls = new ArrayList<>();
-                for (MultipartFile file : files) {
-                    if (!file.isEmpty()) {
-                        String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
-                        Path filePath = Paths.get(UPLOAD_DIR, fileName);
-                        Files.createDirectories(filePath.getParent());
-                        Files.copy(file.getInputStream(), filePath);
-                        fileUrls.add("/uploads/submissions/" + fileName);
-                    }
-                }
-                submission.setFileUrls(String.join(",", fileUrls));
+            List<String> attachmentUrls = storeSubmissionAttachments(files, images);
+            if (!attachmentUrls.isEmpty()) {
+                submission.setFileUrls(String.join(",", attachmentUrls));
             }
 
             taskSubmissionRepository.save(submission);
@@ -126,7 +133,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     @Transactional
-    public Response updateSubmission(Long submissionId, Long studentId, String content, List<MultipartFile> files) {
+    public Response updateSubmission(Long submissionId, Long studentId, String content, List<MultipartFile> files,
+            List<MultipartFile> images) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
             if (submissionOpt.isEmpty()) {
@@ -140,19 +148,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             submission.setContent(content);
 
-            // Handle file uploads
-            if (files != null && !files.isEmpty()) {
-                List<String> fileUrls = new ArrayList<>();
-                for (MultipartFile file : files) {
-                    if (!file.isEmpty()) {
-                        String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
-                        Path filePath = Paths.get(UPLOAD_DIR, fileName);
-                        Files.createDirectories(filePath.getParent());
-                        Files.copy(file.getInputStream(), filePath);
-                        fileUrls.add("/uploads/submissions/" + fileName);
-                    }
-                }
-                submission.setFileUrls(String.join(",", fileUrls));
+            List<String> attachmentUrls = storeSubmissionAttachments(files, images);
+            if (!attachmentUrls.isEmpty()) {
+                submission.setFileUrls(String.join(",", attachmentUrls));
             }
 
             taskSubmissionRepository.save(submission);
@@ -195,7 +193,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     }
 
     @Override
-    // @Transactional - Tạm thời bỏ để test
+    @Transactional
     public Response gradeSubmission(Long submissionId, Long graderId, boolean isCompleted, String feedback) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
@@ -212,21 +210,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             ActivityTask task = submission.getTask();
             Activity activity = task.getActivity();
 
-            // Tính điểm từ isCompleted và activity points
-            java.math.BigDecimal points;
-            if (isCompleted) {
-                // Đạt: điểm cộng từ maxPoints
-                points = activity.getMaxPoints() != null ? activity.getMaxPoints() : java.math.BigDecimal.ZERO;
-            } else {
-                // Không đạt: điểm trừ từ penaltyPointsIncomplete
-                java.math.BigDecimal penalty = activity.getPenaltyPointsIncomplete() != null
-                        ? activity.getPenaltyPointsIncomplete()
-                        : java.math.BigDecimal.ZERO;
-                points = penalty.negate(); // Chuyển thành số âm
-            }
-
+            // Set score to 0 for backward compatibility
             submission.setIsCompleted(isCompleted);
-            submission.setScore(points.doubleValue()); // Lưu điểm số để backward compatibility
+            submission.setScore(0.0); 
             submission.setFeedback(feedback);
             submission.setGrader(graderOpt.get());
             submission.setStatus(SubmissionStatus.GRADED);
@@ -247,11 +233,9 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                 }
             } catch (Exception e) {
                 logger.warn("Failed to update TaskAssignment status after grading: {}", e.getMessage());
-                // Không fail grading nếu update assignment status lỗi
             }
 
-            // Tự động cập nhật ActivityParticipation và tổng hợp StudentScore nếu đủ điều
-            // kiện
+            // Tự động cập nhật ActivityParticipation và tổng hợp StudentScore nếu đủ điều kiện
             try {
                 Student student = submission.getStudent();
 
@@ -266,91 +250,35 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                         if (registration.getStatus() == vn.campuslife.enumeration.RegistrationStatus.ATTENDED) {
                             // Lấy participation theo registration
                             Optional<ActivityParticipation> partOpt = activityParticipationRepository
-                                    .findByRegistration(registration);
+                                     .findByRegistration(registration);
                             if (partOpt.isPresent()) {
                                 ActivityParticipation participation = partOpt.get();
 
-                                // Cập nhật participation với điểm đã tính từ isCompleted
+                                // Cập nhật participation với điểm 0 (vì điểm được cộng qua ScoreEntry ledger)
                                 participation.setIsCompleted(isCompleted);
-                                participation.setPointsEarned(points);
+                                participation.setPointsEarned(BigDecimal.ZERO);
                                 participation.setParticipationType(ParticipationType.COMPLETED);
                                 activityParticipationRepository.save(participation);
-
-                                // ✅ USE: SemesterHelperService to find semester based on activity timing
-                                Semester semester = semesterHelperService.getSemesterForActivity(activity);
-
-                                if (semester != null) {
-                                    // Cộng dồn lại điểm StudentScore theo scoreType của activity
-                                    // ✅ UPDATED: Filter theo semester để đảm bảo tính đúng
-                                    java.util.List<ActivityParticipation> allParts = activityParticipationRepository
-                                            .findByStudentIdAndScoreType(student.getId(), activity.getScoreType())
-                                            .stream()
-                                            .filter(p -> {
-                                                Semester pSemester = semesterHelperService.getSemesterForActivity(
-                                                        p.getRegistration().getActivity());
-                                                return pSemester != null && pSemester.getId().equals(semester.getId());
-                                            })
-                                            .collect(java.util.stream.Collectors.toList());
-
-                                    java.math.BigDecimal totalFromParticipations = allParts.stream()
-                                            .filter(p -> p.getParticipationType() == ParticipationType.COMPLETED)
-                                            .map(p -> p.getPointsEarned() != null ? p.getPointsEarned()
-                                                    : java.math.BigDecimal.ZERO)
-                                            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-
-                                    // Cập nhật bản ghi StudentScore
-                                    Optional<StudentScore> scoreOpt = studentScoreRepository
-                                            .findByStudentIdAndSemesterIdAndScoreType(
-                                                    student.getId(),
-                                                    semester.getId(),
-                                                    activity.getScoreType());
-                                    if (scoreOpt.isPresent()) {
-                                        StudentScore agg = scoreOpt.get();
-                                        java.math.BigDecimal oldTotal = agg.getScore() != null ? agg.getScore() : java.math.BigDecimal.ZERO;
-
-                                        // ✅ QUAN TRỌNG: Bảo toàn điểm milestone từ series
-                                        // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
-                                        java.math.BigDecimal oldParticipationScore = allParts.stream()
-                                                .filter(p -> p.getParticipationType() == ParticipationType.COMPLETED)
-                                                .filter(p -> !p.getId().equals(participation.getId()))
-                                                .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : java.math.BigDecimal.ZERO)
-                                                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-
-                                        // Điểm milestone = điểm hiện tại - điểm từ participations cũ
-                                        java.math.BigDecimal milestonePoints = oldTotal.subtract(oldParticipationScore);
-                                        if (milestonePoints.compareTo(java.math.BigDecimal.ZERO) < 0) {
-                                            milestonePoints = java.math.BigDecimal.ZERO;
-                                        }
-
-                                        // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone
-                                        java.math.BigDecimal total = totalFromParticipations.add(milestonePoints);
-
-                                        agg.setScore(total);
-                                        studentScoreRepository.save(agg);
-
-                                        // Lưu lịch sử nếu thay đổi
-                                        if (oldTotal.compareTo(total) != 0) {
-                                            ScoreHistory hist = new ScoreHistory();
-                                            hist.setScore(agg);
-                                            hist.setOldScore(oldTotal);
-                                            hist.setNewScore(total);
-                                            hist.setChangedBy(graderOpt.get());
-                                            hist.setChangeDate(LocalDateTime.now());
-                                            hist.setReason("Auto update from graded submission: " + task.getName() + " (milestone preserved: " + milestonePoints + ")");
-                                            hist.setActivityId(activity.getId());
-                                            scoreHistoryRepository.save(hist);
-
-                                            logger.info("Updated score for student {} from graded submission: {} -> {} (participation: {}, milestone: {})",
-                                                    student.getId(), oldTotal, total, totalFromParticipations, milestonePoints);
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
+
+                    // Áp dụng tính điểm qua ScoreRuleEngine
+                    scoreRuleEngine.applySubmissionGraded(submission, graderOpt.get());
                 }
             } catch (Exception ex) {
                 logger.warn("Auto-update participation/score after grading failed: {}", ex.getMessage());
+            }
+
+            // Nếu thuộc series và được chấm đạt (isCompleted = true), cập nhật tiến trình của sinh viên trong chuỗi
+            if (activity != null && activity.getSeriesId() != null && isCompleted) {
+                try {
+                    activitySeriesService.updateStudentProgress(submission.getStudent().getId(), activity.getId());
+                    logger.info("Updated series progress for submission activity {} in series {}",
+                            activity.getName(), activity.getSeriesId());
+                } catch (Exception e) {
+                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                }
             }
 
             return new Response(true, "Submission graded successfully", toDto(submission));
@@ -413,16 +341,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             TaskSubmission submission = submissionOpt.get();
-            List<String> fileUrls = new ArrayList<>();
-            if (submission.getFileUrls() != null && !submission.getFileUrls().isEmpty()) {
-                // Convert relative paths to full URLs
-                List<String> relativeUrls = Arrays.asList(submission.getFileUrls().split(","));
-                fileUrls = relativeUrls.stream()
-                        .map(url -> UrlUtils.toFullUrl(url.trim(), publicUrl))
-                        .collect(java.util.stream.Collectors.toList());
-            }
-
-            return new Response(true, "Submission files retrieved successfully", fileUrls);
+            return new Response(true, "Submission files retrieved successfully",
+                    buildAttachmentItems(submission.getFileUrls()));
         } catch (Exception e) {
             logger.error("Failed to get submission files: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submission files: " + e.getMessage(), null);
@@ -449,10 +369,11 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             // Convert relative paths to full URLs
             List<String> fileUrls = Arrays.asList(submission.getFileUrls().split(","));
             List<String> fullUrls = fileUrls.stream()
-                    .map(url -> UrlUtils.toFullUrl(url.trim(), publicUrl))
+                    .map(url -> uploadStorageService.toPublicUrl(url.trim()))
                     .collect(java.util.stream.Collectors.toList());
             dto.setFileUrls(fullUrls);
         }
+        dto.setAttachments(buildAttachmentItems(submission.getFileUrls()));
 
         dto.setScore(submission.getScore());
         dto.setIsCompleted(submission.getIsCompleted());
@@ -469,85 +390,65 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         return dto;
     }
 
-    /**
-     * Tự động tạo StudentScore từ chấm điểm submission
-     */
-    private void createScoreFromSubmission(TaskSubmission submission) {
-        try {
-            logger.info("Creating score from submission {} with score {}", submission.getId(), submission.getScore());
-
-            if (submission.getScore() == null || submission.getScore() <= 0) {
-                logger.info("No score to create for submission {}", submission.getId());
-                return;
-            }
-
-            ActivityTask task = submission.getTask();
-            Activity activity = task.getActivity();
-            Student student = submission.getStudent();
-
-            logger.info("Task: {}, Activity: {}, Student: {}, Grader: {}",
-                    task.getId(), activity.getId(), student.getId(),
-                    submission.getGrader() != null ? submission.getGrader().getId() : "null");
-
-            // Use SemesterHelperService to find semester based on activity timing
-            Semester semester = semesterHelperService.getSemesterForActivity(activity);
-
-            if (semester == null) {
-                logger.warn("No semester found for task submission {} score creation", submission.getId());
-                return;
-            }
-
-            logger.debug("Using semester {} for activity {} (startDate: {})",
-                    semester.getId(), activity.getId(), activity.getStartDate());
-
-            // Tìm bản ghi điểm tổng hợp theo scoreType của activity
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(
-                            student.getId(),
-                            semester.getId(),
-                            task.getActivity().getScoreType());
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}",
-                        student.getId(), task.getActivity().getScoreType(), semester.getId());
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-
-            // Cộng điểm
-            BigDecimal oldScore = score.getScore();
-            BigDecimal pointsToAdd = BigDecimal.valueOf(submission.getScore());
-            BigDecimal newScore = oldScore.add(pointsToAdd);
-
-            // Cập nhật
-            score.setScore(newScore);
-            studentScoreRepository.save(score);
-
-            // Tạo ScoreHistory
-            User grader = submission.getGrader();
-            if (grader == null) {
-                grader = userRepository.findById(1L).orElse(null);
-            }
-
-            Long activityId = task.getActivity().getId();
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldScore);
-            history.setNewScore(newScore);
-            history.setChangedBy(grader);
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason("Added " + pointsToAdd + " points from task submission '" + task.getName() +
-                            "' (Activity: " + activity.getName() + ", Semester: " + semester.getName() + ")");
-            history.setActivityId(activityId);
-
-            scoreHistoryRepository.save(history);
-
-            logger.info("Added score {} (total: {}) for student {} from task submission {}",
-                    pointsToAdd, newScore, student.getId(), submission.getId());
-
-        } catch (Exception e) {
-            logger.error("Failed to create score from submission: {}", e.getMessage(), e);
-        }
+    private List<String> storeSubmissionAttachments(List<MultipartFile> files, List<MultipartFile> images)
+            throws IOException {
+        List<String> attachmentUrls = new ArrayList<>();
+        String submissionDirectory = uploadProperties.getPaths().getSubmissions();
+        attachmentUrls.addAll(storeFiles(files, submissionDirectory, false));
+        attachmentUrls.addAll(storeFiles(images, submissionDirectory, true));
+        return attachmentUrls;
     }
+
+    private List<String> storeFiles(List<MultipartFile> files, String relativeDirectory, boolean imageOnly)
+            throws IOException {
+        List<String> storedPaths = new ArrayList<>();
+        if (files == null || files.isEmpty()) {
+            return storedPaths;
+        }
+
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                continue;
+            }
+            storedPaths.add(uploadStorageService.store(file, relativeDirectory, imageOnly));
+        }
+        return storedPaths;
+    }
+
+    private List<TaskSubmissionResponse.AttachmentItem> buildAttachmentItems(String storedUrls) {
+        List<TaskSubmissionResponse.AttachmentItem> attachments = new ArrayList<>();
+        if (storedUrls == null || storedUrls.isBlank()) {
+            return attachments;
+        }
+
+        List<String> relativeUrls = Arrays.asList(storedUrls.split(","));
+        for (String relativeUrl : relativeUrls) {
+            String trimmedUrl = relativeUrl == null ? "" : relativeUrl.trim();
+            if (trimmedUrl.isEmpty()) {
+                continue;
+            }
+
+            TaskSubmissionResponse.AttachmentItem attachmentItem = new TaskSubmissionResponse.AttachmentItem();
+            attachmentItem.setUrl(uploadStorageService.toPublicUrl(trimmedUrl));
+            attachmentItem.setType(detectAttachmentType(trimmedUrl));
+            attachments.add(attachmentItem);
+        }
+        return attachments;
+    }
+
+    private String detectAttachmentType(String path) {
+        String normalized = path == null ? "" : path.toLowerCase(Locale.ROOT);
+        if (normalized.endsWith(".jpg")
+                || normalized.endsWith(".jpeg")
+                || normalized.endsWith(".png")
+                || normalized.endsWith(".gif")
+                || normalized.endsWith(".webp")
+                || normalized.endsWith(".bmp")
+                || normalized.endsWith(".svg")) {
+            return "image";
+        }
+        return "file";
+    }
+
 }
+

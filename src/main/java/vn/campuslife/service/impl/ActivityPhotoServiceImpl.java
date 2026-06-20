@@ -3,29 +3,24 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.ActivityPhoto;
-import vn.campuslife.model.ActivityPhotoResponse;
+import vn.campuslife.model.activity.ActivityPhotoResponse;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivityPhotoRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.service.ActivityPhotoService;
-import vn.campuslife.util.UrlUtils;
+import vn.campuslife.service.UploadStorageService;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,12 +33,8 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
 
     private final ActivityPhotoRepository photoRepository;
     private final ActivityRepository activityRepository;
-
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
-
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
+    private final UploadProperties uploadProperties;
+    private final UploadStorageService uploadStorageService;
 
     @Override
     @Transactional
@@ -71,8 +62,7 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
 
             // 4. Validate and upload files
             List<ActivityPhoto> photos = new ArrayList<>();
-            Path activityUploadDir = Paths.get(uploadDir, "activities", activityId.toString());
-            Files.createDirectories(activityUploadDir);
+            String activityPhotoDirectory = uploadProperties.getPaths().getActivityPhotos() + "/" + activityId;
 
             for (int i = 0; i < files.size(); i++) {
                 MultipartFile file = files.get(i);
@@ -93,22 +83,10 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
                     return Response.error("File size must be less than 5MB");
                 }
 
-                // Generate unique filename
-                String originalFilename = file.getOriginalFilename();
-                String fileExtension = "";
-                if (originalFilename != null && originalFilename.contains(".")) {
-                    fileExtension = originalFilename.substring(originalFilename.lastIndexOf("."));
-                }
-                String fileName = UUID.randomUUID().toString() + fileExtension;
-
-                // Save file
-                Path filePath = activityUploadDir.resolve(fileName);
-                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
                 // Create photo record
                 ActivityPhoto photo = new ActivityPhoto();
                 photo.setActivity(activity);
-                photo.setImageUrl("/uploads/activities/" + activityId + "/" + fileName);
+                photo.setImageUrl(uploadStorageService.store(file, activityPhotoDirectory, true));
                 photo.setUploadedBy(uploadedBy);
                 photo.setDisplayOrder((int) (currentCount + i));
 
@@ -216,7 +194,7 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
 
     private ActivityPhotoResponse toResponse(ActivityPhoto photo) {
         // Convert relative path to full URL for API response
-        String imageUrl = UrlUtils.toFullUrl(photo.getImageUrl(), publicUrl);
+        String imageUrl = uploadStorageService.toPublicUrl(photo.getImageUrl());
         return new ActivityPhotoResponse(
                 photo.getId(),
                 photo.getActivity().getId(),
@@ -246,3 +224,4 @@ public class ActivityPhotoServiceImpl implements ActivityPhotoService {
         }
     }
 }
+

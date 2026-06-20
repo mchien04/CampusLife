@@ -1,7 +1,6 @@
 package vn.campuslife.service;
 
 import org.springframework.data.domain.Page;
-import vn.campuslife.model.*;
 
 import java.util.List;
 

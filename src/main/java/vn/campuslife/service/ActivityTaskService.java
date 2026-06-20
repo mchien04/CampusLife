@@ -1,7 +1,7 @@
 package vn.campuslife.service;
 
-import vn.campuslife.model.CreateActivityTaskRequest;
-import vn.campuslife.model.TaskAssignmentRequest;
+import vn.campuslife.model.activity.task.CreateActivityTaskRequest;
+import vn.campuslife.model.activity.task.TaskAssignmentRequest;
 import vn.campuslife.model.Response;
 
 public interface ActivityTaskService {
@@ -80,3 +80,5 @@ public interface ActivityTaskService {
      */
     Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId);
 }
+
+

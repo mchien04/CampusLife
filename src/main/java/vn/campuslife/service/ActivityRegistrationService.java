@@ -2,7 +2,9 @@ package vn.campuslife.service;
 
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.enumeration.RegistrationStatus;
-import vn.campuslife.model.*;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.ActivityParticipationRequest;
+import vn.campuslife.model.activity.ActivityRegistrationRequest;
 
 import java.util.List;
 

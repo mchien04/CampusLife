@@ -5,12 +5,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
-import vn.campuslife.model.*;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.StudentProfileResponse;
+import vn.campuslife.model.StudentProfileUpdateRequest;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.StudentProfileService;
 import vn.campuslife.util.UrlUtils;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Optional;
 
@@ -20,13 +22,11 @@ public class StudentProfileServiceImpl implements StudentProfileService {
 
     private static final Logger logger = LoggerFactory.getLogger(StudentProfileServiceImpl.class);
 
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
-
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentClassRepository studentClassRepository;
+    private final UploadProperties uploadProperties;
 
     @Override
     @Transactional
@@ -177,7 +177,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
 
         response.setDob(student.getDob());
         // Convert relative path to full URL for API response
-        response.setAvatarUrl(UrlUtils.toFullUrl(student.getAvatarUrl(), publicUrl));
+        response.setAvatarUrl(UrlUtils.toFullUrl(student.getAvatarUrl(), uploadProperties.getPublicUrl()));
         response.setGender(student.getGender());
         response.setCreatedAt(student.getCreatedAt());
         response.setUpdatedAt(student.getUpdatedAt());

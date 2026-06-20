@@ -1,6 +1,8 @@
 package vn.campuslife.service;
 
 import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.quiz.CreateMiniGameRequest;
+import vn.campuslife.model.activity.quiz.UpdateMiniGameRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -9,9 +11,7 @@ public interface MiniGameService {
     /**
      * Tạo minigame với quiz
      */
-    Response createMiniGame(Long activityId, String title, String description, Integer questionCount,
-                           Integer timeLimit, Integer requiredCorrectAnswers, java.math.BigDecimal rewardPoints,
-                           Integer maxAttempts, List<Map<String, Object>> questions);
+    Response createMiniGame(CreateMiniGameRequest request);
 
     /**
      * Lấy minigame theo activity ID
@@ -51,9 +51,7 @@ public interface MiniGameService {
     /**
      * Cập nhật minigame
      */
-    Response updateMiniGame(Long miniGameId, String title, String description, Integer questionCount,
-                           Integer timeLimit, Integer requiredCorrectAnswers, java.math.BigDecimal rewardPoints,
-                           Integer maxAttempts, List<Map<String, Object>> questions);
+    Response updateMiniGame(Long miniGameId, UpdateMiniGameRequest request);
 
     /**
      * Xóa minigame (soft delete)
@@ -76,4 +74,5 @@ public interface MiniGameService {
      */
     Response getQuestionsForEdit(Long miniGameId);
 }
+
 

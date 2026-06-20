@@ -760,19 +760,7 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     }
 
     private String formatPointsAnswer(Activity a) {
-        StringBuilder sb = new StringBuilder();
-        if (a.getMaxPoints() != null) {
-            sb.append("Điểm tối đa: ").append(formatDecimal(a.getMaxPoints()));
-        } else {
-            sb.append("Điểm tối đa: Chưa cập nhật");
-        }
-        if (a.getScoreType() != null) {
-            sb.append("\nCách tính điểm: ").append(a.getScoreType().name());
-        }
-        if (a.getPenaltyPointsIncomplete() != null) {
-            sb.append("\nĐiểm trừ nếu không hoàn thành: ").append(formatDecimal(a.getPenaltyPointsIncomplete()));
-        }
-        return sb.toString();
+        return "Điểm được tính theo quy tắc điểm danh mới. Chi tiết vui lòng xem trong sự kiện.";
     }
 
     private String formatRegistrationAnswer(String username, Activity a) {

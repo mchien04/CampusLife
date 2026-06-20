@@ -30,4 +30,13 @@ public interface TaskSubmissionRepository extends JpaRepository<TaskSubmission, 
 
     @Query("SELECT ts FROM TaskSubmission ts WHERE ts.student.id = :studentId AND ts.isDeleted = false ORDER BY ts.submittedAt DESC")
     List<TaskSubmission> findAllByStudentIdOrderBySubmittedAtDesc(@Param("studentId") Long studentId);
+
+    @Query("SELECT COUNT(ts) > 0 FROM TaskSubmission ts " +
+           "WHERE ts.task.activity.id = :activityId " +
+           "AND ts.student.id = :studentId " +
+           "AND ts.status = :status " +
+           "AND ts.isDeleted = false")
+    boolean existsByActivityAndStudentAndStatus(@Param("activityId") Long activityId,
+                                                @Param("studentId") Long studentId,
+                                                @Param("status") SubmissionStatus status);
 }

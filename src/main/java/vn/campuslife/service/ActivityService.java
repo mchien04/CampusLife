@@ -1,8 +1,8 @@
 package vn.campuslife.service;
 
-import vn.campuslife.entity.Activity;
 import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.model.CreateActivityRequest;
+import vn.campuslife.model.activity.ActivityResponse;
+import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
 
 import java.time.LocalDate;
@@ -24,13 +24,13 @@ public interface ActivityService {
 
     Response deleteActivity(Long id);
 
-    List<Activity> getActivitiesByScoreType(ScoreType scoreType);
+    List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType);
 
-    List<Activity> getActivitiesByMonth(LocalDate start, LocalDate end);
+    List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end);
 
-    List<Activity> getActivitiesForDepartment(Long departmentId);
+    List<ActivityResponse> getActivitiesForDepartment(Long departmentId);
 
-    List<Activity> listForCurrentUser(String username);
+    List<ActivityResponse> listForCurrentUser(String username);
 
     /**
      * Kiểm tra activity có yêu cầu nộp bài không
@@ -51,9 +51,9 @@ public interface ActivityService {
     // Copy activity with optional offset days
     Response copyActivity(Long id, Integer offsetDays);
     //tìm kiếm sự kiện
-    List<Activity>searchUpcomingEvents(String keyword);
+    List<ActivityResponse> searchUpcomingEvents(String keyword);
     //Sự kiện trong tháng
-    List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end);
+    List<ActivityResponse> getActivitiesByMonth(LocalDateTime start, LocalDateTime end);
 
     /**
      * Tạo checkInCode cho các activity chưa có code

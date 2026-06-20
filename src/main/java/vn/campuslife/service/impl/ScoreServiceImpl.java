@@ -5,12 +5,33 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.campuslife.entity.*;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.entity.ActivitySeries;
+import vn.campuslife.entity.ScoreEntry;
+import vn.campuslife.entity.Semester;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.StudentScore;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.Role;
+import vn.campuslife.enumeration.ScoreEntryStatus;
+import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.model.*;
-import vn.campuslife.repository.*;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.StudentRankingResponse;
+import vn.campuslife.model.activity.ActivityParticipationDetailResponse;
+import vn.campuslife.model.score.ScoreViewResponse;
+import vn.campuslife.model.score.ScoreHistoryDetailResponse;
+import vn.campuslife.model.score.ScoreHistoryViewResponse;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivitySeriesRepository;
+import vn.campuslife.repository.ScoreEntryRepository;
+import vn.campuslife.repository.SemesterRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.StudentScoreRepository;
+import vn.campuslife.repository.StudentSeriesProgressRepository;
+import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.ScoreService;
 import vn.campuslife.service.SemesterHelperService;
 import org.springframework.data.domain.Page;
@@ -19,7 +40,13 @@ import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,11 +60,12 @@ public class ScoreServiceImpl implements ScoreService {
     private final StudentScoreRepository studentScoreRepository;
     private final ActivityParticipationRepository participationRepository;
     private final StudentSeriesProgressRepository progressRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
+    private final ScoreEntryRepository scoreEntryRepository;
     private final UserRepository userRepository;
     private final ActivityRepository activityRepository;
     private final ActivitySeriesRepository seriesRepository;
     private final SemesterHelperService semesterHelperService;
+    private final vn.campuslife.service.ScoreEntryService scoreEntryService;
 
     @Override
     @Transactional
@@ -292,14 +320,11 @@ public class ScoreServiceImpl implements ScoreService {
     @Transactional
     public Response recalculateStudentScore(Long studentId, Long semesterId) {
         try {
-            // Validate student
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {
                 return Response.error("Student not found");
             }
-            Student student = studentOpt.get();
 
-            // Get semester
             Semester semester;
             if (semesterId != null) {
                 Optional<Semester> semesterOpt = semesterRepository.findById(semesterId);
@@ -308,7 +333,6 @@ public class ScoreServiceImpl implements ScoreService {
                 }
                 semester = semesterOpt.get();
             } else {
-                // Get current semester
                 semester = semesterRepository.findAll().stream()
                         .filter(Semester::isOpen)
                         .findFirst()
@@ -318,149 +342,14 @@ public class ScoreServiceImpl implements ScoreService {
                 }
             }
 
-            Map<String, Object> result = new HashMap<>();
-            result.put("studentId", studentId);
-            result.put("studentCode", student.getStudentCode());
-            result.put("studentName", student.getFullName());
-            result.put("semesterId", semester.getId());
-            result.put("semesterName", semester.getName());
-
-            List<Map<String, Object>> updatedScores = new ArrayList<>();
-
-            // Get all ActivityParticipation COMPLETED của student trong semester được chỉ định
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            final Semester targetSemester = semester;
-            List<ActivityParticipation> participations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> {
-                        if (!p.getRegistration().getStudent().getId().equals(studentId)) {
-                            return false;
-                        }
-                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
-                            return false;
-                        }
-                        if (p.getRegistration().getActivity().getScoreType() == null) {
-                            return false;
-                        }
-                        // ✅ Filter theo semester
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(
-                                p.getRegistration().getActivity());
-                        return pSemester != null && pSemester.getId().equals(targetSemester.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            // Group by scoreType và tính tổng điểm từ participations
-            Map<ScoreType, BigDecimal> participationScores = participations.stream()
-                    .collect(Collectors.groupingBy(
-                            p -> p.getRegistration().getActivity().getScoreType(),
-                            Collectors.reducing(
-                                    BigDecimal.ZERO,
-                                    p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO,
-                                    BigDecimal::add)));
-
-            // Get milestone points từ StudentSeriesProgress
-            // ✅ UPDATED: Filter theo semester dựa vào activity đầu tiên của series
-            List<StudentSeriesProgress> allProgress = progressRepository.findAll()
-                    .stream()
-                    .filter(p -> p.getStudent().getId().equals(studentId))
-                    .collect(Collectors.toList());
-
-            Map<ScoreType, BigDecimal> milestoneScores = new HashMap<>();
-            for (StudentSeriesProgress progress : allProgress) {
-                ActivitySeries series = progress.getSeries();
-                if (series.getScoreType() != null && progress.getPointsEarned() != null) {
-                    // ✅ Filter series theo semester dựa vào activity đầu tiên
-                    List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId());
-                    if (!seriesActivities.isEmpty()) {
-                        Activity firstActivity = seriesActivities.stream()
-                                .filter(a -> a.getStartDate() != null)
-                                .min(java.util.Comparator.comparing(Activity::getStartDate))
-                                .orElse(seriesActivities.get(0));
-                        Semester seriesSemester = semesterHelperService.getSemesterForActivity(firstActivity);
-                        if (seriesSemester == null || !seriesSemester.getId().equals(targetSemester.getId())) {
-                            continue; // Skip series không thuộc semester này
-                        }
-                    }
-
-                    ScoreType scoreType = series.getScoreType();
-                    BigDecimal currentMilestone = milestoneScores.getOrDefault(scoreType, BigDecimal.ZERO);
-                    milestoneScores.put(scoreType, currentMilestone.add(progress.getPointsEarned()));
-                }
+            for (ScoreType type : ScoreType.values()) {
+                scoreEntryService.refreshStudentScore(studentId, semester.getId(), type);
             }
 
-            // Combine participation scores và milestone scores
-            Set<ScoreType> allScoreTypes = new HashSet<>();
-            allScoreTypes.addAll(participationScores.keySet());
-            allScoreTypes.addAll(milestoneScores.keySet());
-
-            // Get system user for history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
-                    .findFirst()
-                    .orElse(userRepository.findById(1L).orElse(null));
-
-            for (ScoreType scoreType : allScoreTypes) {
-                BigDecimal participationTotal = participationScores.getOrDefault(scoreType, BigDecimal.ZERO);
-                BigDecimal milestoneTotal = milestoneScores.getOrDefault(scoreType, BigDecimal.ZERO);
-                BigDecimal totalScore = participationTotal.add(milestoneTotal);
-
-                // Get or create StudentScore
-                Optional<StudentScore> scoreOpt = studentScoreRepository
-                        .findByStudentIdAndSemesterIdAndScoreType(studentId, semester.getId(), scoreType);
-
-                StudentScore score;
-                BigDecimal oldScore = BigDecimal.ZERO;
-                if (scoreOpt.isPresent()) {
-                    score = scoreOpt.get();
-                    oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-                } else {
-                    // Create new StudentScore if not exists
-                    score = new StudentScore();
-                    score.setStudent(student);
-                    score.setSemester(semester);
-                    score.setScoreType(scoreType);
-                    score.setScore(BigDecimal.ZERO);
-                }
-
-                // Update score
-                score.setScore(totalScore);
-                studentScoreRepository.save(score);
-
-                // Create history if score changed
-                if (oldScore.compareTo(totalScore) != 0) {
-                    ScoreHistory history = new ScoreHistory();
-                    history.setScore(score);
-                    history.setOldScore(oldScore);
-                    history.setNewScore(totalScore);
-                    history.setChangedBy(systemUser);
-                    history.setChangeDate(LocalDateTime.now());
-                    history.setReason("Recalculated " + scoreType + " score: Participation (" + participationTotal + ") + Milestone (" + milestoneTotal + ") for semester " + semester.getName());
-                    // Note: activityId is null for recalculation (affects multiple activities)
-                    history.setActivityId(null);
-                    scoreHistoryRepository.save(history);
-                }
-
-                Map<String, Object> scoreInfo = new HashMap<>();
-                scoreInfo.put("scoreType", scoreType.name());
-                scoreInfo.put("participationScore", participationTotal);
-                scoreInfo.put("milestoneScore", milestoneTotal);
-                scoreInfo.put("totalScore", totalScore);
-                scoreInfo.put("oldScore", oldScore);
-                scoreInfo.put("updated", oldScore.compareTo(totalScore) != 0);
-                updatedScores.add(scoreInfo);
-
-                logger.info("Recalculated {} score for student {}: {} -> {} (participation: {}, milestone: {})",
-                        scoreType, studentId, oldScore, totalScore, participationTotal, milestoneTotal);
-            }
-
-            result.put("updatedScores", updatedScores);
-            result.put("totalScoreTypes", updatedScores.size());
-
-            return Response.success("Recalculated student score successfully", result);
+            return Response.success("Score recalculated successfully");
         } catch (Exception e) {
-            logger.error("Failed to recalculate student score: {}", e.getMessage(), e);
-            return Response.error("Failed to recalculate student score: " + e.getMessage());
+            logger.error("Failed to recalculate score", e);
+            return Response.error("Failed to recalculate score: " + e.getMessage());
         }
     }
 
@@ -578,71 +467,58 @@ public class ScoreServiceImpl implements ScoreService {
                 }
             }
 
-            // Get ScoreHistory
-            Page<ScoreHistory> scoreHistoryPage;
-            if (scoreType != null) {
-                scoreHistoryPage = scoreHistoryRepository
-                        .findByScore_StudentIdAndScore_SemesterIdAndScore_ScoreType(studentId, semesterId, scoreType, pageable);
-            } else {
-                scoreHistoryPage = scoreHistoryRepository
-                        .findByScore_StudentIdAndScore_SemesterId(studentId, semesterId, pageable);
+            List<ScoreEntry> scoreEntries = scoreType != null
+                    ? scoreEntryRepository.findByStudentIdAndSemesterIdAndScoreTypeAndStatusOrderByCreatedAtAsc(
+                            studentId, semesterId, scoreType, ScoreEntryStatus.ACTIVE)
+                    : scoreEntryRepository.findByStudentIdAndSemesterIdAndStatusOrderByCreatedAtAsc(
+                            studentId, semesterId, ScoreEntryStatus.ACTIVE);
+
+            List<ScoreHistoryDetailResponse> allScoreHistoryResponses = new ArrayList<>();
+            BigDecimal runningScore = BigDecimal.ZERO;
+            for (ScoreEntry entry : scoreEntries) {
+                ScoreHistoryDetailResponse response = new ScoreHistoryDetailResponse();
+                response.setId(entry.getId());
+                response.setOldScore(runningScore);
+
+                BigDecimal delta = entry.getPoints() != null ? entry.getPoints() : BigDecimal.ZERO;
+                runningScore = runningScore.add(delta);
+
+                response.setNewScore(runningScore);
+                response.setChangeDate(entry.getCreatedAt() != null ? entry.getCreatedAt() : entry.getUpdatedAt());
+                response.setReason(entry.getReason());
+                response.setSourceType(entry.getSourceType().name());
+
+                if (entry.getActivity() != null) {
+                    response.setActivityId(entry.getActivity().getId());
+                    response.setActivityName(entry.getActivity().getName());
+                    if (entry.getActivity().getSeriesId() != null) {
+                        response.setSeriesId(entry.getActivity().getSeriesId());
+                        seriesRepository.findById(entry.getActivity().getSeriesId())
+                                .ifPresent(series -> response.setSeriesName(series.getName()));
+                    }
+                }
+
+                if (entry.getSourceType() == ScoreEntrySourceType.SERIES_PROGRESS) {
+                    progressRepository.findById(entry.getSourceId()).ifPresent(progress -> {
+                        response.setSeriesId(progress.getSeries().getId());
+                        response.setSeriesName(progress.getSeries().getName());
+                    });
+                }
+
+                if (entry.getCreatedBy() != null) {
+                    response.setChangedByUsername(entry.getCreatedBy().getUsername());
+                    response.setChangedByFullName(null);
+                }
+
+                allScoreHistoryResponses.add(response);
             }
 
-            // Convert ScoreHistory to DTO
-            List<ScoreHistoryDetailResponse> scoreHistoryResponses = scoreHistoryPage.getContent().stream()
-                    .map(sh -> {
-                        ScoreHistoryDetailResponse response = new ScoreHistoryDetailResponse();
-                        response.setId(sh.getId());
-                        response.setOldScore(sh.getOldScore());
-                        response.setNewScore(sh.getNewScore());
-                        response.setChangeDate(sh.getChangeDate());
-                        response.setReason(sh.getReason());
-                        response.setActivityId(sh.getActivityId());
-                        response.setChangedByUsername(sh.getChangedBy().getUsername());
-                        // User doesn't have fullName, only Student does
-                        response.setChangedByFullName(null);
-
-                        // Parse sourceType from reason
-                        String reason = sh.getReason() != null ? sh.getReason().toLowerCase() : "";
-                        if (reason.contains("minigame quiz")) {
-                            response.setSourceType("MINIGAME");
-                        } else if (reason.contains("milestone points from series")) {
-                            response.setSourceType("MILESTONE");
-                            // Parse seriesId from reason: "Milestone points from series: {seriesId}"
-                            try {
-                                String[] parts = sh.getReason().split(":");
-                                if (parts.length > 1) {
-                                    Long parsedSeriesId = Long.parseLong(parts[parts.length - 1].trim());
-                                    response.setSeriesId(parsedSeriesId);
-                                }
-                            } catch (Exception e) {
-                                logger.warn("Failed to parse seriesId from reason: {}", sh.getReason());
-                            }
-                        } else if (reason.contains("recalculated score")) {
-                            response.setSourceType("RECALCULATED");
-                        } else {
-                            response.setSourceType("ACTIVITY");
-                        }
-
-                        // Get activity name if activityId exists
-                        if (sh.getActivityId() != null) {
-                            Optional<Activity> activityOpt = activityRepository.findById(sh.getActivityId());
-                            if (activityOpt.isPresent()) {
-                                response.setActivityName(activityOpt.get().getName());
-                            }
-                        }
-
-                        // Get series name if seriesId exists
-                        if (response.getSeriesId() != null) {
-                            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(response.getSeriesId());
-                            if (seriesOpt.isPresent()) {
-                                response.setSeriesName(seriesOpt.get().getName());
-                            }
-                        }
-
-                        return response;
-                    })
-                    .collect(Collectors.toList());
+            Collections.reverse(allScoreHistoryResponses);
+            int historyFromIndex = Math.min(pageNum * pageSize, allScoreHistoryResponses.size());
+            int historyToIndex = Math.min(historyFromIndex + pageSize, allScoreHistoryResponses.size());
+            List<ScoreHistoryDetailResponse> scoreHistoryResponses = allScoreHistoryResponses.subList(historyFromIndex, historyToIndex);
+            int historyTotalPages = allScoreHistoryResponses.isEmpty() ? 0
+                    : (int) Math.ceil((double) allScoreHistoryResponses.size() / pageSize);
 
             // Get ActivityParticipation COMPLETED
             Page<ActivityParticipation> participationPage;
@@ -701,12 +577,11 @@ public class ScoreServiceImpl implements ScoreService {
             viewResponse.setActivityParticipations(participationResponses);
             
             // Calculate total records (combine both)
-            long totalRecords = scoreHistoryPage.getTotalElements() + participationPage.getTotalElements();
+            long totalRecords = allScoreHistoryResponses.size() + participationPage.getTotalElements();
             viewResponse.setTotalRecords(totalRecords);
             viewResponse.setPage(pageNum);
             viewResponse.setSize(pageSize);
-            // Calculate total pages (use the larger of the two)
-            int totalPages = Math.max(scoreHistoryPage.getTotalPages(), participationPage.getTotalPages());
+            int totalPages = Math.max(historyTotalPages, participationPage.getTotalPages());
             viewResponse.setTotalPages(totalPages);
 
             return Response.success("Score history retrieved successfully", viewResponse);
@@ -716,3 +591,5 @@ public class ScoreServiceImpl implements ScoreService {
         }
     }
 }
+
+
