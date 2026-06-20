@@ -13,6 +13,7 @@ import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskSubmissionResponse;
 import vn.campuslife.repository.*;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.TaskSubmissionService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.util.UrlUtils;
@@ -47,6 +48,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final ActivityParticipationRepository activityParticipationRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final SemesterHelperService semesterHelperService;
+    private final ReminderScheduleService reminderScheduleService;
 
     @Override
     @Transactional
@@ -103,6 +105,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                     TaskAssignment assignment = assignmentOpt.get();
                     assignment.setStatus(TaskStatus.ASSIGNED);
                     taskAssignmentRepository.save(assignment);
+                    reminderScheduleService.cancelPendingTaskRemindersForAssignment(assignment);
                     logger.info("Updated TaskAssignment status to ASSIGNED for task {} and student {}", 
                         taskId, studentId);
                 }
@@ -388,6 +391,12 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             submission.setDeleted(true);
             taskSubmissionRepository.save(submission);
+
+            taskAssignmentRepository.findByTaskIdAndStudentId(
+                    submission.getTask().getId(),
+                    submission.getStudent().getId()
+            ).ifPresent(reminderScheduleService::createTaskRemindersForAssignment);
+
             return new Response(true, "Submission deleted successfully", null);
         } catch (Exception e) {
             logger.error("Failed to delete submission: {}", e.getMessage(), e);

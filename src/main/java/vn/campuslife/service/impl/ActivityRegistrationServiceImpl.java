@@ -16,6 +16,7 @@ import vn.campuslife.model.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.NotificationService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.enumeration.NotificationType;
@@ -43,6 +44,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final SemesterRepository semesterRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final ReminderScheduleService reminderScheduleService;
     private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
     private final SemesterHelperService semesterHelperService;
 
@@ -120,6 +122,15 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             ActivityRegistration saved = registrationRepository.save(registration);
             ActivityRegistrationResponse payload = toRegistrationResponse(saved);
+
+            if (saved.getStatus() == RegistrationStatus.APPROVED) {
+                try {
+                    reminderScheduleService.createEventRemindersForApprovedRegistration(saved);
+                } catch (Exception e) {
+                    logger.error("Failed to prepare event reminders for registration {}: {}", saved.getId(),
+                            e.getMessage(), e);
+                }
+            }
 
             // Send notification to student
             try {
@@ -264,6 +275,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             ActivityRegistration registration = registrationOpt.get();
+            RegistrationStatus previousStatus = registration.getStatus();
             RegistrationStatus newStatus = RegistrationStatus.valueOf(status.toUpperCase());
             if (newStatus == RegistrationStatus.APPROVED
                     && registration.getStatus() != RegistrationStatus.APPROVED
@@ -284,6 +296,20 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     participation.setPointsEarned(BigDecimal.ZERO);
                     participation.setDate(LocalDateTime.now());
                     participationRepository.save(participation);
+                }
+
+                try {
+                    reminderScheduleService.createEventRemindersForApprovedRegistration(savedRegistration);
+                } catch (Exception e) {
+                    logger.error("Failed to prepare event reminders for registration {}: {}",
+                            savedRegistration.getId(), e.getMessage(), e);
+                }
+            } else if (previousStatus == RegistrationStatus.APPROVED) {
+                try {
+                    reminderScheduleService.cancelPendingEventRemindersForRegistration(savedRegistration);
+                } catch (Exception e) {
+                    logger.error("Failed to cancel event reminders for registration {}: {}",
+                            savedRegistration.getId(), e.getMessage(), e);
                 }
             }
 
