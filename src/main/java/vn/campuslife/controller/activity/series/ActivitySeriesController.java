@@ -1,12 +1,20 @@
 package vn.campuslife.controller.activity.series;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.series.AddActivityToSeriesRequest;
+import vn.campuslife.model.activity.series.CreateSeriesActivityRequest;
+import vn.campuslife.model.activity.series.CreateSeriesRequest;
+import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
+import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
+import vn.campuslife.model.activity.series.UpdateSeriesRequest;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.ScorePresetService;
 
 import java.util.Map;
 
@@ -19,27 +27,42 @@ public class ActivitySeriesController {
 
     private final ActivitySeriesService seriesService;
     private final vn.campuslife.service.StudentService studentService;
+    private final ScorePresetService scorePresetService;
+    private final ObjectMapper objectMapper;
 
     /**
      * Tạo chuỗi sự kiện mới
      */
+    @GetMapping("/presets")
+    public ResponseEntity<Response> getSeriesPresets() {
+        return ResponseEntity.ok(
+                new Response(true, "Series presets retrieved successfully", scorePresetService.getSeriesPresetDefinitions()));
+    }
+
+    @PostMapping("/presets/preview")
+    public ResponseEntity<Response> previewSeriesPreset(@RequestBody SeriesPresetPreviewRequest request) {
+        return ResponseEntity.ok(new Response(true, "Series preset preview generated successfully",
+                scorePresetService.previewSeriesPreset(request)));
+    }
+
     @PostMapping
-    public ResponseEntity<Response> createSeries(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Response> createSeries(@RequestBody CreateSeriesRequest request) {
         try {
-            String name = (String) request.get("name");
+            String name = request.getName();
             if (name == null || name.trim().isEmpty()) {
                 return ResponseEntity.badRequest()
                         .body(new Response(false, "Series name is required", null));
             }
 
-            String description = (String) request.get("description");
-            String milestonePoints = request.get("milestonePoints") != null
-                    ? request.get("milestonePoints").toString()
-                    : null;
+            String description = request.getDescription();
+            SeriesPresetPreviewResponse presetPreview = resolveSeriesPreset(request);
+            String milestonePoints = resolveMilestonePointsJson(request, presetPreview);
             
-            String scoreTypeStr = request.get("scoreType") != null
-                    ? request.get("scoreType").toString()
-                    : "REN_LUYEN";
+            String scoreTypeStr = request.getScoreType() != null
+                    ? request.getScoreType().name()
+                    : (presetPreview != null && presetPreview.getScoreType() != null
+                            ? presetPreview.getScoreType().name()
+                            : "REN_LUYEN");
             vn.campuslife.enumeration.ScoreType scoreType;
             try {
                 scoreType = vn.campuslife.enumeration.ScoreType.valueOf(scoreTypeStr);
@@ -50,51 +73,27 @@ public class ActivitySeriesController {
             }
 
             Long mainActivityId = null;
-            if (request.get("mainActivityId") != null) {
-                try {
-                    mainActivityId = Long.valueOf(request.get("mainActivityId").toString());
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid mainActivityId: {}", request.get("mainActivityId"));
-                }
-            }
-
-            java.time.LocalDateTime registrationStartDate = null;
-            if (request.get("registrationStartDate") != null) {
-                try {
-                    registrationStartDate = java.time.LocalDateTime.parse(request.get("registrationStartDate").toString());
-                } catch (Exception e) {
-                    logger.error("Invalid registrationStartDate format: {}", request.get("registrationStartDate"), e);
-                    return ResponseEntity.badRequest()
-                            .body(new Response(false, "Invalid registrationStartDate format", null));
-                }
-            }
-            
-            java.time.LocalDateTime registrationDeadline = null;
-            if (request.get("registrationDeadline") != null) {
-                try {
-                    registrationDeadline = java.time.LocalDateTime.parse(request.get("registrationDeadline").toString());
-                } catch (Exception e) {
-                    logger.error("Invalid registrationDeadline format: {}", request.get("registrationDeadline"), e);
-                    return ResponseEntity.badRequest()
-                            .body(new Response(false, "Invalid registrationDeadline format", null));
-                }
-            }
-            
-            Boolean requiresApproval = request.get("requiresApproval") != null
-                    ? Boolean.valueOf(request.get("requiresApproval").toString())
+            mainActivityId = request.getMainActivityId();
+            java.time.LocalDateTime registrationStartDate = request.getRegistrationStartDate();
+            java.time.LocalDateTime registrationDeadline = request.getRegistrationDeadline();
+            Boolean requiresApproval = request.getRequiresApproval() != null
+                    ? request.getRequiresApproval()
                     : true;
-            Integer ticketQuantity = null;
-            if (request.get("ticketQuantity") != null) {
-                try {
-                    ticketQuantity = Integer.valueOf(request.get("ticketQuantity").toString());
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid ticketQuantity: {}", request.get("ticketQuantity"));
-                }
-            }
+            Integer ticketQuantity = request.getTicketQuantity();
+            Boolean minimumRequirementEnabled = request.getMinimumRequirementEnabled() != null
+                    ? request.getMinimumRequirementEnabled()
+                    : (presetPreview != null ? presetPreview.getMinimumRequirementEnabled() : null);
+            Integer minimumRequiredEvents = request.getMinimumRequiredEvents() != null
+                    ? request.getMinimumRequiredEvents()
+                    : (presetPreview != null ? presetPreview.getMinimumRequiredEvents() : null);
+            Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints() != null
+                    ? request.getMinimumPenaltyPoints()
+                    : (presetPreview != null ? presetPreview.getMinimumPenaltyPoints() : null);
 
             Response response = seriesService.createSeries(name, description, milestonePoints, scoreType,
                     mainActivityId,
-                    registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity);
+                    registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating series: {}", e.getMessage(), e);
@@ -113,84 +112,18 @@ public class ActivitySeriesController {
     @PostMapping("/{seriesId}/activities/create")
     public ResponseEntity<Response> createActivityInSeries(
             @PathVariable Long seriesId,
-            @RequestBody Map<String, Object> request) {
+            @RequestBody CreateSeriesActivityRequest request) {
         try {
-            String name = (String) request.get("name");
+            String name = request.getName();
             if (name == null || name.trim().isEmpty()) {
                 return ResponseEntity.badRequest()
                         .body(new Response(false, "Activity name is required", null));
             }
 
-            String description = (String) request.get("description");
-            
-            java.time.LocalDateTime startDate = null;
-            if (request.get("startDate") != null) {
-                try {
-                    startDate = java.time.LocalDateTime.parse(request.get("startDate").toString());
-                } catch (Exception e) {
-                    logger.error("Invalid startDate format: {}", request.get("startDate"), e);
-                    return ResponseEntity.badRequest()
-                            .body(new Response(false, "Invalid startDate format", null));
-                }
-            }
-            
-            java.time.LocalDateTime endDate = null;
-            if (request.get("endDate") != null) {
-                try {
-                    endDate = java.time.LocalDateTime.parse(request.get("endDate").toString());
-                } catch (Exception e) {
-                    logger.error("Invalid endDate format: {}", request.get("endDate"), e);
-                    return ResponseEntity.badRequest()
-                            .body(new Response(false, "Invalid endDate format", null));
-                }
-            }
-            
-            String location = (String) request.get("location");
-            Integer order = null;
-            if (request.get("order") != null) {
-                try {
-                    order = Integer.valueOf(request.get("order").toString());
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid order: {}", request.get("order"));
-                }
-            }
-
-            String shareLink = (String) request.get("shareLink");
-            String bannerUrl = (String) request.get("bannerUrl");
-            String benefits = (String) request.get("benefits");
-            String requirements = (String) request.get("requirements");
-            String contactInfo = (String) request.get("contactInfo");
-            
-            // Parse type từ request (optional)
-            // Cho phép tất cả các type (có thể chỉnh sửa sau)
-            vn.campuslife.enumeration.ActivityType type = null;
-            if (request.get("type") != null) {
-                try {
-                    String typeStr = request.get("type").toString();
-                    type = vn.campuslife.enumeration.ActivityType.valueOf(typeStr);
-                } catch (IllegalArgumentException e) {
-                    logger.warn("Invalid ActivityType: {}", request.get("type"));
-                    return ResponseEntity.badRequest()
-                        .body(new Response(false, "Invalid ActivityType: " + request.get("type"), null));
-                }
-            }
-            
-            java.util.List<Long> organizerIds = null;
-            if (request.get("organizerIds") != null) {
-                try {
-                    @SuppressWarnings("unchecked")
-                    java.util.List<Object> ids = (java.util.List<Object>) request.get("organizerIds");
-                    organizerIds = ids.stream()
-                            .map(id -> Long.valueOf(id.toString()))
-                            .collect(java.util.stream.Collectors.toList());
-                } catch (Exception e) {
-                    logger.warn("Invalid organizerIds: {}", request.get("organizerIds"), e);
-                }
-            }
-
-            Response response = seriesService.createActivityInSeries(seriesId, name, description,
-                    startDate, endDate, location, order, shareLink, bannerUrl,
-                    benefits, requirements, contactInfo, organizerIds, type);
+            Response response = seriesService.createActivityInSeries(seriesId, name, request.getDescription(),
+                    request.getStartDate(), request.getEndDate(), request.getLocation(), request.getOrder(),
+                    request.getShareLink(), request.getBannerUrl(), request.getBenefits(), request.getRequirements(),
+                    request.getContactInfo(), request.getOrganizerIds(), request.getType());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating activity in series: {}", e.getMessage(), e);
@@ -235,12 +168,10 @@ public class ActivitySeriesController {
     @PostMapping("/{seriesId}/activities")
     public ResponseEntity<Response> addActivityToSeries(
             @PathVariable Long seriesId,
-            @RequestBody Map<String, Object> request) {
+            @RequestBody AddActivityToSeriesRequest request) {
         try {
-            Long activityId = Long.valueOf(request.get("activityId").toString());
-            Integer order = request.get("order") != null
-                    ? Integer.valueOf(request.get("order").toString())
-                    : null;
+            Long activityId = request.getActivityId();
+            Integer order = request.getOrder();
 
             Response response = seriesService.addActivityToSeries(activityId, seriesId, order);
             return ResponseEntity.ok(response);
@@ -423,17 +354,18 @@ public class ActivitySeriesController {
     @PutMapping("/{seriesId}")
     public ResponseEntity<Response> updateSeries(
             @PathVariable Long seriesId,
-            @RequestBody Map<String, Object> request) {
+            @RequestBody UpdateSeriesRequest request) {
         try {
-            String name = (String) request.get("name");
-            String description = (String) request.get("description");
-            String milestonePoints = request.get("milestonePoints") != null
-                    ? request.get("milestonePoints").toString()
-                    : null;
+            String name = request.getName();
+            String description = request.getDescription();
+            SeriesPresetPreviewResponse presetPreview = resolveSeriesPreset(request);
+            String milestonePoints = resolveMilestonePointsJson(request, presetPreview);
             
-            String scoreTypeStr = request.get("scoreType") != null
-                    ? request.get("scoreType").toString()
-                    : null;
+            String scoreTypeStr = request.getScoreType() != null
+                    ? request.getScoreType().name()
+                    : (presetPreview != null && presetPreview.getScoreType() != null
+                            ? presetPreview.getScoreType().name()
+                            : null);
             vn.campuslife.enumeration.ScoreType scoreType = null;
             if (scoreTypeStr != null) {
                 try {
@@ -445,56 +377,24 @@ public class ActivitySeriesController {
                 }
             }
 
-            Long mainActivityId = null;
-            if (request.get("mainActivityId") != null) {
-                try {
-                    Object mainActivityIdObj = request.get("mainActivityId");
-                    if (mainActivityIdObj != null && !mainActivityIdObj.toString().equals("null")) {
-                        mainActivityId = Long.valueOf(mainActivityIdObj.toString());
-                    }
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid mainActivityId: {}", request.get("mainActivityId"));
-                }
-            }
-
-            java.time.LocalDateTime registrationStartDate = null;
-            if (request.get("registrationStartDate") != null) {
-                try {
-                    registrationStartDate = java.time.LocalDateTime.parse(request.get("registrationStartDate").toString());
-                } catch (Exception e) {
-                    logger.error("Invalid registrationStartDate format: {}", request.get("registrationStartDate"), e);
-                    return ResponseEntity.badRequest()
-                            .body(new Response(false, "Invalid registrationStartDate format", null));
-                }
-            }
-            
-            java.time.LocalDateTime registrationDeadline = null;
-            if (request.get("registrationDeadline") != null) {
-                try {
-                    registrationDeadline = java.time.LocalDateTime.parse(request.get("registrationDeadline").toString());
-                } catch (Exception e) {
-                    logger.error("Invalid registrationDeadline format: {}", request.get("registrationDeadline"), e);
-                    return ResponseEntity.badRequest()
-                            .body(new Response(false, "Invalid registrationDeadline format", null));
-                }
-            }
-            
-            Boolean requiresApproval = null;
-            if (request.get("requiresApproval") != null) {
-                requiresApproval = Boolean.valueOf(request.get("requiresApproval").toString());
-            }
-            
-            Integer ticketQuantity = null;
-            if (request.get("ticketQuantity") != null) {
-                try {
-                    ticketQuantity = Integer.valueOf(request.get("ticketQuantity").toString());
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid ticketQuantity: {}", request.get("ticketQuantity"));
-                }
-            }
+            Long mainActivityId = request.getMainActivityId();
+            java.time.LocalDateTime registrationStartDate = request.getRegistrationStartDate();
+            java.time.LocalDateTime registrationDeadline = request.getRegistrationDeadline();
+            Boolean requiresApproval = request.getRequiresApproval();
+            Integer ticketQuantity = request.getTicketQuantity();
+            Boolean minimumRequirementEnabled = request.getMinimumRequirementEnabled() != null
+                    ? request.getMinimumRequirementEnabled()
+                    : (presetPreview != null ? presetPreview.getMinimumRequirementEnabled() : null);
+            Integer minimumRequiredEvents = request.getMinimumRequiredEvents() != null
+                    ? request.getMinimumRequiredEvents()
+                    : (presetPreview != null ? presetPreview.getMinimumRequiredEvents() : null);
+            Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints() != null
+                    ? request.getMinimumPenaltyPoints()
+                    : (presetPreview != null ? presetPreview.getMinimumPenaltyPoints() : null);
 
             Response response = seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
-                    mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity);
+                    mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -509,6 +409,76 @@ public class ActivitySeriesController {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to update series: " + e.getMessage(), null));
         }
+    }
+
+    private SeriesPresetPreviewResponse resolveSeriesPreset(CreateSeriesRequest request) {
+        if (request == null || request.getPresetCode() == null) {
+            return null;
+        }
+        try {
+            SeriesPresetPreviewRequest previewRequest = new SeriesPresetPreviewRequest();
+            previewRequest.setPresetCode(request.getPresetCode());
+            previewRequest.setPresetConfig(request.getPresetConfig());
+            return scorePresetService.previewSeriesPreset(previewRequest);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Invalid series presetCode: {}", request.getPresetCode());
+            return null;
+        }
+    }
+
+    private SeriesPresetPreviewResponse resolveSeriesPreset(UpdateSeriesRequest request) {
+        if (request == null || request.getPresetCode() == null) {
+            return null;
+        }
+        try {
+            SeriesPresetPreviewRequest previewRequest = new SeriesPresetPreviewRequest();
+            previewRequest.setPresetCode(request.getPresetCode());
+            previewRequest.setPresetConfig(request.getPresetConfig());
+            return scorePresetService.previewSeriesPreset(previewRequest);
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Invalid series presetCode: {}", request.getPresetCode());
+            return null;
+        }
+    }
+
+    private String resolveMilestonePointsJson(CreateSeriesRequest request, SeriesPresetPreviewResponse presetPreview) {
+        if (presetPreview != null
+                && presetPreview.getMilestonePoints() != null
+                && !presetPreview.getMilestonePoints().isEmpty()) {
+            try {
+                return objectMapper.writeValueAsString(presetPreview.getMilestonePoints());
+            } catch (Exception e) {
+                logger.warn("Failed to serialize milestone preset preview", e);
+            }
+        }
+        if (request != null && request.getMilestonePoints() != null && !request.getMilestonePoints().isEmpty()) {
+            try {
+                return objectMapper.writeValueAsString(request.getMilestonePoints());
+            } catch (Exception e) {
+                logger.warn("Failed to serialize milestone points", e);
+            }
+        }
+        return null;
+    }
+
+    private String resolveMilestonePointsJson(UpdateSeriesRequest request, SeriesPresetPreviewResponse presetPreview) {
+        if (presetPreview != null
+                && presetPreview.getMilestonePoints() != null
+                && !presetPreview.getMilestonePoints().isEmpty()) {
+            try {
+                return objectMapper.writeValueAsString(presetPreview.getMilestonePoints());
+            } catch (Exception e) {
+                logger.warn("Failed to serialize milestone preset preview", e);
+            }
+        }
+        if (request != null && request.getMilestonePoints() != null && !request.getMilestonePoints().isEmpty()) {
+            try {
+                return objectMapper.writeValueAsString(request.getMilestonePoints());
+            } catch (Exception e) {
+                logger.warn("Failed to serialize milestone points", e);
+            }
+        }
+        return null;
     }
 
     /**

@@ -7,11 +7,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,6 +37,21 @@ public class ActivitySeriesServiceImplTest {
 
     @Mock
     private ScoreRuleEngine scoreRuleEngine;
+
+    @Mock
+    private ActivityParticipationRepository participationRepository;
+
+    @Mock
+    private ActivityRegistrationRepository registrationRepository;
+
+    @Mock
+    private DepartmentRepository departmentRepository;
+
+    @Mock
+    private vn.campuslife.service.SemesterHelperService semesterHelperService;
+
+    @Mock
+    private ReminderScheduleService reminderScheduleService;
 
     @InjectMocks
     private ActivitySeriesServiceImpl activitySeriesService;
@@ -118,5 +136,52 @@ public class ActivitySeriesServiceImplTest {
 
         assertFalse(response.isStatus());
         assertEquals("Progress not found", response.getMessage());
+    }
+
+    @Test
+    void checkMinimumRequirement_Enabled_AppliesEngineAndReturnsProgressSummary() {
+        series.setName("Java Series");
+        series.setScoreType(ScoreType.CHUYEN_DE);
+        series.setMinimumRequirementEnabled(true);
+        series.setMinimumRequiredEvents(3);
+        series.setMinimumPenaltyPoints(2);
+        progress.setCompletedCount(2);
+
+        when(seriesRepository.findById(800L)).thenReturn(Optional.of(series));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(progressRepository.findByStudentIdAndSeriesId(10L, 800L)).thenReturn(Optional.of(progress));
+
+        Response response = activitySeriesService.checkMinimumRequirement(10L, 800L);
+
+        assertTrue(response.isStatus());
+        assertEquals("Series minimum requirement checked", response.getMessage());
+        verify(scoreRuleEngine).applySeriesMinimumRequirement(series, student, 2, studentUser);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getBody();
+        assertEquals(2, body.get("completedCount"));
+        assertEquals(3, body.get("minimumRequiredEvents"));
+        assertEquals(2, body.get("minimumPenaltyPoints"));
+        assertEquals(false, body.get("minimumRequirementMet"));
+    }
+
+    @Test
+    void createSeries_EnabledWithoutValidThreshold_ThrowsIllegalArgumentException() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                activitySeriesService.createSeries(
+                        "Series A",
+                        "desc",
+                        "{\"3\":5}",
+                        ScoreType.REN_LUYEN,
+                        null,
+                        null,
+                        null,
+                        true,
+                        100,
+                        true,
+                        0,
+                        2));
+
+        assertTrue(ex.getMessage().contains("minimumRequiredEvents"));
     }
 }

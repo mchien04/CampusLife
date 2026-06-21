@@ -11,13 +11,17 @@ import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.quiz.StartAttemptResponse;
 import vn.campuslife.model.activity.quiz.SubmitAttemptResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ScoreRuleEngine;
+import vn.campuslife.config.UploadProperties;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -29,6 +33,12 @@ public class MiniGameServiceImplTest {
 
     @Mock
     private MiniGameAttemptRepository attemptRepository;
+
+    @Mock
+    private MiniGameRepository miniGameRepository;
+
+    @Mock
+    private MiniGameQuizRepository quizRepository;
 
     @Mock
     private MiniGameQuizQuestionRepository questionRepository;
@@ -43,6 +53,12 @@ public class MiniGameServiceImplTest {
     private ActivityRegistrationRepository registrationRepository;
 
     @Mock
+    private ActivityRepository activityRepository;
+
+    @Mock
+    private StudentRepository studentRepository;
+
+    @Mock
     private ActivityParticipationRepository participationRepository;
 
     @Mock
@@ -53,6 +69,12 @@ public class MiniGameServiceImplTest {
 
     @Mock
     private ScoreEntryRepository scoreEntryRepository;
+
+    @Mock
+    private SemesterHelperService semesterHelperService;
+
+    @Mock
+    private UploadProperties uploadProperties;
 
     @InjectMocks
     private MiniGameServiceImpl miniGameService;
@@ -135,6 +157,88 @@ public class MiniGameServiceImplTest {
 
         // Standalone quiz triggers applyMiniGamePassed
         verify(scoreRuleEngine).applyMiniGamePassed(attempt, studentUser);
+        verifyNoInteractions(activitySeriesService);
+    }
+
+    @Test
+    void startAttempt_InProgressExistsAtMaxAttempts_ResumesInsteadOfBlocking() {
+        miniGame.setMaxAttempts(1);
+        attempt.setStartedAt(java.time.LocalDateTime.now());
+
+        when(miniGameRepository.findById(150L)).thenReturn(Optional.of(miniGame));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(attemptRepository.findInProgressAttempt(10L, 150L, AttemptStatus.IN_PROGRESS))
+                .thenReturn(Optional.of(attempt));
+
+        Response response = miniGameService.startAttempt(150L, 10L);
+
+        assertTrue(response.isStatus());
+        assertInstanceOf(StartAttemptResponse.class, response.getBody());
+        verify(attemptRepository, never()).save(any());
+    }
+
+    @Test
+    void submitAttempt_FinalFailedAttempt_Standalone_AppliesExhaustedPenalty() {
+        miniGame.setMaxAttempts(2);
+        when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+
+        MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
+        q1.setId(1L);
+        MiniGameQuizQuestion q2 = new MiniGameQuizQuestion();
+        q2.setId(2L);
+
+        MiniGameQuizOption opt1 = new MiniGameQuizOption();
+        opt1.setId(11L);
+        opt1.setCorrect(false);
+
+        MiniGameQuizOption opt2 = new MiniGameQuizOption();
+        opt2.setId(12L);
+        opt2.setCorrect(false);
+
+        when(questionRepository.findById(1L)).thenReturn(Optional.of(q1));
+        when(questionRepository.findById(2L)).thenReturn(Optional.of(q2));
+        when(optionRepository.findById(11L)).thenReturn(Optional.of(opt1));
+        when(optionRepository.findById(12L)).thenReturn(Optional.of(opt2));
+        when(attemptRepository.existsByStudentIdAndMiniGameIdAndStatus(10L, 150L, AttemptStatus.PASSED))
+                .thenReturn(false);
+        when(attemptRepository.findByStudentIdAndMiniGameId(10L, 150L))
+                .thenReturn(List.of(new MiniGameAttempt(), attempt));
+
+        Map<Long, Long> answers = new HashMap<>();
+        answers.put(1L, 11L);
+        answers.put(2L, 12L);
+
+        Response response = miniGameService.submitAttempt(700L, 10L, answers);
+
+        assertTrue(response.isStatus());
+        assertEquals(AttemptStatus.FAILED, attempt.getStatus());
+        verify(scoreRuleEngine).applyMiniGameExhaustedAttempts(attempt, studentUser);
+        verify(scoreRuleEngine, never()).applyMiniGamePassed(any(), any());
+    }
+
+    @Test
+    void submitAttempt_FinalFailedAttempt_InSeries_DoesNotApplyExhaustedPenalty() {
+        miniGame.setMaxAttempts(1);
+        activity.setSeriesId(888L);
+        when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+
+        MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
+        q1.setId(1L);
+        MiniGameQuizOption opt1 = new MiniGameQuizOption();
+        opt1.setId(11L);
+        opt1.setCorrect(false);
+
+        when(questionRepository.findById(1L)).thenReturn(Optional.of(q1));
+        when(optionRepository.findById(11L)).thenReturn(Optional.of(opt1));
+
+        Map<Long, Long> answers = new HashMap<>();
+        answers.put(1L, 11L);
+
+        Response response = miniGameService.submitAttempt(700L, 10L, answers);
+
+        assertTrue(response.isStatus());
+        assertEquals(AttemptStatus.FAILED, attempt.getStatus());
+        verify(scoreRuleEngine, never()).applyMiniGameExhaustedAttempts(any(), any());
         verifyNoInteractions(activitySeriesService);
     }
 

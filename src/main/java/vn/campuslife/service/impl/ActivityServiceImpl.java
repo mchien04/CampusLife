@@ -17,12 +17,16 @@ import vn.campuslife.entity.Department;
 import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
+import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
+import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.ActivityResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.UserRepository;
@@ -35,6 +39,7 @@ import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.service.ScorePresetService;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.util.UrlUtils;
 import vn.campuslife.enumeration.NotificationType;
@@ -62,18 +67,21 @@ public class ActivityServiceImpl implements ActivityService {
     private final ActivityRepository activityRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
+    private final ActivitySeriesRepository activitySeriesRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ReminderScheduleService reminderScheduleService;
     private final ActivityScoreRuleService activityScoreRuleService;
+    private final ScorePresetService scorePresetService;
     private final UploadProperties uploadProperties;
 
     @Override
     @Transactional
     public Response createActivity(CreateActivityRequest request) {
         try {
+            scorePresetService.applyActivityPreset(request);
 
             String err = validateRequest(request);
             if (err != null)
@@ -109,8 +117,12 @@ public class ActivityServiceImpl implements ActivityService {
                     saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
+            syncSeriesMinimumRequirementReminders(saved);
 
             return new Response(true, "Activity created successfully", toResponse(saved));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid create activity request: {}", e.getMessage());
+            return new Response(false, e.getMessage(), null);
         } catch (Exception e) {
             logger.error("Failed to create activity: {}", e.getMessage(), e);
             return new Response(false, "Failed to create activity due to server error", null);
@@ -302,6 +314,7 @@ public class ActivityServiceImpl implements ActivityService {
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
 
+            scorePresetService.applyActivityPreset(request);
             String err = validateRequest(request);
             if (err != null)
                 return new Response(false, err, null);
@@ -328,8 +341,12 @@ public class ActivityServiceImpl implements ActivityService {
                     saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
+            syncSeriesMinimumRequirementReminders(saved);
 
             return new Response(true, "Activity updated successfully", toResponse(saved));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid update activity request {}: {}", id, e.getMessage());
+            return new Response(false, e.getMessage(), null);
         } catch (Exception e) {
             logger.error("Failed to update activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to update activity due to server error", null);
@@ -352,6 +369,16 @@ public class ActivityServiceImpl implements ActivityService {
             logger.error("Failed to delete activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to delete activity due to server error", null);
         }
+    }
+
+    @Override
+    public List<ActivityPresetDefinitionResponse> getActivityPresetDefinitions() {
+        return scorePresetService.getActivityPresetDefinitions();
+    }
+
+    @Override
+    public ActivityPresetPreviewResponse previewActivityPreset(ActivityPresetPreviewRequest request) {
+        return scorePresetService.previewActivityPreset(request);
     }
 
     @Override
@@ -907,5 +934,13 @@ public class ActivityServiceImpl implements ActivityService {
             logger.error("Failed to backfill checkInCodes: {}", e.getMessage(), e);
             return Response.error("Failed to backfill checkInCodes: " + e.getMessage());
         }
+    }
+
+    private void syncSeriesMinimumRequirementReminders(Activity activity) {
+        if (activity == null || activity.getSeriesId() == null) {
+            return;
+        }
+        activitySeriesRepository.findById(activity.getSeriesId())
+                .ifPresent(reminderScheduleService::syncSeriesMinimumRequirementReminders);
     }
 }

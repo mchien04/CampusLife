@@ -28,6 +28,7 @@ public class AttemptDetailResponse {
     private LocalDateTime startedAt;
     private LocalDateTime submittedAt;
     private Integer requiredCorrectAnswers;
+    private Boolean showAnswers;
     private List<QuizQuestionDetailResponse> questions;
 
     public static AttemptDetailResponse fromEntities(
@@ -35,7 +36,7 @@ public class AttemptDetailResponse {
             MiniGameQuiz quiz,
             Map<Long, Long> studentAnswers,
             BigDecimal pointsEarned) {
-        return fromEntities(attempt, quiz, studentAnswers, pointsEarned, null);
+        return fromEntities(attempt, quiz, studentAnswers, pointsEarned, null, false);
     }
 
     public static AttemptDetailResponse fromEntities(
@@ -43,7 +44,8 @@ public class AttemptDetailResponse {
             MiniGameQuiz quiz,
             Map<Long, Long> studentAnswers,
             BigDecimal pointsEarned,
-            String publicUrl) {
+            String publicUrl,
+            boolean showAnswers) {
         AttemptDetailResponse response = new AttemptDetailResponse();
         response.setId(attempt.getId());
         response.setStatus(attempt.getStatus().toString());
@@ -53,6 +55,7 @@ public class AttemptDetailResponse {
         response.setStartedAt(attempt.getStartedAt());
         response.setSubmittedAt(attempt.getSubmittedAt());
         response.setRequiredCorrectAnswers(attempt.getMiniGame().getRequiredCorrectAnswers());
+        response.setShowAnswers(showAnswers);
 
         if (quiz != null && quiz.getQuestions() != null && studentAnswers != null) {
             response.setQuestions(quiz.getQuestions().stream()
@@ -61,7 +64,7 @@ public class AttemptDetailResponse {
                         Integer order2 = q2.getDisplayOrder() != null ? q2.getDisplayOrder() : 0;
                         return order1.compareTo(order2);
                     })
-                    .map(q -> QuizQuestionDetailResponse.fromEntity(q, studentAnswers, publicUrl))
+                    .map(q -> QuizQuestionDetailResponse.fromEntity(q, studentAnswers, publicUrl, showAnswers))
                     .collect(Collectors.toList()));
         }
 

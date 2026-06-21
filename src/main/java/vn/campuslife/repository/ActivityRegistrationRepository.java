@@ -107,32 +107,6 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
     List<ActivityRegistration> findApprovedRegistrationsWithoutParticipation();
 
     /**
-     * Lấy danh sách đăng ký cần nhắc nhở 1 ngày trước
-     */
-    @Query("SELECT ar FROM ActivityRegistration ar " +
-            "WHERE ar.status = :status " +
-            "AND ar.activity.startDate BETWEEN :now AND :oneDayLater " +
-            "AND ar.activity.isDeleted = false " +
-            "AND ar.activity.isDraft = false")
-    List<ActivityRegistration> findRegistrationsFor1DayReminder(
-            @Param("status") RegistrationStatus status,
-            @Param("now") LocalDateTime now,
-            @Param("oneDayLater") LocalDateTime oneDayLater);
-
-    /**
-     * Lấy danh sách đăng ký cần nhắc nhở 1 giờ trước
-     */
-    @Query("SELECT ar FROM ActivityRegistration ar " +
-            "WHERE ar.status = :status " +
-            "AND ar.activity.startDate BETWEEN :now AND :oneHourLater " +
-            "AND ar.activity.isDeleted = false " +
-            "AND ar.activity.isDraft = false")
-    List<ActivityRegistration> findRegistrationsFor1HourReminder(
-            @Param("status") RegistrationStatus status,
-            @Param("now") LocalDateTime now,
-            @Param("oneHourLater") LocalDateTime oneHourLater);
-
-    /**
      * Đếm tổng số đăng ký trong khoảng thời gian
      */
     @Query("SELECT COUNT(ar) FROM ActivityRegistration ar WHERE ar.registeredDate >= :startDate AND ar.registeredDate <= :endDate")
@@ -163,6 +137,18 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
      */
     @Query("SELECT ar FROM ActivityRegistration ar WHERE ar.seriesId = :seriesId AND ar.student.isDeleted = false")
     List<ActivityRegistration> findBySeriesId(@Param("seriesId") Long seriesId);
+
+    @Query("""
+       SELECT ar
+       FROM ActivityRegistration ar
+       WHERE ar.seriesId = :seriesId
+         AND ar.student.id = :studentId
+         AND ar.activity.isDeleted = false
+       """)
+    List<ActivityRegistration> findBySeriesIdAndStudentId(
+            @Param("seriesId") Long seriesId,
+            @Param("studentId") Long studentId
+    );
     /**
      * Lấy danh sách đăng ký theo status của 1 sinh viên
      */

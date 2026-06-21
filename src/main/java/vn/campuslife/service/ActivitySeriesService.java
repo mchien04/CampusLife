@@ -10,7 +10,8 @@ public interface ActivitySeriesService {
                         vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
-                        Boolean requiresApproval, Integer ticketQuantity);
+                        Boolean requiresApproval, Integer ticketQuantity,
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints);
 
         /**
          * Tạo activity trong series với các thuộc tính tối giản
@@ -88,7 +89,8 @@ public interface ActivitySeriesService {
                         vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
-                        Boolean requiresApproval, Integer ticketQuantity);
+                        Boolean requiresApproval, Integer ticketQuantity,
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints);
 
         /**
          * Xóa chuỗi sự kiện (soft delete)

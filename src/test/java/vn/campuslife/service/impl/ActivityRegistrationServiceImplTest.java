@@ -11,11 +11,16 @@ import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.repository.*;
+import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ScoreRuleEngine;
+import vn.campuslife.config.UploadProperties;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -40,13 +45,25 @@ public class ActivityRegistrationServiceImplTest {
     private NotificationService notificationService;
 
     @Mock
+    private ReminderScheduleService reminderScheduleService;
+
+    @Mock
     private ActivitySeriesService activitySeriesService;
+
+    @Mock
+    private ActivitySeriesRepository activitySeriesRepository;
+
+    @Mock
+    private SemesterHelperService semesterHelperService;
 
     @Mock
     private ScoreRuleEngine scoreRuleEngine;
 
     @Mock
     private TaskSubmissionRepository taskSubmissionRepository;
+
+    @Mock
+    private UploadProperties uploadProperties;
 
     @InjectMocks
     private ActivityRegistrationServiceImpl activityRegistrationService;
@@ -146,5 +163,113 @@ public class ActivityRegistrationServiceImplTest {
 
         assertTrue(response.isStatus());
         verify(activitySeriesService).updateStudentProgress(10L, 100L);
+    }
+
+    @Test
+    void checkIn_TicketFlow_FirstScan_MovesToCheckedIn() {
+        participation.setParticipationType(ParticipationType.REGISTERED);
+        registration.setTicketCode("TK001");
+
+        when(registrationRepository.findByTicketCode("TK001")).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+
+        Response response = activityRegistrationService
+                .checkIn(new ActivityParticipationRequest("TK001", null, null, null));
+
+        assertTrue(response.isStatus());
+        assertEquals(ParticipationType.CHECKED_IN, participation.getParticipationType());
+        assertNotNull(participation.getCheckInTime());
+        verify(scoreRuleEngine, never()).applyActivityCompleted(any(), any());
+    }
+
+    @Test
+    void checkIn_TicketFlow_SecondScan_SubmissionActivity_OnlyAttendedWhenNotYetGraded() {
+        activity.setRequiresSubmission(true);
+        participation.setParticipationType(ParticipationType.CHECKED_IN);
+        registration.setTicketCode("TK002");
+
+        when(registrationRepository.findByTicketCode("TK002")).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+        when(taskSubmissionRepository.findByActivityAndStudentAndStatusOrderByLatest(100L, 10L,
+                SubmissionStatus.GRADED))
+                .thenReturn(List.of());
+
+        Response response = activityRegistrationService
+                .checkIn(new ActivityParticipationRequest("TK002", null, null, null));
+
+        assertTrue(response.isStatus());
+        assertEquals(ParticipationType.ATTENDED, participation.getParticipationType());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
+        assertNull(participation.getIsCompleted());
+        verify(scoreRuleEngine, never()).applySubmissionGraded(any(), any());
+    }
+
+    @Test
+    void checkIn_TicketFlow_SecondScan_EventBasic_CompletesAndAppliesActivityScore() {
+        activity.setRequiresSubmission(false);
+        participation.setParticipationType(ParticipationType.CHECKED_IN);
+        registration.setTicketCode("TK003");
+
+        when(registrationRepository.findByTicketCode("TK003")).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+
+        Response response = activityRegistrationService
+                .checkIn(new ActivityParticipationRequest("TK003", null, null, null));
+
+        assertTrue(response.isStatus());
+        assertEquals(ParticipationType.COMPLETED, participation.getParticipationType());
+        assertEquals(Boolean.TRUE, participation.getIsCompleted());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
+        assertNotNull(participation.getCheckOutTime());
+        verify(scoreRuleEngine).applyActivityCompleted(participation, studentUser);
+    }
+
+    @Test
+    void checkInByQrCode_EventBasicStandalone_CompletesAndAppliesActivityScore() {
+        activity.setRequiresSubmission(false);
+        activity.setCheckInCode("ACTQR-BASIC");
+        participation.setParticipationType(ParticipationType.REGISTERED);
+
+        when(activityRepository.findByCheckInCode("ACTQR-BASIC")).thenReturn(Optional.of(activity));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L)).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+
+        Response response = activityRegistrationService.checkInByQrCode("ACTQR-BASIC", 10L);
+
+        assertTrue(response.isStatus());
+        assertEquals(ParticipationType.COMPLETED, participation.getParticipationType());
+        assertEquals(Boolean.TRUE, participation.getIsCompleted());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
+        assertNotNull(participation.getCheckInTime());
+        assertNull(participation.getCheckOutTime());
+        verify(scoreRuleEngine).applyActivityCompleted(participation, studentUser);
+    }
+
+    @Test
+    void checkInByQrCode_SubmissionAlreadyGraded_CompletesAndAppliesSubmissionScore() {
+        activity.setRequiresSubmission(true);
+        activity.setCheckInCode("ACTQR");
+
+        participation.setParticipationType(ParticipationType.REGISTERED);
+
+        TaskSubmission gradedSubmission = new TaskSubmission();
+        gradedSubmission.setId(700L);
+        gradedSubmission.setIsCompleted(false);
+
+        when(activityRepository.findByCheckInCode("ACTQR")).thenReturn(Optional.of(activity));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L)).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+        when(taskSubmissionRepository.findByActivityAndStudentAndStatusOrderByLatest(100L, 10L,
+                SubmissionStatus.GRADED))
+                .thenReturn(List.of(gradedSubmission));
+
+        Response response = activityRegistrationService.checkInByQrCode("ACTQR", 10L);
+
+        assertTrue(response.isStatus());
+        assertEquals(ParticipationType.COMPLETED, participation.getParticipationType());
+        assertEquals(Boolean.FALSE, participation.getIsCompleted());
+        assertNotNull(participation.getCheckInTime());
+        assertNull(participation.getCheckOutTime());
+        verify(scoreRuleEngine).applySubmissionGraded(gradedSubmission, studentUser);
     }
 }

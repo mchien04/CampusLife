@@ -21,6 +21,7 @@ public class CreateMiniGameRequest {
     private Integer timeLimit;
     private Integer requiredCorrectAnswers;
     private Integer maxAttempts;
+    private Boolean showAnswers;
     private List<QuestionRequest> questions;
 
     @Data

@@ -1,6 +1,7 @@
 package vn.campuslife.controller.activity;
 
 import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
 import vn.campuslife.model.activity.ActivityResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
@@ -46,6 +47,18 @@ public class ActivityController {
             return ResponseEntity.internalServerError()
                     .body(new Response(false, "Server error occurred", null));
         }
+    }
+
+    @GetMapping("/presets")
+    public ResponseEntity<Response> getActivityPresets() {
+        return ResponseEntity.ok(new Response(true, "Activity presets retrieved successfully",
+                activityService.getActivityPresetDefinitions()));
+    }
+
+    @PostMapping("/presets/preview")
+    public ResponseEntity<Response> previewActivityPreset(@RequestBody ActivityPresetPreviewRequest request) {
+        return ResponseEntity.ok(new Response(true, "Activity preset preview generated successfully",
+                activityService.previewActivityPreset(request)));
     }
 
     @GetMapping

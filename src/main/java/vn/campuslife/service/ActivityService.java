@@ -1,7 +1,10 @@
 package vn.campuslife.service;
 
 import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
+import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
 import vn.campuslife.model.activity.ActivityResponse;
+import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
 
@@ -23,6 +26,10 @@ public interface ActivityService {
     Response updateActivity(Long id, CreateActivityRequest request);
 
     Response deleteActivity(Long id);
+
+    List<ActivityPresetDefinitionResponse> getActivityPresetDefinitions();
+
+    ActivityPresetPreviewResponse previewActivityPreset(ActivityPresetPreviewRequest request);
 
     List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType);
 

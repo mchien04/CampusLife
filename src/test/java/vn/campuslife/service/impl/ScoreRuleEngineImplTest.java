@@ -138,9 +138,12 @@ public class ScoreRuleEngineImplTest {
         participation.setIsCompleted(false);
         participation.setRegistration(registration);
 
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.PARTICIPATION_COMPLETED))
+                .thenReturn(Collections.emptyList());
+
         scoreRuleEngine.applyActivityCompleted(participation, actor);
 
-        verifyNoInteractions(ruleService, scoreEntryService);
+        verifyNoInteractions(scoreEntryService);
     }
 
     @Test
@@ -287,6 +290,55 @@ public class ScoreRuleEngineImplTest {
     }
 
     @Test
+    void applyMiniGameExhaustedAttempts_FinalFailedAttempt_UsesFailPoints() {
+        MiniGame miniGame = new MiniGame();
+        miniGame.setActivity(activity);
+
+        MiniGameAttempt attempt = new MiniGameAttempt();
+        attempt.setId(701L);
+        attempt.setStatus(AttemptStatus.FAILED);
+        attempt.setMiniGame(miniGame);
+        attempt.setStudent(student);
+        attempt.setSubmittedAt(LocalDateTime.now());
+
+        ActivityScoreRule rule = new ActivityScoreRule();
+        rule.setId(153L);
+        rule.setScoreType(ScoreType.REN_LUYEN);
+        rule.setPoints(BigDecimal.ZERO);
+        rule.setFailPoints(BigDecimal.valueOf(-2));
+        rule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS))
+                .thenReturn(Collections.singletonList(rule));
+        when(semesterResolver.resolveSemester(eq(activity), eq(rule), any())).thenReturn(semester);
+
+        scoreRuleEngine.applyMiniGameExhaustedAttempts(attempt, actor);
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService).upsertEntry(commandCaptor.capture());
+        ScoreEntryCommand command = commandCaptor.getValue();
+
+        assertEquals(BigDecimal.valueOf(-2), command.getPoints());
+        assertEquals(ScoreEntrySourceType.MINIGAME_ATTEMPT, command.getSourceType());
+        assertEquals(attempt.getId(), command.getSourceId());
+    }
+
+    @Test
+    void applyMiniGameExhaustedAttempts_InSeries_SkipsScoring() {
+        activity.setSeriesId(999L);
+        MiniGame miniGame = new MiniGame();
+        miniGame.setActivity(activity);
+
+        MiniGameAttempt attempt = new MiniGameAttempt();
+        attempt.setStatus(AttemptStatus.FAILED);
+        attempt.setMiniGame(miniGame);
+
+        scoreRuleEngine.applyMiniGameExhaustedAttempts(attempt, actor);
+
+        verifyNoInteractions(ruleService, scoreEntryService);
+    }
+
+    @Test
     void applySeriesMilestone_ParsesMilestonesAndUpsertsCorrectly() {
         ActivitySeries series = new ActivitySeries();
         series.setId(800L);
@@ -301,7 +353,8 @@ public class ScoreRuleEngineImplTest {
         progress.setCompletedCount(4); // Achieved milestone 3 but not 5 -> should get 5 points
         progress.setPointsEarned(BigDecimal.ZERO);
 
-        when(activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId())).thenReturn(Collections.singletonList(activity));
+        when(activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId()))
+                .thenReturn(Collections.singletonList(activity));
         when(semesterHelperService.getSemesterForActivity(any())).thenReturn(semester);
 
         scoreRuleEngine.applySeriesMilestone(progress, actor);
@@ -334,5 +387,59 @@ public class ScoreRuleEngineImplTest {
         scoreRuleEngine.applySeriesMilestone(progress, actor);
 
         verifyNoInteractions(activityRepository, scoreEntryService, progressRepository);
+    }
+
+    @Test
+    void applySeriesMinimumRequirement_NotMet_UpsertsNegativePenalty() {
+        ActivitySeries series = new ActivitySeries();
+        series.setId(800L);
+        series.setName("Java Series");
+        series.setScoreType(ScoreType.CHUYEN_DE);
+        series.setMinimumRequirementEnabled(true);
+        series.setMinimumRequiredEvents(3);
+        series.setMinimumPenaltyPoints(2);
+
+        activity.setStartDate(LocalDateTime.now().minusDays(3));
+
+        when(activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId()))
+                .thenReturn(Collections.singletonList(activity));
+        when(semesterHelperService.getSemesterForActivity(activity)).thenReturn(semester);
+
+        scoreRuleEngine.applySeriesMinimumRequirement(series, student, 2, actor);
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService).upsertEntry(commandCaptor.capture());
+        ScoreEntryCommand command = commandCaptor.getValue();
+
+        assertEquals(student.getId(), command.getStudentId());
+        assertEquals(semester.getId(), command.getSemesterId());
+        assertEquals(ScoreType.CHUYEN_DE, command.getScoreType());
+        assertEquals(ScoreEntrySourceType.SERIES_MINIMUM_REQUIREMENT, command.getSourceType());
+        assertEquals(series.getId(), command.getSourceId());
+        assertEquals(BigDecimal.valueOf(-2), command.getPoints());
+        assertTrue(command.getReason().contains("2/3"));
+    }
+
+    @Test
+    void applySeriesMinimumRequirement_MetRequirement_UpsertsZeroPoints() {
+        ActivitySeries series = new ActivitySeries();
+        series.setId(801L);
+        series.setName("Career Series");
+        series.setScoreType(ScoreType.REN_LUYEN);
+        series.setMinimumRequirementEnabled(true);
+        series.setMinimumRequiredEvents(2);
+        series.setMinimumPenaltyPoints(3);
+        series.setMainActivity(activity);
+        activity.setStartDate(LocalDateTime.now().minusDays(1));
+
+        when(activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId())).thenReturn(Collections.emptyList());
+        when(semesterHelperService.getSemesterForActivity(activity)).thenReturn(semester);
+
+        scoreRuleEngine.applySeriesMinimumRequirement(series, student, 2, actor);
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService).upsertEntry(commandCaptor.capture());
+        assertEquals(BigDecimal.ZERO, commandCaptor.getValue().getPoints());
+        assertTrue(commandCaptor.getValue().getReason().contains("met"));
     }
 }

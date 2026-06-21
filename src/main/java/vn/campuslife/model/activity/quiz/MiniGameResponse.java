@@ -22,6 +22,7 @@ public class MiniGameResponse {
     private Integer requiredCorrectAnswers;
     private Integer maxAttempts;
     private Boolean isActive;
+    private Boolean showAnswers;
     private MiniGameType type;
     private Long activityId;
 
@@ -35,6 +36,7 @@ public class MiniGameResponse {
         response.setRequiredCorrectAnswers(miniGame.getRequiredCorrectAnswers());
         response.setMaxAttempts(miniGame.getMaxAttempts());
         response.setIsActive(miniGame.isActive());
+        response.setShowAnswers(miniGame.isShowAnswers());
         response.setType(miniGame.getType());
         if (miniGame.getActivity() != null) {
             response.setActivityId(miniGame.getActivity().getId());
