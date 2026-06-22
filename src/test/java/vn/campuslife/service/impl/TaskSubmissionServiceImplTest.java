@@ -14,7 +14,11 @@ import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
+import vn.campuslife.service.SemesterHelperService;
+import vn.campuslife.service.UploadStorageService;
+import vn.campuslife.config.UploadProperties;
 
 import java.util.Optional;
 
@@ -50,6 +54,18 @@ public class TaskSubmissionServiceImplTest {
 
     @Mock
     private ActivityTaskRepository activityTaskRepository;
+
+    @Mock
+    private UploadProperties uploadProperties;
+
+    @Mock
+    private UploadStorageService uploadStorageService;
+
+    @Mock
+    private SemesterHelperService semesterHelperService;
+
+    @Mock
+    private ReminderScheduleService reminderScheduleService;
 
     @InjectMocks
     private TaskSubmissionServiceImpl taskSubmissionService;
@@ -122,6 +138,30 @@ public class TaskSubmissionServiceImplTest {
     }
 
     @Test
+    void gradeSubmission_StandaloneActivity_NotYetAttended_DoesNotCompleteOrScore() {
+        activity.setRequiresSubmission(true);
+
+        when(taskSubmissionRepository.findById(600L)).thenReturn(Optional.of(submission));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(grader));
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+        when(activityRegistrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+
+        TaskAssignment assignment = new TaskAssignment();
+        when(taskAssignmentRepository.findByTaskIdAndStudentId(150L, 10L))
+                .thenReturn(Optional.of(assignment));
+
+        Response response = taskSubmissionService.gradeSubmission(600L, 1L, false, "Late");
+
+        assertTrue(response.isStatus());
+        verify(activityParticipationRepository, never()).save(any());
+        verify(scoreRuleEngine, never()).applySubmissionGraded(any(), any());
+        verifyNoInteractions(activitySeriesService);
+    }
+
+    @Test
     void gradeSubmission_ActivityInSeries_GradedCompleted_TriggersSeriesProgress() {
         activity.setRequiresSubmission(true);
         activity.setSeriesId(800L); // In series
@@ -129,11 +169,20 @@ public class TaskSubmissionServiceImplTest {
         when(taskSubmissionRepository.findById(600L)).thenReturn(Optional.of(submission));
         when(userRepository.findById(1L)).thenReturn(Optional.of(grader));
 
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.ATTENDED);
+        when(activityRegistrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+
+        ActivityParticipation participation = new ActivityParticipation();
+        when(activityParticipationRepository.findByRegistration(registration))
+                .thenReturn(Optional.of(participation));
+
         Response response = taskSubmissionService.gradeSubmission(600L, 1L, true, "Passed milestone");
 
         assertTrue(response.isStatus());
         verify(activitySeriesService).updateStudentProgress(10L, 100L);
-        verify(scoreRuleEngine).applySubmissionGraded(submission, grader);
+        verify(scoreRuleEngine, never()).applySubmissionGraded(any(), any());
     }
 
     @Test

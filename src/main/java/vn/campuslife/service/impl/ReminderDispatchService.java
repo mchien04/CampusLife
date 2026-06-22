@@ -6,24 +6,40 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.EmailHistory;
+import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.entity.ActivitySeries;
 import vn.campuslife.entity.ReminderSchedule;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.EmailStatus;
 import vn.campuslife.enumeration.RecipientType;
 import vn.campuslife.enumeration.ReminderCode;
 import vn.campuslife.enumeration.ReminderStatus;
 import vn.campuslife.enumeration.ReminderTargetType;
+import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.Role;
+import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.TaskStatus;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.EmailHistoryRepository;
 import vn.campuslife.repository.ReminderScheduleRepository;
 import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.StudentSeriesProgressRepository;
+import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
 import vn.campuslife.repository.UserRepository;
+import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.util.EmailUtil;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,6 +60,12 @@ public class ReminderDispatchService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final TaskSubmissionRepository taskSubmissionRepository;
+    private final ActivityRegistrationRepository activityRegistrationRepository;
+    private final ActivityParticipationRepository activityParticipationRepository;
+    private final TaskAssignmentRepository taskAssignmentRepository;
+    private final ActivitySeriesRepository activitySeriesRepository;
+    private final StudentSeriesProgressRepository studentSeriesProgressRepository;
+    private final ScoreRuleEngine scoreRuleEngine;
     private final EmailUtil emailUtil;
     private final ReminderRuntimeSchedulerService reminderRuntimeSchedulerService;
 
@@ -72,6 +94,41 @@ public class ReminderDispatchService {
             return;
         }
 
+        if (isNoShowReminderCancelled(reminder)) {
+            reminder.setStatus(ReminderStatus.CANCELLED);
+            reminder.setErrorMessage(null);
+            reminderScheduleRepository.save(reminder);
+            logger.info("Cancelled reminder {} because the student already attended or no registration exists",
+                    reminderId);
+            return;
+        }
+
+        if (isTaskOverdueReminderCancelled(reminder)) {
+            reminder.setStatus(ReminderStatus.CANCELLED);
+            reminder.setErrorMessage(null);
+            reminderScheduleRepository.save(reminder);
+            logger.info("Cancelled reminder {} because task overdue does not apply for this activity", reminderId);
+            return;
+        }
+
+        if (isSeriesMinimumReminderCancelled(reminder)) {
+            reminder.setStatus(ReminderStatus.CANCELLED);
+            reminder.setErrorMessage(null);
+            reminderScheduleRepository.save(reminder);
+            logger.info("Cancelled reminder {} because the series minimum requirement no longer applies", reminderId);
+            return;
+        }
+
+        if (isNoShowPenaltyReminder(reminder)) {
+            applyNoShowPenalty(reminder);
+        }
+        if (isTaskOverdueReminder(reminder)) {
+            applyTaskOverdue(reminder);
+        }
+        if (isSeriesMinimumRequirementReminder(reminder)) {
+            applySeriesMinimumRequirement(reminder);
+        }
+
         User sender = resolveSystemSender();
         if (sender == null) {
             reminder.setStatus(ReminderStatus.FAILED);
@@ -86,8 +143,7 @@ public class ReminderDispatchService {
                 reminder.getSubject(),
                 reminder.getContent(),
                 false,
-                Collections.emptyList()
-        );
+                Collections.emptyList());
 
         EmailHistory emailHistory = new EmailHistory();
         emailHistory.setSender(sender);
@@ -158,6 +214,21 @@ public class ReminderDispatchService {
                 && reminder.getReminderCode() == ReminderCode.TASK_OVERDUE;
     }
 
+    private boolean isTaskOverdueReminder(ReminderSchedule reminder) {
+        return reminder.getTargetType() == ReminderTargetType.TASK
+                && reminder.getReminderCode() == ReminderCode.TASK_OVERDUE;
+    }
+
+    private boolean isNoShowPenaltyReminder(ReminderSchedule reminder) {
+        return reminder.getTargetType() == ReminderTargetType.EVENT
+                && reminder.getReminderCode() == ReminderCode.EVENT_NO_SHOW_PENALTY;
+    }
+
+    private boolean isSeriesMinimumRequirementReminder(ReminderSchedule reminder) {
+        return reminder.getTargetType() == ReminderTargetType.SERIES
+                && reminder.getReminderCode() == ReminderCode.SERIES_MINIMUM_REQUIREMENT;
+    }
+
     private boolean isTaskAlreadySubmitted(ReminderSchedule reminder) {
         if (reminder.getTargetType() != ReminderTargetType.TASK || reminder.getUser() == null
                 || reminder.getUser().getId() == null) {
@@ -169,5 +240,150 @@ public class ReminderDispatchService {
                         reminder.getTargetId(),
                         student.getId()))
                 .isPresent();
+    }
+
+    private boolean isNoShowReminderCancelled(ReminderSchedule reminder) {
+        if (!isNoShowPenaltyReminder(reminder) || reminder.getUser() == null || reminder.getUser().getId() == null) {
+            return false;
+        }
+
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(reminder.getUser().getId());
+        if (studentOpt.isEmpty()) {
+            return true;
+        }
+
+        Optional<ActivityRegistration> registrationOpt = activityRegistrationRepository.findByActivityIdAndStudentId(
+                reminder.getTargetId(),
+                studentOpt.get().getId());
+        if (registrationOpt.isEmpty()) {
+            return true;
+        }
+
+        ActivityRegistration registration = registrationOpt.get();
+        if (registration.getStatus() != null
+                && registration.getStatus() != vn.campuslife.enumeration.RegistrationStatus.APPROVED) {
+            return true;
+        }
+
+        Optional<ActivityParticipation> participationOpt = activityParticipationRepository
+                .findByRegistration(registration);
+        if (participationOpt.isEmpty()) {
+            return false;
+        }
+
+        ActivityParticipation participation = participationOpt.get();
+        return EnumSet.of(
+                ParticipationType.ATTENDED,
+                ParticipationType.COMPLETED)
+                .contains(participation.getParticipationType())
+                || registration.getStatus() == RegistrationStatus.ATTENDED
+                || participation.getCheckOutTime() != null
+                || Boolean.TRUE.equals(participation.getIsCompleted());
+    }
+
+    private boolean isTaskOverdueReminderCancelled(ReminderSchedule reminder) {
+        if (!isTaskOverdueReminder(reminder) || reminder.getUser() == null || reminder.getUser().getId() == null) {
+            return false;
+        }
+
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(reminder.getUser().getId());
+        if (studentOpt.isEmpty()) {
+            return true;
+        }
+
+        Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository.findByTaskIdAndStudentId(
+                reminder.getTargetId(),
+                studentOpt.get().getId());
+        if (assignmentOpt.isEmpty() || assignmentOpt.get().getTask() == null
+                || assignmentOpt.get().getTask().getActivity() == null) {
+            return true;
+        }
+
+        Activity activity = assignmentOpt.get().getTask().getActivity();
+        return !activity.isRequiresSubmission() || activity.getSeriesId() != null;
+    }
+
+    private boolean isSeriesMinimumReminderCancelled(ReminderSchedule reminder) {
+        if (!isSeriesMinimumRequirementReminder(reminder) || reminder.getUser() == null
+                || reminder.getUser().getId() == null) {
+            return false;
+        }
+
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(reminder.getUser().getId());
+        Optional<ActivitySeries> seriesOpt = activitySeriesRepository.findById(reminder.getTargetId());
+        if (studentOpt.isEmpty() || seriesOpt.isEmpty() || seriesOpt.get().isDeleted()) {
+            return true;
+        }
+
+        ActivitySeries series = seriesOpt.get();
+        if (!series.isMinimumRequirementEnabled()
+                || series.getMinimumRequiredEvents() == null
+                || series.getMinimumRequiredEvents() <= 0
+                || series.getMinimumPenaltyPoints() == null
+                || series.getMinimumPenaltyPoints() <= 0) {
+            return true;
+        }
+
+        return activityRegistrationRepository.findBySeriesIdAndStudentId(series.getId(), studentOpt.get().getId())
+                .stream()
+                .noneMatch(reg -> reg.getStatus() == RegistrationStatus.APPROVED
+                        || reg.getStatus() == RegistrationStatus.ATTENDED);
+    }
+
+    private void applyNoShowPenalty(ReminderSchedule reminder) {
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(reminder.getUser().getId());
+        if (studentOpt.isEmpty()) {
+            return;
+        }
+
+        Optional<ActivityRegistration> registrationOpt = activityRegistrationRepository.findByActivityIdAndStudentId(
+                reminder.getTargetId(),
+                studentOpt.get().getId());
+        if (registrationOpt.isEmpty()) {
+            return;
+        }
+
+        scoreRuleEngine.applyNoShowPenalty(registrationOpt.get(), resolveSystemSender());
+    }
+
+    private void applyTaskOverdue(ReminderSchedule reminder) {
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(reminder.getUser().getId());
+        if (studentOpt.isEmpty()) {
+            return;
+        }
+
+        Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository.findByTaskIdAndStudentId(
+                reminder.getTargetId(),
+                studentOpt.get().getId());
+        if (assignmentOpt.isEmpty()) {
+            return;
+        }
+
+        TaskAssignment assignment = assignmentOpt.get();
+        if (assignment.getTask() == null || assignment.getTask().getActivity() == null
+                || !assignment.getTask().getActivity().isRequiresSubmission()
+                || assignment.getTask().getActivity().getSeriesId() != null) {
+            return;
+        }
+        if (assignment.getStatus() != TaskStatus.COMPLETED && assignment.getStatus() != TaskStatus.OVERDUE) {
+            assignment.setStatus(TaskStatus.OVERDUE);
+            taskAssignmentRepository.save(assignment);
+        }
+        scoreRuleEngine.applyTaskOverdue(assignment, resolveSystemSender());
+    }
+
+    private void applySeriesMinimumRequirement(ReminderSchedule reminder) {
+        Optional<Student> studentOpt = studentRepository.findByUserIdAndIsDeletedFalse(reminder.getUser().getId());
+        Optional<ActivitySeries> seriesOpt = activitySeriesRepository.findById(reminder.getTargetId());
+        if (studentOpt.isEmpty() || seriesOpt.isEmpty()) {
+            return;
+        }
+
+        int completedCount = studentSeriesProgressRepository
+                .findByStudentIdAndSeriesId(studentOpt.get().getId(), seriesOpt.get().getId())
+                .map(progress -> progress.getCompletedCount() != null ? progress.getCompletedCount() : 0)
+                .orElse(0);
+        scoreRuleEngine.applySeriesMinimumRequirement(seriesOpt.get(), studentOpt.get(), completedCount,
+                resolveSystemSender());
     }
 }

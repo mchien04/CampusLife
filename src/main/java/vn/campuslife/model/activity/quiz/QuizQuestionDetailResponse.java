@@ -30,13 +30,21 @@ public class QuizQuestionDetailResponse {
     public static QuizQuestionDetailResponse fromEntity(
             MiniGameQuizQuestion question,
             Map<Long, Long> studentAnswers) {
-        return fromEntity(question, studentAnswers, null);
+        return fromEntity(question, studentAnswers, null, false);
     }
 
     public static QuizQuestionDetailResponse fromEntity(
             MiniGameQuizQuestion question,
             Map<Long, Long> studentAnswers,
             String publicUrl) {
+        return fromEntity(question, studentAnswers, publicUrl, false);
+    }
+
+    public static QuizQuestionDetailResponse fromEntity(
+            MiniGameQuizQuestion question,
+            Map<Long, Long> studentAnswers,
+            String publicUrl,
+            boolean showAnswers) {
         QuizQuestionDetailResponse response = new QuizQuestionDetailResponse();
         response.setId(question.getId());
         response.setQuestionText(question.getQuestionText());
@@ -58,11 +66,12 @@ public class QuizQuestionDetailResponse {
             response.setOptions(question.getOptions().stream()
                     .map(opt -> QuizOptionDetailResponse.fromEntity(
                             opt,
-                            opt.getId().equals(selectedOptionId)))
+                            opt.getId().equals(selectedOptionId),
+                            showAnswers))
                     .collect(Collectors.toList()));
         }
 
-        response.setCorrectOptionId(correctOptionId);
+        response.setCorrectOptionId(showAnswers ? correctOptionId : null);
         response.setSelectedOptionId(studentAnswers != null ? studentAnswers.get(question.getId()) : null);
         response.setIsCorrect(correctOptionId != null &&
                 correctOptionId.equals(studentAnswers != null ? studentAnswers.get(question.getId()) : null));

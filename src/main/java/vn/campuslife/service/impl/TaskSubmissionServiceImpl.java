@@ -113,8 +113,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                     assignment.setStatus(TaskStatus.ASSIGNED);
                     taskAssignmentRepository.save(assignment);
                     reminderScheduleService.cancelPendingTaskRemindersForAssignment(assignment);
-                    logger.info("Updated TaskAssignment status to ASSIGNED for task {} and student {}", 
-                        taskId, studentId);
+                    logger.info("Updated TaskAssignment status to ASSIGNED for task {} and student {}",
+                            taskId, studentId);
                 }
             } catch (Exception e) {
                 logger.warn("Failed to update TaskAssignment status after submission: {}", e.getMessage());
@@ -212,7 +212,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             // Set score to 0 for backward compatibility
             submission.setIsCompleted(isCompleted);
-            submission.setScore(0.0); 
+            submission.setScore(0.0);
             submission.setFeedback(feedback);
             submission.setGrader(graderOpt.get());
             submission.setStatus(SubmissionStatus.GRADED);
@@ -228,57 +228,17 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
                     TaskAssignment assignment = assignmentOpt.get();
                     assignment.setStatus(TaskStatus.COMPLETED);
                     taskAssignmentRepository.save(assignment);
-                    logger.info("Updated TaskAssignment status to COMPLETED for task {} and student {}", 
-                        task.getId(), submission.getStudent().getId());
+                    logger.info("Updated TaskAssignment status to COMPLETED for task {} and student {}",
+                            task.getId(), submission.getStudent().getId());
                 }
             } catch (Exception e) {
                 logger.warn("Failed to update TaskAssignment status after grading: {}", e.getMessage());
             }
 
-            // Tự động cập nhật ActivityParticipation và tổng hợp StudentScore nếu đủ điều kiện
             try {
-                Student student = submission.getStudent();
-
-                if (activity != null && activity.isRequiresSubmission()) {
-                    // Tìm registration của student cho activity này
-                    Optional<ActivityRegistration> regOpt = activityRegistrationRepository
-                            .findByActivityIdAndStudentId(activity.getId(), student.getId());
-                    if (regOpt.isPresent()) {
-                        ActivityRegistration registration = regOpt.get();
-
-                        // Chỉ tự động khi đã ATTENDED (đã check-in/out)
-                        if (registration.getStatus() == vn.campuslife.enumeration.RegistrationStatus.ATTENDED) {
-                            // Lấy participation theo registration
-                            Optional<ActivityParticipation> partOpt = activityParticipationRepository
-                                     .findByRegistration(registration);
-                            if (partOpt.isPresent()) {
-                                ActivityParticipation participation = partOpt.get();
-
-                                // Cập nhật participation với điểm 0 (vì điểm được cộng qua ScoreEntry ledger)
-                                participation.setIsCompleted(isCompleted);
-                                participation.setPointsEarned(BigDecimal.ZERO);
-                                participation.setParticipationType(ParticipationType.COMPLETED);
-                                activityParticipationRepository.save(participation);
-                            }
-                        }
-                    }
-
-                    // Áp dụng tính điểm qua ScoreRuleEngine
-                    scoreRuleEngine.applySubmissionGraded(submission, graderOpt.get());
-                }
+                finalizeSubmissionResultIfEligible(submission, graderOpt.get());
             } catch (Exception ex) {
                 logger.warn("Auto-update participation/score after grading failed: {}", ex.getMessage());
-            }
-
-            // Nếu thuộc series và được chấm đạt (isCompleted = true), cập nhật tiến trình của sinh viên trong chuỗi
-            if (activity != null && activity.getSeriesId() != null && isCompleted) {
-                try {
-                    activitySeriesService.updateStudentProgress(submission.getStudent().getId(), activity.getId());
-                    logger.info("Updated series progress for submission activity {} in series {}",
-                            activity.getName(), activity.getSeriesId());
-                } catch (Exception e) {
-                    logger.warn("Failed to update series progress: {}", e.getMessage());
-                }
             }
 
             return new Response(true, "Submission graded successfully", toDto(submission));
@@ -322,8 +282,8 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
             taskAssignmentRepository.findByTaskIdAndStudentId(
                     submission.getTask().getId(),
-                    submission.getStudent().getId()
-            ).ifPresent(reminderScheduleService::createTaskRemindersForAssignment);
+                    submission.getStudent().getId())
+                    .ifPresent(reminderScheduleService::createTaskRemindersForAssignment);
 
             return new Response(true, "Submission deleted successfully", null);
         } catch (Exception e) {
@@ -450,5 +410,49 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         return "file";
     }
 
-}
+    private void finalizeSubmissionResultIfEligible(TaskSubmission submission, User actor) {
+        ActivityTask task = submission.getTask();
+        Activity activity = task != null ? task.getActivity() : null;
+        if (activity == null || !activity.isRequiresSubmission()) {
+            return;
+        }
 
+        Student student = submission.getStudent();
+        Optional<ActivityRegistration> regOpt = activityRegistrationRepository
+                .findByActivityIdAndStudentId(activity.getId(), student.getId());
+        if (regOpt.isEmpty()) {
+            return;
+        }
+
+        ActivityRegistration registration = regOpt.get();
+        if (registration.getStatus() != vn.campuslife.enumeration.RegistrationStatus.ATTENDED) {
+            logger.info("Submission {} graded before attendance is confirmed for registration {}",
+                    submission.getId(), registration.getId());
+            return;
+        }
+
+        activityParticipationRepository.findByRegistration(registration)
+                .ifPresent(participation -> {
+                    participation.setIsCompleted(submission.getIsCompleted());
+                    participation.setPointsEarned(BigDecimal.ZERO);
+                    participation.setParticipationType(ParticipationType.COMPLETED);
+                    activityParticipationRepository.save(participation);
+                });
+
+        if (activity.getSeriesId() != null) {
+            if (Boolean.TRUE.equals(submission.getIsCompleted())) {
+                try {
+                    activitySeriesService.updateStudentProgress(student.getId(), activity.getId());
+                    logger.info("Updated series progress for submission activity {} in series {}",
+                            activity.getName(), activity.getSeriesId());
+                } catch (Exception e) {
+                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                }
+            }
+            return;
+        }
+
+        scoreRuleEngine.applySubmissionGraded(submission, actor);
+    }
+
+}

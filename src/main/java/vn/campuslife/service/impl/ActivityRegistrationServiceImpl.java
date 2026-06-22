@@ -44,9 +44,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final NotificationService notificationService;
     private final ReminderScheduleService reminderScheduleService;
     private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
+    private final ActivitySeriesRepository activitySeriesRepository;
     private final SemesterHelperService semesterHelperService;
     private final vn.campuslife.service.ScoreRuleEngine scoreRuleEngine;
     private final TaskSubmissionRepository taskSubmissionRepository;
+
     @Override
     @Transactional
     public Response registerForActivity(ActivityRegistrationRequest request, Long studentId) {
@@ -125,6 +127,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             if (saved.getStatus() == RegistrationStatus.APPROVED) {
                 try {
                     reminderScheduleService.createEventRemindersForApprovedRegistration(saved);
+                    syncSeriesMinimumRequirementReminder(activity.getSeriesId(), student);
                 } catch (Exception e) {
                     logger.error("Failed to prepare event reminders for registration {}: {}", saved.getId(),
                             e.getMessage(), e);
@@ -299,6 +302,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
                 try {
                     reminderScheduleService.createEventRemindersForApprovedRegistration(savedRegistration);
+                    syncSeriesMinimumRequirementReminder(savedRegistration.getSeriesId(),
+                            savedRegistration.getStudent());
                 } catch (Exception e) {
                     logger.error("Failed to prepare event reminders for registration {}: {}",
                             savedRegistration.getId(), e.getMessage(), e);
@@ -403,10 +408,17 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             registration = registrationRepository.findByTicketCode(request.getTicketCode())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy ticketCode"));
         } else if (request.getStudentId() != null) {
-            registration = registrationRepository.findByStudentIdAndStatus(
+            List<ActivityRegistration> approvedRegistrations = registrationRepository.findListByStudentIdAndStatus(
                     request.getStudentId(),
-                    RegistrationStatus.APPROVED)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này"));
+                    RegistrationStatus.APPROVED);
+            if (approvedRegistrations.isEmpty()) {
+                throw new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này");
+            }
+            if (approvedRegistrations.size() > 1) {
+                throw new RuntimeException(
+                        "Sinh viên có nhiều đăng ký đã duyệt. Vui lòng dùng ticketCode để check-in đúng sự kiện");
+            }
+            registration = approvedRegistrations.get(0);
         } else {
             return Response.error("Cần cung cấp ticketCode hoặc studentId");
         }
@@ -421,12 +433,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
 
         ParticipationType currentType = participation.getParticipationType();
+        Activity activity = registration.getActivity();
+        LocalDateTime now = LocalDateTime.now();
 
         // CHECK-IN (lần 1) - từ REGISTERED/APPROVED sang CHECKED_IN
         if (currentType == ParticipationType.REGISTERED) {
             participation.setParticipationType(ParticipationType.CHECKED_IN);
-            participation.setCheckInTime(LocalDateTime.now());
-            participation.setDate(LocalDateTime.now());
+            participation.setCheckInTime(now);
+            participation.setDate(now);
             participationRepository.save(participation);
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
@@ -434,52 +448,23 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return Response.success("Check-in thành công. Vui lòng check-out khi rời khỏi sự kiện.", resp);
         }
 
-        // CHECK-OUT (lần 2) - từ CHECKED_IN sang CHECKED_OUT → ATTENDED
+        // CHECK-OUT (lần 2) - từ CHECKED_IN sang ATTENDED/COMPLETED
         else if (currentType == ParticipationType.CHECKED_IN) {
-            participation.setParticipationType(ParticipationType.CHECKED_OUT);
-            participation.setCheckOutTime(LocalDateTime.now());
-            participationRepository.save(participation);
-
-            // Đổi registration status sang ATTENDED
-            registration.setStatus(RegistrationStatus.ATTENDED);
-            registrationRepository.save(registration);
-
-            // Chuyển participation sang ATTENDED
-            participation.setParticipationType(ParticipationType.ATTENDED);
-            participationRepository.save(participation);
-
-            // Nếu activity không yêu cầu nộp bài, tự động cập nhật điểm và isCompleted
-            Activity activity = registration.getActivity();
-            if (!activity.isRequiresSubmission()) {
-                participation.setIsCompleted(true);
-                participation.setParticipationType(ParticipationType.COMPLETED);
-
-                // XỬ LÝ ĐIỂM: Sử dụng ScoreRuleEngine
-                participation.setPointsEarned(java.math.BigDecimal.ZERO);
-                participationRepository.save(participation);
-                
-                try {
-                    scoreRuleEngine.applyActivityCompleted(participation, participation.getRegistration().getStudent().getUser());
-                } catch (Exception e) {
-                    logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
-                }
-                
-                if (activity.getSeriesId() != null) {
-                    try {
-                        activitySeriesService.updateStudentProgress(
-                                registration.getStudent().getId(),
-                                activity.getId());
-                    } catch (Exception e) {
-                        logger.warn("Failed to update series progress: {}", e.getMessage());
-                    }
-                }
-            }
+            markParticipationAsAttended(registration, participation, now, true);
+            boolean completed = finalizeAttendanceOutcome(registration, participation,
+                    participation.getRegistration().getStudent().getUser());
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
 
-            String message = activity.isRequiresSubmission()
-                    ? "Check-out thành công. Đã hoàn thành tham gia sự kiện."
-                    : "Check-out thành công. Đã hoàn thành tham gia sự kiện và được điểm tự động.";
+            String message = completed
+                    ? (activity.getSeriesId() != null
+                            ? "Check-out thành công. Đã hoàn thành mốc sự kiện trong chuỗi."
+                            : "Check-out thành công. Đã hoàn thành tham gia sự kiện.")
+                    : activity.isRequiresSubmission()
+                            ? "Check-out thành công. Đã ghi nhận tham gia sự kiện, chờ bài nộp được chấm để hoàn tất."
+                            : (activity.getSeriesId() != null
+                                    ? "Check-out thành công. Đã ghi nhận tham gia mốc trong chuỗi."
+                                    : "Check-out thành công. Đã ghi nhận tham gia sự kiện.");
 
             return Response.success(message, resp);
         }
@@ -523,66 +508,23 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                         return participationRepository.save(newParticipation);
                     });
 
-            // 5. Logic check-in/check-out
+            // 5. Activity QR: xác nhận ATTENDED nhanh, không mô phỏng flow 2 bước
             LocalDateTime now = LocalDateTime.now();
-            boolean isFirstTime = participation.getCheckInTime() == null;
-
-            if (isFirstTime) {
-                // Lần đầu quét QR: Set cả checkInTime VÀ checkOutTime (check-in và check-out
-                // cùng lúc)
-                participation.setCheckInTime(now);
-                participation.setCheckOutTime(now);
-                participation.setParticipationType(ParticipationType.ATTENDED);
-                participation.setDate(now);
-                registration.setStatus(RegistrationStatus.ATTENDED);
-                registrationRepository.save(registration);
-                logger.info("Student {} checked in and out to activity {} via QR code (first time)", studentId,
-                        activity.getId());
-            } else {
-                // Đã có checkInTime: Chỉ set checkOutTime (check-out)
-                if (participation.getCheckOutTime() != null) {
-                    return Response.error("Bạn đã check-out activity này rồi");
-                }
-                participation.setCheckOutTime(now);
-                participation.setParticipationType(ParticipationType.ATTENDED);
-                registration.setStatus(RegistrationStatus.ATTENDED);
-                registrationRepository.save(registration);
-                logger.info("Student {} checked out from activity {} via QR code", studentId, activity.getId());
+            if (participation.getParticipationType() == ParticipationType.COMPLETED) {
+                return Response.error("Bạn đã hoàn thành điểm danh activity này rồi");
             }
 
-            // 7. Xử lý điểm (chỉ khi check-out, không phải check-in)
-            // Với logic mới: cả lần đầu và lần sau đều là check-out nên đều xử lý điểm
-            // CTXH: Cả sinh viên quét QR code và admin/manager quét ticketCode đều được
-            // cộng điểm
-            if (!activity.isRequiresSubmission()) {
-                participation.setIsCompleted(true);
-                participation.setParticipationType(ParticipationType.COMPLETED);
-
-                // XỬ LÝ ĐIỂM: Sử dụng ScoreRuleEngine
-                participation.setPointsEarned(java.math.BigDecimal.ZERO);
-                participationRepository.save(participation);
-                
-                try {
-                    scoreRuleEngine.applyActivityCompleted(participation, participation.getRegistration().getStudent().getUser());
-                } catch (Exception e) {
-                    logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
-                }
-                
-                if (activity.getSeriesId() != null) {
-                    try {
-                        activitySeriesService.updateStudentProgress(
-                                registration.getStudent().getId(),
-                                activity.getId());
-                    } catch (Exception e) {
-                        logger.warn("Failed to update series progress: {}", e.getMessage());
-                    }
-                }
-            }
-
-            participationRepository.save(participation);
+            markParticipationAsAttended(registration, participation, now, false);
+            boolean completed = finalizeAttendanceOutcome(registration, participation,
+                    participation.getRegistration().getStudent().getUser());
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
-            return Response.success("Điểm danh thành công bằng QR code", resp);
+            String message = completed
+                    ? (activity.getSeriesId() != null
+                            ? "Điểm danh thành công bằng QR code. Đã ghi nhận hoàn thành mốc trong chuỗi."
+                            : "Điểm danh thành công bằng QR code. Đã ghi nhận hoàn thành sự kiện.")
+                    : "Điểm danh thành công bằng QR code. Đã ghi nhận tham gia sự kiện.";
+            return Response.success(message, resp);
 
         } catch (RuntimeException e) {
             logger.error("Failed to check-in by QR code: {}", e.getMessage());
@@ -609,8 +551,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             // Kiểm tra đã ATTENDED chưa
-            if (participation.getParticipationType() != ParticipationType.ATTENDED) {
-                return Response.error("Sinh viên chưa hoàn thành check-in/check-out");
+            if (participation.getParticipationType() != ParticipationType.ATTENDED
+                    && participation.getParticipationType() != ParticipationType.COMPLETED) {
+                return Response.error("Sinh viên chưa đạt trạng thái tham dự hợp lệ");
             }
 
             Activity activity = participation.getRegistration().getActivity();
@@ -628,10 +571,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
                 // ✅ SỰ KIỆN CÓ BÀI NỘP: Điểm đã được cộng qua createScoreFromSubmission()
                 // Chỉ cần cập nhật status, KHÔNG set pointsEarned (để tránh cộng trùng)
-                participation.setIsCompleted(isCompleted);
-                participation.setPointsEarned(BigDecimal.ZERO); // Điểm đã cộng qua submission
-                participation.setParticipationType(ParticipationType.COMPLETED);
-                participationRepository.save(participation);
+                markParticipationCompleted(participation, isCompleted);
 
                 logger.info(
                         "Completed grading for submission-based activity {}. Points were already added via submission.",
@@ -648,35 +588,38 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     }
                 }
 
-                return Response.success("Đã chấm điểm completion (điểm đã được tính từ bài nộp)", participation);
+                String message = activity.getSeriesId() != null
+                        ? "Đã ghi nhận hoàn thành mốc trong chuỗi sự kiện từ bài nộp"
+                        : "Đã chấm điểm completion (điểm đã được tính từ bài nộp)";
+                return Response.success(message, participation);
             }
 
-            // ✅ SỰ KIỆN KHÔNG CÓ BÀI NỘP: Tính điểm từ maxPoints/penalty
-            // Nhưng phải phân biệt giữa activity đơn lẻ và activity trong series
+            markParticipationCompleted(participation, isCompleted);
 
-            participation.setIsCompleted(isCompleted);
-            participation.setPointsEarned(java.math.BigDecimal.ZERO);
-            participation.setParticipationType(vn.campuslife.enumeration.ParticipationType.COMPLETED);
-            participationRepository.save(participation);
-            
-            try {
-                scoreRuleEngine.applyActivityCompleted(participation, participation.getRegistration().getStudent().getUser());
-            } catch (Exception e) {
-                logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
-            }
-
-            // Nếu thuộc series, cập nhật tiến trình của sinh viên
-            if (activity.getSeriesId() != null && isCompleted) {
+            if (activity.getSeriesId() != null) {
+                if (isCompleted) {
+                    try {
+                        activitySeriesService.updateStudentProgress(
+                                participation.getRegistration().getStudent().getId(),
+                                activity.getId());
+                    } catch (Exception e) {
+                        logger.warn("Failed to update series progress: {}", e.getMessage());
+                    }
+                }
+            } else {
                 try {
-                    activitySeriesService.updateStudentProgress(
-                            participation.getRegistration().getStudent().getId(),
-                            activity.getId());
+                    scoreRuleEngine.applyActivityCompleted(
+                            participation,
+                            participation.getRegistration().getStudent().getUser());
                 } catch (Exception e) {
-                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                    logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
                 }
             }
 
-            return Response.success("Đã chấm điểm completion", participation);
+            String message = activity.getSeriesId() != null
+                    ? "Đã ghi nhận hoàn thành mốc trong chuỗi sự kiện"
+                    : "Đã chấm điểm completion";
+            return Response.success(message, participation);
         } catch (Exception e) {
             logger.error("Failed to grade completion: {}", e.getMessage(), e);
             return Response.error("Failed to grade completion: " + e.getMessage());
@@ -687,7 +630,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
      * Helper method để kiểm tra submission đã được grade
      */
     private boolean checkHasGradedSubmission(Long studentId, Long activityId) {
-        return taskSubmissionRepository.existsByActivityAndStudentAndStatus(activityId, studentId, vn.campuslife.enumeration.SubmissionStatus.GRADED);
+        return taskSubmissionRepository.existsByActivityAndStudentAndStatus(activityId, studentId,
+                vn.campuslife.enumeration.SubmissionStatus.GRADED);
     }
 
     private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration r) {
@@ -717,15 +661,18 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional(readOnly = true)
     public Response getParticipationReport(Long activityId) {
-        // Lấy tất cả registration đã duyệt
-        List<ActivityRegistration> approvedRegs = registrationRepository.findByActivityIdAndStatus(activityId,
-                RegistrationStatus.APPROVED);
+        List<ActivityRegistration> eligibleRegs = registrationRepository
+                .findByActivityIdAndActivityIsDeletedFalse(activityId)
+                .stream()
+                .filter(reg -> reg.getStatus() == RegistrationStatus.APPROVED
+                        || reg.getStatus() == RegistrationStatus.ATTENDED)
+                .toList();
 
-        // Lấy tất cả participation đã CHECKED_IN
-        List<ActivityParticipation> checkedInList = participationRepository
-                .findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
-
-        Set<Long> checkedInStudentIds = checkedInList.stream()
+        Set<ParticipationType> attendedStates = EnumSet.of(
+                ParticipationType.ATTENDED,
+                ParticipationType.COMPLETED);
+        Set<Long> attendedStudentIds = participationRepository.findByActivityId(activityId).stream()
+                .filter(ap -> attendedStates.contains(ap.getParticipationType()))
                 .map(ap -> ap.getRegistration().getStudent().getId())
                 .collect(Collectors.toSet());
 
@@ -733,11 +680,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         List<StudentResponse> attended = new ArrayList<>();
         List<StudentResponse> notAttended = new ArrayList<>();
 
-        for (ActivityRegistration reg : approvedRegs) {
+        for (ActivityRegistration reg : eligibleRegs) {
             Student s = reg.getStudent();
             StudentResponse dto = StudentResponse.fromEntity(s, uploadProperties.getPublicUrl());
 
-            if (checkedInStudentIds.contains(s.getId())) {
+            if (attendedStudentIds.contains(s.getId())) {
                 attended.add(dto);
             } else {
                 notAttended.add(dto);
@@ -910,7 +857,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.getCheckOutTime());
     }
 
-
     /**
      * Lấy danh sách Đăng ký của sinh theo status
      */
@@ -1036,6 +982,116 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         return approvedCount < ticketQuantity;
     }
 
+    private void markParticipationAsAttended(ActivityRegistration registration,
+            ActivityParticipation participation,
+            LocalDateTime attendedAt,
+            boolean fromTicketFlow) {
+        if (participation.getCheckInTime() == null) {
+            participation.setCheckInTime(attendedAt);
+        }
+        if (fromTicketFlow) {
+            participation.setCheckOutTime(attendedAt);
+        }
+        participation.setParticipationType(ParticipationType.ATTENDED);
+        participation.setDate(attendedAt);
+        participationRepository.save(participation);
+
+        if (registration.getStatus() != RegistrationStatus.ATTENDED) {
+            registration.setStatus(RegistrationStatus.ATTENDED);
+            registrationRepository.save(registration);
+        }
+    }
+
+    private boolean finalizeAttendanceOutcome(ActivityRegistration registration,
+            ActivityParticipation participation,
+            User actor) {
+        Activity activity = registration.getActivity();
+        if (activity == null || participation.getParticipationType() == ParticipationType.COMPLETED) {
+            return participation.getParticipationType() == ParticipationType.COMPLETED;
+        }
+
+        if (!activity.isRequiresSubmission()) {
+            markParticipationCompleted(participation, true);
+            applyStandaloneOrSeriesAttendanceResult(registration, participation, actor);
+            return true;
+        }
+
+        Optional<TaskSubmission> gradedSubmissionOpt = findLatestGradedSubmission(
+                registration.getStudent().getId(),
+                activity.getId());
+        if (gradedSubmissionOpt.isEmpty()) {
+            return false;
+        }
+
+        markParticipationCompleted(participation, gradedSubmissionOpt.get().getIsCompleted());
+        applyStandaloneOrSeriesSubmissionResult(activity, registration.getStudent(), gradedSubmissionOpt.get(), actor);
+        return true;
+    }
+
+    private void markParticipationCompleted(ActivityParticipation participation, boolean isCompleted) {
+        participation.setIsCompleted(isCompleted);
+        participation.setPointsEarned(BigDecimal.ZERO);
+        participation.setParticipationType(ParticipationType.COMPLETED);
+        participationRepository.save(participation);
+    }
+
+    private void applyStandaloneOrSeriesAttendanceResult(ActivityRegistration registration,
+            ActivityParticipation participation,
+            User actor) {
+        Activity activity = registration.getActivity();
+        if (activity.getSeriesId() != null) {
+            try {
+                activitySeriesService.updateStudentProgress(
+                        registration.getStudent().getId(),
+                        activity.getId());
+            } catch (Exception e) {
+                logger.warn("Failed to update series progress: {}", e.getMessage());
+            }
+            return;
+        }
+
+        try {
+            scoreRuleEngine.applyActivityCompleted(participation, actor);
+        } catch (Exception e) {
+            logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
+        }
+    }
+
+    private void applyStandaloneOrSeriesSubmissionResult(Activity activity,
+            Student student,
+            TaskSubmission submission,
+            User actor) {
+        if (activity.getSeriesId() != null) {
+            if (Boolean.TRUE.equals(submission.getIsCompleted())) {
+                try {
+                    activitySeriesService.updateStudentProgress(student.getId(), activity.getId());
+                } catch (Exception e) {
+                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                }
+            }
+            return;
+        }
+
+        try {
+            scoreRuleEngine.applySubmissionGraded(submission, actor);
+        } catch (Exception e) {
+            logger.error("Failed to apply submission rules: {}", e.getMessage(), e);
+        }
+    }
+
+    private Optional<TaskSubmission> findLatestGradedSubmission(Long studentId, Long activityId) {
+        return taskSubmissionRepository.findByActivityAndStudentAndStatusOrderByLatest(
+                activityId,
+                studentId,
+                vn.campuslife.enumeration.SubmissionStatus.GRADED).stream().findFirst();
+    }
+
+    private void syncSeriesMinimumRequirementReminder(Long seriesId, Student student) {
+        if (seriesId == null || student == null) {
+            return;
+        }
+        activitySeriesRepository.findById(seriesId)
+                .ifPresent(series -> reminderScheduleService.syncSeriesMinimumRequirementReminder(series, student));
+    }
+
 }
-
-

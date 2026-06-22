@@ -20,6 +20,7 @@ public class UpdateMiniGameRequest {
     private Integer timeLimit;
     private Integer requiredCorrectAnswers;
     private Integer maxAttempts;
+    private Boolean showAnswers;
     private List<CreateMiniGameRequest.QuestionRequest> questions;
 }
 

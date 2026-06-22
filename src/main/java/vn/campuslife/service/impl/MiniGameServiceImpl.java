@@ -81,6 +81,7 @@ public class MiniGameServiceImpl implements MiniGameService {
     private final ScoreRuleEngine scoreRuleEngine;
     private final ScoreEntryRepository scoreEntryRepository;
     private final UploadProperties uploadProperties;
+
     public Response createMiniGame(CreateMiniGameRequest request) {
         try {
             Long activityId = request.getActivityId();
@@ -90,6 +91,7 @@ public class MiniGameServiceImpl implements MiniGameService {
             Integer timeLimit = request.getTimeLimit();
             Integer requiredCorrectAnswers = request.getRequiredCorrectAnswers();
             Integer maxAttempts = request.getMaxAttempts();
+            Boolean showAnswers = request.getShowAnswers();
             List<CreateMiniGameRequest.QuestionRequest> questions = request.getQuestions();
 
             Optional<Activity> activityOpt = activityRepository.findById(activityId);
@@ -102,7 +104,8 @@ public class MiniGameServiceImpl implements MiniGameService {
                 return Response.error("Activity type must be MINIGAME");
             }
 
-            // Kiểm tra xem activity đã có minigame chưa (đảm bảo 1 activity chỉ có 1 minigame)
+            // Kiểm tra xem activity đã có minigame chưa (đảm bảo 1 activity chỉ có 1
+            // minigame)
             Optional<MiniGame> existingMiniGameOpt = miniGameRepository.findByActivityId(activityId);
             if (existingMiniGameOpt.isPresent()) {
                 return Response.error("Activity already has a minigame. Use update API to modify it.");
@@ -119,6 +122,7 @@ public class MiniGameServiceImpl implements MiniGameService {
             miniGame.setActivity(activity);
             miniGame.setRequiredCorrectAnswers(requiredCorrectAnswers);
             miniGame.setMaxAttempts(maxAttempts);
+            miniGame.setShowAnswers(Boolean.TRUE.equals(showAnswers));
             MiniGame savedMiniGame = miniGameRepository.save(miniGame);
 
             // Tạo MiniGameQuiz
@@ -198,7 +202,15 @@ public class MiniGameServiceImpl implements MiniGameService {
                 return Response.error("MiniGame is not active");
             }
 
-            // Kiểm tra maxAttempts
+            // Kiểm tra xem có attempt đang làm chưa
+            Optional<MiniGameAttempt> inProgressOpt = attemptRepository.findInProgressAttempt(
+                    studentId, miniGameId, AttemptStatus.IN_PROGRESS);
+            if (inProgressOpt.isPresent()) {
+                StartAttemptResponse response = StartAttemptResponse.fromEntity(inProgressOpt.get());
+                return Response.success("Resuming existing attempt", response);
+            }
+
+            // Kiểm tra maxAttempts cho attempt mới
             if (miniGame.getMaxAttempts() != null) {
                 List<MiniGameAttempt> allAttempts = attemptRepository.findByStudentIdAndMiniGameId(studentId,
                         miniGameId);
@@ -206,14 +218,6 @@ public class MiniGameServiceImpl implements MiniGameService {
                 if (totalAttempts >= miniGame.getMaxAttempts()) {
                     return Response.error("Bạn đã đạt số lần làm quiz tối đa (" + miniGame.getMaxAttempts() + " lần)");
                 }
-            }
-
-            // Kiểm tra xem có attempt đang làm chưa
-            Optional<MiniGameAttempt> inProgressOpt = attemptRepository.findInProgressAttempt(
-                    studentId, miniGameId, AttemptStatus.IN_PROGRESS);
-            if (inProgressOpt.isPresent()) {
-                StartAttemptResponse response = StartAttemptResponse.fromEntity(inProgressOpt.get());
-                return Response.success("Resuming existing attempt", response);
             }
 
             // Tạo attempt mới
@@ -315,7 +319,9 @@ public class MiniGameServiceImpl implements MiniGameService {
                     }
                 }
             }
-            // Không đạt (FAILED): Không làm gì (không trừ điểm)
+            if (attempt.getStatus() == AttemptStatus.FAILED) {
+                applyExhaustedAttemptPenaltyIfNeeded(attempt);
+            }
 
             logger.info("Submitted attempt {} with {} correct answers", attemptId, correctCount);
             SubmitAttemptResponse response = SubmitAttemptResponse.fromEntity(
@@ -450,9 +456,6 @@ public class MiniGameServiceImpl implements MiniGameService {
         }
     }
 
-
-
-
     @Override
     @Transactional(readOnly = true)
     public Response getQuestions(Long miniGameId) {
@@ -527,7 +530,12 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             // Build response using DTO
             AttemptDetailResponse response = AttemptDetailResponse.fromEntities(
-                    attempt, quiz, studentAnswers, pointsEarned, uploadProperties.getPublicUrl());
+                    attempt,
+                    quiz,
+                    studentAnswers,
+                    pointsEarned,
+                    uploadProperties.getPublicUrl(),
+                    miniGame.isShowAnswers());
             return Response.success("Attempt detail retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to get attempt detail: {}", e.getMessage(), e);
@@ -559,6 +567,8 @@ public class MiniGameServiceImpl implements MiniGameService {
                 miniGame.setRequiredCorrectAnswers(request.getRequiredCorrectAnswers());
             if (request.getMaxAttempts() != null)
                 miniGame.setMaxAttempts(request.getMaxAttempts());
+            if (request.getShowAnswers() != null)
+                miniGame.setShowAnswers(request.getShowAnswers());
 
             // Nếu có questions mới, xóa cũ và tạo mới
             List<CreateMiniGameRequest.QuestionRequest> questions = request.getQuestions();
@@ -731,19 +741,50 @@ public class MiniGameServiceImpl implements MiniGameService {
     }
 
     private BigDecimal resolvePointsEarned(MiniGameAttempt attempt) {
-        if (attempt == null || attempt.getStatus() != AttemptStatus.PASSED) {
+        if (attempt == null || attempt.getStatus() == AttemptStatus.IN_PROGRESS) {
             return BigDecimal.ZERO;
         }
 
         return scoreEntryRepository.findBySourceTypeAndSourceIdAndStatus(
-                        ScoreEntrySourceType.MINIGAME_ATTEMPT,
-                        attempt.getId(),
-                        ScoreEntryStatus.ACTIVE)
+                ScoreEntrySourceType.MINIGAME_ATTEMPT,
+                attempt.getId(),
+                ScoreEntryStatus.ACTIVE)
                 .stream()
                 .map(ScoreEntry::getPoints)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
+
+    private void applyExhaustedAttemptPenaltyIfNeeded(MiniGameAttempt attempt) {
+        if (attempt == null || attempt.getStatus() != AttemptStatus.FAILED || attempt.getMiniGame() == null) {
+            return;
+        }
+
+        MiniGame miniGame = attempt.getMiniGame();
+        Activity activity = miniGame.getActivity();
+        if (activity == null || activity.getSeriesId() != null) {
+            return;
+        }
+
+        Integer maxAttempts = miniGame.getMaxAttempts();
+        if (maxAttempts == null || maxAttempts <= 0) {
+            return;
+        }
+
+        if (attemptRepository.existsByStudentIdAndMiniGameIdAndStatus(
+                attempt.getStudent().getId(),
+                miniGame.getId(),
+                AttemptStatus.PASSED)) {
+            return;
+        }
+
+        int totalAttempts = attemptRepository.findByStudentIdAndMiniGameId(
+                attempt.getStudent().getId(),
+                miniGame.getId()).size();
+        if (totalAttempts < maxAttempts) {
+            return;
+        }
+
+        scoreRuleEngine.applyMiniGameExhaustedAttempts(attempt, attempt.getStudent().getUser());
+    }
 }
-
-

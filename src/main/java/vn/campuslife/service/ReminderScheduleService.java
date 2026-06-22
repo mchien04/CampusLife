@@ -1,7 +1,9 @@
 package vn.campuslife.service;
 
+import vn.campuslife.entity.ActivitySeries;
 import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
 
 public interface ReminderScheduleService {
@@ -17,4 +19,8 @@ public interface ReminderScheduleService {
     void cancelPendingTaskRemindersForAssignment(TaskAssignment assignment);
 
     void syncTaskRemindersForTask(ActivityTask task);
+
+    void syncSeriesMinimumRequirementReminder(ActivitySeries series, Student student);
+
+    void syncSeriesMinimumRequirementReminders(ActivitySeries series);
 }

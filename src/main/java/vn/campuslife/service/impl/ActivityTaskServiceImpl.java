@@ -24,6 +24,7 @@ import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
 import vn.campuslife.service.ActivityTaskService;
 import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.service.ScoreRuleEngine;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     private final StudentRepository studentRepository;
     private final TaskSubmissionRepository taskSubmissionRepository;
     private final ReminderScheduleService reminderScheduleService;
+    private final ScoreRuleEngine scoreRuleEngine;
 
     @Override
     @Transactional
@@ -537,12 +539,23 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                                 assignment.getStudent().getId())
                         .isPresent();
 
+                if (assignment.getTask().getActivity() != null
+                        && !assignment.getTask().getActivity().isRequiresSubmission()) {
+                    continue;
+                }
+
                 if (!hasSubmission
                         && assignment.getTask().getDeadline() != null
                         && assignment.getTask().getDeadline().isBefore(now)
                         && assignment.getStatus() != TaskStatus.COMPLETED) {
                     assignment.setStatus(TaskStatus.OVERDUE);
                     taskAssignmentRepository.save(assignment);
+                    try {
+                        scoreRuleEngine.applyTaskOverdue(assignment, assignment.getStudent().getUser());
+                    } catch (Exception ex) {
+                        logger.warn("Failed to apply overdue penalty for assignment {}: {}", assignment.getId(),
+                                ex.getMessage());
+                    }
                     updatedCount++;
                 }
             }
@@ -556,11 +569,12 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             return new Response(false, "Failed to check overdue assignments: " + e.getMessage(), null);
         }
     }
+
     @Override
     public Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId) {
         try {
-            List<TaskAssignment> assignments =
-                    taskAssignmentRepository.findByActivityIdAndStudentId(activityId, studentId);
+            List<TaskAssignment> assignments = taskAssignmentRepository.findByActivityIdAndStudentId(activityId,
+                    studentId);
 
             if (assignments.isEmpty()) {
                 return new Response(false, "No task assignments found for this student in the activity", null);
@@ -573,4 +587,3 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         }
     }
 }
-

@@ -67,5 +67,9 @@ public class MiniGame {
     @Column
     @Comment("Số lần làm quiz tối đa (null = không giới hạn)")
     private Integer maxAttempts;
+
+    @Column(nullable = false)
+    @Comment("Có cho phép sinh viên xem đáp án sau khi nộp bài không")
+    private boolean showAnswers = false;
 }
 

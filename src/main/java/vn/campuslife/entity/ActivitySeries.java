@@ -32,6 +32,18 @@ public class ActivitySeries {
     @Comment("JSON: {\"3\": 5, \"4\": 7, \"5\": 10} - Mốc điểm thưởng")
     private String milestonePoints;
 
+    @Column(nullable = false)
+    @Comment("Bật/tắt rule yêu cầu tham gia tối thiểu để tránh bị trừ điểm")
+    private boolean minimumRequirementEnabled = false;
+
+    @Column
+    @Comment("Số sự kiện tối thiểu phải hoàn thành để không bị trừ điểm")
+    private Integer minimumRequiredEvents;
+
+    @Column
+    @Comment("Số điểm bị trừ nếu không đạt yêu cầu tối thiểu")
+    private Integer minimumPenaltyPoints;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Comment("Loại điểm để cộng milestone (REN_LUYEN, CONG_TAC_XA_HOI, etc.)")

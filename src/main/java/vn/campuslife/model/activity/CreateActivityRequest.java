@@ -1,10 +1,10 @@
 package vn.campuslife.model.activity;
 
 import lombok.Data;
+import vn.campuslife.enumeration.ActivityPresetCode;
 import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -12,6 +12,8 @@ import java.util.List;
 public class CreateActivityRequest {
     private String name;
     private ActivityType type;
+    private ActivityPresetCode presetCode;
+    private ActivityPresetConfig presetConfig;
 
     private String description;
     private LocalDateTime startDate;

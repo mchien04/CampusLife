@@ -21,6 +21,7 @@ import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.series.SeriesResponse;
 import vn.campuslife.model.activity.series.SeriesOverviewResponse;
 import vn.campuslife.model.activity.series.SeriesProgressItemResponse;
 import vn.campuslife.model.activity.series.SeriesProgressListResponse;
@@ -32,6 +33,7 @@ import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.service.SemesterHelperService;
 
@@ -64,13 +66,15 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final DepartmentRepository departmentRepository;
     private final SemesterHelperService semesterHelperService;
     private final ScoreRuleEngine scoreRuleEngine;
+    private final ReminderScheduleService reminderScheduleService;
 
     @Override
     @Transactional
     public Response createSeries(String name, String description, String milestonePointsJson,
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
-            Boolean requiresApproval, Integer ticketQuantity) {
+            Boolean requiresApproval, Integer ticketQuantity,
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Series name is required");
@@ -78,6 +82,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         if (scoreType == null) {
             throw new IllegalArgumentException("ScoreType is required");
         }
+        validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
 
         ActivitySeries series = new ActivitySeries();
         series.setName(name);
@@ -88,6 +93,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         series.setRegistrationDeadline(registrationDeadline);
         series.setRequiresApproval(requiresApproval != null ? requiresApproval : true);
         series.setTicketQuantity(ticketQuantity);
+        series.setMinimumRequirementEnabled(Boolean.TRUE.equals(minimumRequirementEnabled));
+        series.setMinimumRequiredEvents(minimumRequiredEvents);
+        series.setMinimumPenaltyPoints(minimumPenaltyPoints);
         series.setCreatedAt(LocalDateTime.now());
         series.setDeleted(false); // Set default value for isDeleted
 
@@ -102,7 +110,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
         ActivitySeries saved = seriesRepository.save(series);
         logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
-        return Response.success("Activity series created successfully", saved);
+        return Response.success("Activity series created successfully", toSeriesResponse(saved));
     }
 
     @Override
@@ -187,6 +195,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
         // Auto-register all students who already registered any activity in this series
         autoRegisterStudentsForNewActivityInSeries(series, saved);
+        reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
 
         return Response.success("Activity created in series successfully", saved);
     }
@@ -305,6 +314,10 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 logger.info("Created {} participations for series registrations", participationsToCreate.size());
             }
 
+            if (registrations.stream().anyMatch(reg -> reg.getStatus() == RegistrationStatus.APPROVED)) {
+                reminderScheduleService.syncSeriesMinimumRequirementReminder(series, student);
+            }
+
             logger.info("Registered student {} for {} activities in series {}",
                     studentId, registrations.size(), seriesId);
 
@@ -339,6 +352,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             ActivitySeries series = seriesOpt.get();
             if (!series.isDeleted()) {
                 autoRegisterStudentsForNewActivityInSeries(series, savedActivity);
+                reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
             }
 
             logger.info("Added activity {} to series {} with order {}", activityId, seriesId, order);
@@ -558,10 +572,43 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     @Override
     @Transactional
     public Response checkMinimumRequirement(Long studentId, Long seriesId) {
-        // TODO: Implement penalty logic if student doesn't meet minimum requirement
-        // This would need additional fields in ActivitySeries: minimumRequired,
-        // penaltyPoints
-        return Response.success("Minimum requirement check not yet implemented", null);
+        try {
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+
+            ActivitySeries series = seriesOpt.get();
+            Student student = studentOpt.get();
+
+            if (!series.isMinimumRequirementEnabled()) {
+                return Response.success("Series minimum requirement is disabled", null);
+            }
+
+            int completedCount = progressRepository.findByStudentIdAndSeriesId(studentId, seriesId)
+                    .map(StudentSeriesProgress::getCompletedCount)
+                    .orElse(0);
+
+            scoreRuleEngine.applySeriesMinimumRequirement(series, student, completedCount, student.getUser());
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("studentId", studentId);
+            result.put("seriesId", seriesId);
+            result.put("completedCount", completedCount);
+            result.put("minimumRequiredEvents", series.getMinimumRequiredEvents());
+            result.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
+            result.put("minimumRequirementMet",
+                    series.getMinimumRequiredEvents() == null || completedCount >= series.getMinimumRequiredEvents());
+            return Response.success("Series minimum requirement checked", result);
+        } catch (Exception e) {
+            logger.error("Failed to check series minimum requirement: {}", e.getMessage(), e);
+            return Response.error("Failed to check series minimum requirement: " + e.getMessage());
+        }
     }
 
     @Override
@@ -584,6 +631,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                         seriesMap.put("registrationDeadline", series.getRegistrationDeadline());
                         seriesMap.put("requiresApproval", series.isRequiresApproval());
                         seriesMap.put("ticketQuantity", series.getTicketQuantity());
+                        seriesMap.put("minimumRequirementEnabled", series.isMinimumRequirementEnabled());
+                        seriesMap.put("minimumRequiredEvents", series.getMinimumRequiredEvents());
+                        seriesMap.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
                         seriesMap.put("createdAt", series.getCreatedAt());
                         seriesMap.put("isDeleted", series.isDeleted());
 
@@ -610,7 +660,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
             }
-            return Response.success("Series retrieved successfully", seriesOpt.get());
+            return Response.success("Series retrieved successfully", toSeriesResponse(seriesOpt.get()));
         } catch (Exception e) {
             logger.error("Failed to get series: {}", e.getMessage(), e);
             return Response.error("Failed to get series: " + e.getMessage());
@@ -744,6 +794,17 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             responseData.put("nextMilestonePoints", nextMilestonePoints);
             responseData.put("milestonePoints", milestonePoints);
             responseData.put("scoreType", series.getScoreType());
+            responseData.put("minimumRequirementEnabled", series.isMinimumRequirementEnabled());
+            responseData.put("minimumRequiredEvents", series.getMinimumRequiredEvents());
+            responseData.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
+            responseData.put("minimumRequirementMet",
+                    !series.isMinimumRequirementEnabled()
+                            || series.getMinimumRequiredEvents() == null
+                            || completedCount >= series.getMinimumRequiredEvents());
+            responseData.put("remainingToAvoidPenalty",
+                    !series.isMinimumRequirementEnabled() || series.getMinimumRequiredEvents() == null
+                            ? 0
+                            : Math.max(series.getMinimumRequiredEvents() - completedCount, 0));
 
             return Response.success("Student progress retrieved successfully", responseData);
         } catch (Exception e) {
@@ -1067,7 +1128,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     public Response updateSeries(Long seriesId, String name, String description, String milestonePointsJson,
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
-            Boolean requiresApproval, Integer ticketQuantity) {
+            Boolean requiresApproval, Integer ticketQuantity,
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints) {
         try {
             // Find series
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
@@ -1089,6 +1151,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (scoreType == null) {
                 return Response.error("ScoreType is required");
             }
+            validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
 
             // Update fields (only if provided)
             if (name != null) {
@@ -1133,10 +1196,20 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (ticketQuantity != null) {
                 series.setTicketQuantity(ticketQuantity);
             }
+            if (minimumRequirementEnabled != null) {
+                series.setMinimumRequirementEnabled(minimumRequirementEnabled);
+            }
+            if (minimumRequiredEvents != null) {
+                series.setMinimumRequiredEvents(minimumRequiredEvents);
+            }
+            if (minimumPenaltyPoints != null) {
+                series.setMinimumPenaltyPoints(minimumPenaltyPoints);
+            }
 
             ActivitySeries saved = seriesRepository.save(series);
+            reminderScheduleService.syncSeriesMinimumRequirementReminders(saved);
             logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
-            return Response.success("Activity series updated successfully", saved);
+            return Response.success("Activity series updated successfully", toSeriesResponse(saved));
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when updating series: {}", e.getMessage(), e);
             return Response.error("Invalid request: " + e.getMessage());
@@ -1185,6 +1258,47 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         } catch (Exception e) {
             logger.error("Failed to delete series: {}", e.getMessage(), e);
             return Response.error("Failed to delete series: " + e.getMessage());
+        }
+    }
+
+    private SeriesResponse toSeriesResponse(ActivitySeries series) {
+        SeriesResponse response = new SeriesResponse();
+        response.setId(series.getId());
+        response.setName(series.getName());
+        response.setDescription(series.getDescription());
+        response.setScoreType(series.getScoreType());
+        response.setMainActivityId(series.getMainActivity() != null ? series.getMainActivity().getId() : null);
+        response.setRegistrationStartDate(series.getRegistrationStartDate());
+        response.setRegistrationDeadline(series.getRegistrationDeadline());
+        response.setRequiresApproval(series.isRequiresApproval());
+        response.setTicketQuantity(series.getTicketQuantity());
+        response.setMinimumRequirementEnabled(series.isMinimumRequirementEnabled());
+        response.setMinimumRequiredEvents(series.getMinimumRequiredEvents());
+        response.setMinimumPenaltyPoints(series.getMinimumPenaltyPoints());
+        response.setCreatedAt(series.getCreatedAt());
+        if (series.getMilestonePoints() != null && !series.getMilestonePoints().isBlank()) {
+            try {
+                response.setMilestonePoints(objectMapper.readValue(
+                        series.getMilestonePoints(),
+                        new TypeReference<Map<Integer, Integer>>() {
+                        }));
+            } catch (Exception e) {
+                logger.warn("Failed to parse milestonePoints for series response {}", series.getId(), e);
+            }
+        }
+        return response;
+    }
+
+    private void validateMinimumRequirementConfig(Boolean minimumRequirementEnabled, Integer minimumRequiredEvents,
+            Integer minimumPenaltyPoints) {
+        if (!Boolean.TRUE.equals(minimumRequirementEnabled)) {
+            return;
+        }
+        if (minimumRequiredEvents == null || minimumRequiredEvents <= 0) {
+            throw new IllegalArgumentException("minimumRequiredEvents must be greater than 0 when minimum requirement is enabled");
+        }
+        if (minimumPenaltyPoints == null || minimumPenaltyPoints <= 0) {
+            throw new IllegalArgumentException("minimumPenaltyPoints must be greater than 0 when minimum requirement is enabled");
         }
     }
 

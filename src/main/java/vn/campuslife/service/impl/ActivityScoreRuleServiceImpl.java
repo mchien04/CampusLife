@@ -6,6 +6,9 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.ActivityScoreRule;
 import vn.campuslife.entity.Department;
+import vn.campuslife.enumeration.ActivityType;
+import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.ScoreSemesterPolicy;
 import vn.campuslife.enumeration.ScoreRuleTrigger;
 import vn.campuslife.exception.ResourceNotFoundException;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
@@ -43,6 +46,7 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
 
         if (requests != null) {
             for (ActivityScoreRuleRequest req : requests) {
+                validateRuleCompatibility(activity, req);
                 ActivityScoreRule rule = new ActivityScoreRule();
                 rule.setActivity(activity);
                 rule.setScoreType(req.getScoreType());
@@ -52,20 +56,68 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
                 rule.setFailPoints(req.getFailPoints() != null ? req.getFailPoints() : java.math.BigDecimal.ZERO);
                 rule.setAudience(req.getAudience());
                 rule.setSemesterPolicy(req.getSemesterPolicy());
-                
+
                 if (req.getExplicitSemesterId() != null) {
                     rule.setExplicitSemester(semesterRepository.findById(req.getExplicitSemesterId())
                             .orElseThrow(() -> new ResourceNotFoundException("Semester not found")));
                 }
-                
+
                 if (req.getDepartmentIds() != null && !req.getDepartmentIds().isEmpty()) {
                     List<Department> depts = departmentRepository.findAllById(req.getDepartmentIds());
                     rule.setTargetDepartments(new LinkedHashSet<>(depts));
                 }
-                
+
                 rule.setEnabled(req.getEnabled() != null ? req.getEnabled() : true);
                 ruleRepository.save(rule);
             }
+        }
+    }
+
+    private void validateRuleCompatibility(Activity activity, ActivityScoreRuleRequest request) {
+        if (request.getTriggerType() == null) {
+            throw new IllegalArgumentException("Score rule triggerType is required");
+        }
+        if (request.getScoreType() == null) {
+            throw new IllegalArgumentException("Score rule scoreType is required");
+        }
+        if (request.getAudience() == null) {
+            throw new IllegalArgumentException("Score rule audience is required");
+        }
+        if (request.getSemesterPolicy() == null) {
+            throw new IllegalArgumentException("Score rule semesterPolicy is required");
+        }
+        if (request.getSemesterPolicy() == ScoreSemesterPolicy.EXPLICIT_SEMESTER
+                && request.getExplicitSemesterId() == null) {
+            throw new IllegalArgumentException(
+                    "explicitSemesterId is required when semesterPolicy is EXPLICIT_SEMESTER");
+        }
+        if ((request.getAudience() == ScoreRuleAudience.DEPARTMENT_ONLY
+                || request.getAudience() == ScoreRuleAudience.OUTSIDE_DEPARTMENTS_ONLY)
+                && (request.getDepartmentIds() == null || request.getDepartmentIds().isEmpty())) {
+            throw new IllegalArgumentException("departmentIds are required for department-scoped rules");
+        }
+        if (!activity.isRequiresSubmission()
+                && (request.getTriggerType() == ScoreRuleTrigger.SUBMISSION_GRADED
+                        || request.getTriggerType() == ScoreRuleTrigger.TASK_OVERDUE)) {
+            throw new IllegalArgumentException("Submission-based rules require activity.requiresSubmission = true");
+        }
+        if ((request.getTriggerType() == ScoreRuleTrigger.TASK_OVERDUE
+                || request.getTriggerType() == ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS
+                || request.getTriggerType() == ScoreRuleTrigger.NO_SHOW)
+                && request.getFailPoints() == null) {
+            throw new IllegalArgumentException("Penalty-style rules must define failPoints");
+        }
+        if (activity.getType() == ActivityType.MINIGAME
+                && request.getTriggerType() != ScoreRuleTrigger.MINIGAME_PASSED
+                && request.getTriggerType() != ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS) {
+            throw new IllegalArgumentException(
+                    "Minigame activity only supports MINIGAME_PASSED or MINIGAME_EXHAUSTED_ATTEMPTS rules");
+        }
+        if (activity.getType() != ActivityType.MINIGAME
+                && (request.getTriggerType() == ScoreRuleTrigger.MINIGAME_PASSED
+                        || request.getTriggerType() == ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS)) {
+            throw new IllegalArgumentException(
+                    "MINIGAME_PASSED and MINIGAME_EXHAUSTED_ATTEMPTS rules are only valid for minigame activity");
         }
     }
 

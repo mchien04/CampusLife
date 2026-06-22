@@ -19,10 +19,17 @@ public class QuizOptionDetailResponse {
     private Boolean isSelected;
 
     public static QuizOptionDetailResponse fromEntity(MiniGameQuizOption option, Boolean isSelected) {
+        return fromEntity(option, isSelected, false);
+    }
+
+    public static QuizOptionDetailResponse fromEntity(
+            MiniGameQuizOption option,
+            Boolean isSelected,
+            boolean showAnswers) {
         QuizOptionDetailResponse response = new QuizOptionDetailResponse();
         response.setId(option.getId());
         response.setText(option.getText());
-        response.setIsCorrect(option.isCorrect());
+        response.setIsCorrect(showAnswers ? option.isCorrect() : null);
         response.setIsSelected(isSelected != null && isSelected);
         return response;
     }
