@@ -46,6 +46,15 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
 
         if (requests != null) {
             for (ActivityScoreRuleRequest req : requests) {
+                if (req != null) {
+                    if ((req.getTriggerType() == ScoreRuleTrigger.TASK_OVERDUE
+                            || req.getTriggerType() == ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS
+                            || req.getTriggerType() == ScoreRuleTrigger.NO_SHOW)
+                            && req.getFailPoints() == null
+                            && req.getPoints() != null) {
+                        req.setFailPoints(req.getPoints());
+                    }
+                }
                 validateRuleCompatibility(activity, req);
                 ActivityScoreRule rule = new ActivityScoreRule();
                 rule.setActivity(activity);

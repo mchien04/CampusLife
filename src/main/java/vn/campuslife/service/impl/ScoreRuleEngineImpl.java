@@ -20,6 +20,7 @@ import vn.campuslife.entity.TaskSubmission;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.ScoreRuleCalculation;
 import vn.campuslife.enumeration.ScoreRuleTrigger;
 import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.model.score.ScoreEntryCommand;
@@ -114,7 +115,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 continue;
             }
 
-            BigDecimal points = rule.getFailPoints() != null ? rule.getFailPoints() : BigDecimal.ZERO;
+            BigDecimal points = applySignForFailure(rule, rule.getFailPoints() != null ? rule.getFailPoints() : BigDecimal.ZERO);
             if (points.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
@@ -165,7 +166,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 continue;
             }
 
-            BigDecimal points = rule.getFailPoints() != null ? rule.getFailPoints() : BigDecimal.ZERO;
+            BigDecimal points = applySignForFailure(rule, rule.getFailPoints() != null ? rule.getFailPoints() : BigDecimal.ZERO);
             if (points.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
@@ -209,7 +210,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 continue;
             }
 
-            BigDecimal points = rule.getFailPoints() != null ? rule.getFailPoints() : BigDecimal.ZERO;
+            BigDecimal points = applySignForFailure(rule, rule.getFailPoints() != null ? rule.getFailPoints() : BigDecimal.ZERO);
             if (points.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
@@ -252,9 +253,9 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             BigDecimal points;
             if (vn.campuslife.enumeration.SubmissionStatus.GRADED.equals(submission.getStatus())
                     && Boolean.TRUE.equals(submission.getIsCompleted())) {
-                points = rule.getPoints();
+                points = applySignForSuccess(rule, rule.getPoints());
             } else {
-                points = rule.getFailPoints();
+                points = applySignForFailure(rule, rule.getFailPoints());
             }
 
             Semester semester = semesterResolver.resolveSemester(activity, rule, submission.getSubmittedAt());
@@ -456,5 +457,30 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             return !inDepartment;
 
         return false;
+    }
+
+    /**
+     * Dành cho nhánh SUCCESS (pass, cộng điểm).
+     * Thông thường không negate. Trường hợp đặc biệt nếu có thể bổ sung sau.
+     */
+    private BigDecimal applySignForSuccess(ActivityScoreRule rule, BigDecimal value) {
+        if (value == null) return BigDecimal.ZERO;
+        return value;
+    }
+
+    /**
+     * Dành cho nhánh FAILURE (fail / penalty).
+     * - PENALTY_POINTS: luôn trừ điểm → negate
+     * - PASS_FAIL_POINTS: fail cũng trừ điểm → negate
+     * FE truyền số dương (e.g. 4.8), BE lưu -4.8 vào score_entries.
+     */
+    private BigDecimal applySignForFailure(ActivityScoreRule rule, BigDecimal value) {
+        if (value == null) return BigDecimal.ZERO;
+        boolean shouldNegate = rule.getCalculation() == ScoreRuleCalculation.PENALTY_POINTS
+                || rule.getCalculation() == ScoreRuleCalculation.PASS_FAIL_POINTS;
+        if (shouldNegate && value.compareTo(BigDecimal.ZERO) > 0) {
+            return value.negate();
+        }
+        return value;
     }
 }
