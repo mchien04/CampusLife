@@ -65,9 +65,9 @@ public class SemesterHelperService {
             return getCurrentOpenSemester();
         }
 
-        Optional<Semester> semesterOpt = semesterRepository.findByDate(date);
-        if (semesterOpt.isPresent()) {
-            return semesterOpt.get();
+        java.util.List<Semester> list = semesterRepository.findByDate(date);
+        if (!list.isEmpty()) {
+            return list.get(0);
         }
 
         log.warn("Could not find semester for date {}. Using current open semester as fallback.", date);
@@ -80,9 +80,9 @@ public class SemesterHelperService {
     private Semester getCurrentOpenSemester() {
         return semesterRepository.findAll().stream()
                 .filter(Semester::isOpen)
-                .findFirst()
+                .max(java.util.Comparator.comparing(Semester::getStartDate, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
                 .orElse(semesterRepository.findAll().stream()
-                        .findFirst()
+                        .max(java.util.Comparator.comparing(Semester::getStartDate, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
                         .orElse(null));
     }
 }

@@ -374,7 +374,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         request.setPoints(points);
         request.setFailPoints(failPoints);
         request.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
-        request.setSemesterPolicy(ScoreSemesterPolicy.CURRENT_OPEN_SEMESTER);
+        request.setSemesterPolicy(ScoreSemesterPolicy.ACTIVITY_SEMESTER);
         request.setEnabled(true);
         return request;
     }
