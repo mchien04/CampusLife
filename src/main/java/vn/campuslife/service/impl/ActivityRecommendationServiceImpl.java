@@ -153,9 +153,6 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
                 appendIfNotBlank(profile, activity.getType().name());
             }
 
-            if (activity.getScoreType() != null) {
-                appendIfNotBlank(profile, activity.getScoreType().name());
-            }
         }
 
         return preprocessText(profile.toString());
@@ -207,9 +204,6 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
             appendIfNotBlank(content, activity.getType().name().replace("_", " "));
         }
 
-        if (activity.getScoreType() != null) {
-            appendIfNotBlank(content, activity.getScoreType().name().replace("_", " "));
-        }
 
         appendIfNotBlank(content, activity.getLocation());
         appendIfNotBlank(content, activity.getBenefits());
@@ -239,3 +233,5 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
     }
 
 }
+
+

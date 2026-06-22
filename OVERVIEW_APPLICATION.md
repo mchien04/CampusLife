@@ -47,8 +47,8 @@ ADMIN/MANAGER tạo học kỳ, khoa/lớp, activity/series/minigame
 → STUDENT check-in bằng ticket/code/QR hoặc nộp submission
 → MANAGER/ADMIN xác nhận/chấm điểm
 → Service cập nhật ActivityParticipation/TaskSubmission/MiniGameAttempt
-→ Service cập nhật StudentScore theo semester + ScoreType
-→ Ghi ScoreHistory
+→ ScoreRuleEngine tính toán điểm theo các quy tắc cấu hình (ActivityScoreRule)
+→ Hệ thống ghi nhận ScoreEntry và cập nhật StudentScore
 → Gửi Notification/Email/FCM nếu nghiệp vụ yêu cầu
 → Statistics/export đọc dữ liệu đã ghi nhận
 ```
@@ -58,7 +58,7 @@ Ba loại điểm chính:
 - `CONG_TAC_XA_HOI`
 - `CHUYEN_DE`
 
-Điểm có thể đến từ participation, graded submission, minigame reward và milestone của activity series. Khi sửa logic điểm, luôn kiểm tra `ScoreServiceImpl`, `ActivityRegistrationServiceImpl`, `TaskSubmissionServiceImpl`, `MiniGameServiceImpl`, `ActivitySeriesServiceImpl` và `ScoreHistory`.
+Điểm có thể đến từ participation, graded submission, minigame reward và milestone của activity series. Hệ thống sử dụng mô hình Rule Engine (`ScoreRuleEngineImpl`) để kích hoạt và tính điểm theo `ActivityScoreRule`, sau đó ghi nhận qua `ScoreEntryService`. Khi sửa logic điểm, hãy kiểm tra `ScoreRuleEngineImpl`, `ScoreEntryServiceImpl`, `ActivitySeriesServiceImpl` và các service trigger điểm.
 
 ### Module Chính
 
@@ -87,7 +87,8 @@ src/main/java/vn/campuslife/enumeration/Role.java
 src/main/java/vn/campuslife/enumeration/ScoreType.java
 src/main/java/vn/campuslife/enumeration/ActivityType.java
 src/main/java/vn/campuslife/service/impl/ActivityRegistrationServiceImpl.java
-src/main/java/vn/campuslife/service/impl/ScoreServiceImpl.java
+src/main/java/vn/campuslife/service/impl/ScoreRuleEngineImpl.java
+src/main/java/vn/campuslife/service/impl/ScoreEntryServiceImpl.java
 src/main/java/vn/campuslife/service/impl/PreparationServiceImpl.java
 src/main/java/vn/campuslife/service/impl/PreparationFinanceServiceImpl.java
 src/main/java/vn/campuslife/service/impl/PreparationExportServiceImpl.java
@@ -101,7 +102,7 @@ docs/preparation-fe-guide.md
 - Method ghi dữ liệu nên có `@Transactional`.
 - API mới phải cập nhật `SecurityConfig`.
 - Không trả entity phức tạp trực tiếp nếu dễ dính lazy loading/recursive JSON; ưu tiên DTO trong `model/`.
-- Thay đổi điểm phải ghi `ScoreHistory`.
+- Thay đổi điểm phải đi qua `ScoreRuleEngine` và được ghi nhận bằng `ScoreEntry`.
 - Thay đổi tài chính/preparation quan trọng phải ghi `AuditLog` nếu là hành động duyệt/phân bổ/chi tiêu.
 - Không sửa migration cũ đã chạy; thêm migration mới.
 - Không commit secret trong `application.properties`; production dùng env vars.
@@ -159,7 +160,8 @@ MiniGame (questionCount, timeLimit, rewardPoints, maxAttempts)
   ├── MiniGameQuiz → options
   └── MiniGameAttempt (attemptStatus, score)
 
-ScoreHistory (student, semester, scoreType, oldScore, newScore, reason)
+ScoreEntry (student, semester, scoreType, points, reason)
+ActivityScoreRule (activityType, scoreType, triggerEvent, fixedPoints)
 Notification (recipient, type, title, content)
 ```
 
@@ -169,9 +171,9 @@ Notification (recipient, type, title, content)
 1. Sinh viên đăng ký → `ActivityRegistration`
 2. Tham gia (check-in) → `ActivityParticipation` (với `pointsEarned`)
 3. Nếu `requiresSubmission = true`: nộp `TaskSubmission` → Giảng viên chấm điểm (`score`), set `isCompleted = true`. Nếu không yêu cầu nộp, check-in có thể được xem là hoàn thành tùy cấu hình.
-4. Hệ thống cập nhật `StudentScore` (tìm theo `student`, `semester`, `scoreType`).
-5. Nếu thuộc chuỗi sự kiện (`ActivitySeries`) và đạt mốc tiến độ → cộng thêm `milestonePoints`.
-6. Ghi lại `ScoreHistory` mỗi khi có thay đổi điểm.
+4. Hệ thống đi qua `ScoreRuleEngine` để tính toán số điểm được cộng hoặc trừ.
+5. Nếu thuộc chuỗi sự kiện (`ActivitySeries`) và đạt mốc tiến độ → `ScoreRuleEngine` xử lý trigger `SERIES_MILESTONE` để cộng `milestonePoints`.
+6. Ghi lại `ScoreEntry` và cập nhật `StudentScore` thông qua `ScoreEntryService` mỗi khi có thay đổi điểm.
 
 **Các nghiệp vụ đặc thù cần lưu ý:**
 - **Xác định Học kỳ (Semester):** Sử dụng `SemesterHelperService.getSemesterForActivity(activity)` dựa vào `startDate` của hoạt động để xác định điểm sẽ được cộng vào học kỳ nào, kể cả khi hiện tại đang ở học kỳ khác.

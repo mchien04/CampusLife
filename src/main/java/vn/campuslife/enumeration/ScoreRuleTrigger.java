@@ -1,0 +1,11 @@
+package vn.campuslife.enumeration;
+
+public enum ScoreRuleTrigger {
+    PARTICIPATION_COMPLETED,
+    NO_SHOW,
+    SUBMISSION_GRADED,
+    MINIGAME_PASSED,
+    MINIGAME_EXHAUSTED_ATTEMPTS,
+    SERIES_MILESTONE_REACHED,
+    TASK_OVERDUE
+}

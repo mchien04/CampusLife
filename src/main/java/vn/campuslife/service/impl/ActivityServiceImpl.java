@@ -10,18 +10,23 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.Department;
 import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.model.ActivityResponse;
-import vn.campuslife.model.CreateActivityRequest;
+import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
+import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
+import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
+import vn.campuslife.model.activity.ActivityResponse;
+import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.UserRepository;
@@ -31,16 +36,25 @@ import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.enumeration.ParticipationType;
 import java.math.BigDecimal;
 import vn.campuslife.service.ActivityService;
+import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.service.ScorePresetService;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.util.UrlUtils;
 import vn.campuslife.enumeration.NotificationType;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.UUID;
 
@@ -50,22 +64,24 @@ public class ActivityServiceImpl implements ActivityService {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityServiceImpl.class);
 
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
-
     private final ActivityRepository activityRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
+    private final ActivitySeriesRepository activitySeriesRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ReminderScheduleService reminderScheduleService;
+    private final ActivityScoreRuleService activityScoreRuleService;
+    private final ScorePresetService scorePresetService;
+    private final UploadProperties uploadProperties;
 
     @Override
     @Transactional
     public Response createActivity(CreateActivityRequest request) {
         try {
+            scorePresetService.applyActivityPreset(request);
 
             String err = validateRequest(request);
             if (err != null)
@@ -77,7 +93,7 @@ public class ActivityServiceImpl implements ActivityService {
             applyRequestToEntity(request, a);
             a.setOrganizers(organizers);
             Activity saved = activityRepository.save(a);
-            
+
             // Auto-generate checkInCode if not provided
             if (saved.getCheckInCode() == null || saved.getCheckInCode().isBlank()) {
                 String checkInCode = generateCheckInCode(saved.getId());
@@ -85,15 +101,28 @@ public class ActivityServiceImpl implements ActivityService {
                 saved = activityRepository.save(saved);
                 logger.debug("Auto-generated checkInCode for activity {}: {}", saved.getId(), checkInCode);
             }
-            
-            // Auto-register students based on flags (this handles both isImportant and mandatoryForFacultyStudents)
+
+            // Persist score rules if provided
+            if (request.getScoreRules() != null && !request.getScoreRules().isEmpty()) {
+                activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
+                logger.debug("Persisted {} score rules for activity {}", request.getScoreRules().size(), saved.getId());
+            }
+
+            // Auto-register students based on flags (this handles both isImportant and
+            // mandatoryForFacultyStudents)
             // Note: autoRegisterStudents will skip if activity is draft
-            logger.debug("Activity created (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})", 
-                saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(), saved.isMandatoryForFacultyStudents());
+            logger.debug(
+                    "Activity created (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})",
+                    saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(),
+                    saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
+            syncSeriesMinimumRequirementReminders(saved);
 
             return new Response(true, "Activity created successfully", toResponse(saved));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid create activity request: {}", e.getMessage());
+            return new Response(false, e.getMessage(), null);
         } catch (Exception e) {
             logger.error("Failed to create activity: {}", e.getMessage(), e);
             return new Response(false, "Failed to create activity due to server error", null);
@@ -104,16 +133,18 @@ public class ActivityServiceImpl implements ActivityService {
     @Transactional
     public Response publishActivity(Long id) {
         var opt = activityRepository.findByIdAndIsDeletedFalse(id);
-        if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+        if (opt.isEmpty())
+            return new Response(false, "Activity not found", null);
         Activity a = opt.get();
-        
+
         // Kiểm tra xem activity có đang là draft không
         boolean wasDraft = a.isDraft();
-        
+
         a.setDraft(false);
         Activity saved = activityRepository.save(a);
-        
-        // Nếu activity vừa được publish (chuyển từ draft sang published) và có flag auto-register,
+
+        // Nếu activity vừa được publish (chuyển từ draft sang published) và có flag
+        // auto-register,
         // thì tự động đăng ký cho sinh viên
         if (wasDraft && (saved.isImportant() || saved.isMandatoryForFacultyStudents())) {
             try {
@@ -121,12 +152,12 @@ public class ActivityServiceImpl implements ActivityService {
                 reminderScheduleService.syncEventRemindersForActivity(saved);
                 logger.info("Auto-registered students after publishing activity: {}", saved.getName());
             } catch (Exception e) {
-                logger.error("Failed to auto-register students after publishing activity {}: {}", 
-                    saved.getId(), e.getMessage(), e);
+                logger.error("Failed to auto-register students after publishing activity {}: {}",
+                        saved.getId(), e.getMessage(), e);
                 // Không fail publish nếu auto-register lỗi, chỉ log
             }
         }
-        
+
         return new Response(true, "Activity published", toResponse(saved));
     }
 
@@ -134,7 +165,8 @@ public class ActivityServiceImpl implements ActivityService {
     @Transactional
     public Response unpublishActivity(Long id) {
         var opt = activityRepository.findByIdAndIsDeletedFalse(id);
-        if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+        if (opt.isEmpty())
+            return new Response(false, "Activity not found", null);
         Activity a = opt.get();
         a.setDraft(true);
         Activity saved = activityRepository.save(a);
@@ -145,21 +177,24 @@ public class ActivityServiceImpl implements ActivityService {
     @Transactional
     public Response copyActivity(Long id, Integer offsetDays) {
         var opt = activityRepository.findByIdAndIsDeletedFalse(id);
-        if (opt.isEmpty()) return new Response(false, "Activity not found", null);
+        if (opt.isEmpty())
+            return new Response(false, "Activity not found", null);
         Activity src = opt.get();
         int days = (offsetDays == null) ? 0 : offsetDays.intValue();
 
         Activity copy = new Activity();
         copy.setName(src.getName() + " (Copy)");
         copy.setType(src.getType());
-        copy.setScoreType(src.getScoreType());
+
         copy.setDescription(src.getDescription());
         copy.setStartDate(src.getStartDate() == null ? null : src.getStartDate().plusDays(days));
         copy.setEndDate(src.getEndDate() == null ? null : src.getEndDate().plusDays(days));
         copy.setRequiresSubmission(src.isRequiresSubmission());
-        copy.setMaxPoints(src.getMaxPoints());
-        copy.setRegistrationStartDate(src.getRegistrationStartDate() == null ? null : src.getRegistrationStartDate().plusDays(days));
-        copy.setRegistrationDeadline(src.getRegistrationDeadline() == null ? null : src.getRegistrationDeadline().plusDays(days));
+
+        copy.setRegistrationStartDate(
+                src.getRegistrationStartDate() == null ? null : src.getRegistrationStartDate().plusDays(days));
+        copy.setRegistrationDeadline(
+                src.getRegistrationDeadline() == null ? null : src.getRegistrationDeadline().plusDays(days));
         copy.setShareLink(src.getShareLink());
         copy.setImportant(src.isImportant());
         copy.setBannerUrl(src.getBannerUrl());
@@ -169,7 +204,7 @@ public class ActivityServiceImpl implements ActivityService {
         copy.setRequirements(src.getRequirements());
         copy.setContactInfo(src.getContactInfo());
         copy.setMandatoryForFacultyStudents(src.isMandatoryForFacultyStudents());
-        copy.setPenaltyPointsIncomplete(src.getPenaltyPointsIncomplete());
+
         copy.setRequiresApproval(src.isRequiresApproval());
         copy.setDraft(true); // new copy starts as draft
 
@@ -178,8 +213,34 @@ public class ActivityServiceImpl implements ActivityService {
         }
 
         Activity saved = activityRepository.save(copy);
+
+        // Copy score rules from source activity with CURRENT_OPEN_SEMESTER policy
+        var srcRules = activityScoreRuleService.getRuleResponses(src.getId());
+        if (srcRules != null && !srcRules.isEmpty()) {
+            List<vn.campuslife.model.score.ActivityScoreRuleRequest> copiedRules = srcRules.stream()
+                    .map(rule -> {
+                        vn.campuslife.model.score.ActivityScoreRuleRequest req = new vn.campuslife.model.score.ActivityScoreRuleRequest();
+                        req.setScoreType(rule.getScoreType());
+                        req.setTriggerType(rule.getTriggerType());
+                        req.setCalculation(rule.getCalculation());
+                        req.setPoints(rule.getPoints());
+                        req.setFailPoints(rule.getFailPoints());
+                        req.setAudience(rule.getAudience());
+                        req.setSemesterPolicy(vn.campuslife.enumeration.ScoreSemesterPolicy.CURRENT_OPEN_SEMESTER);
+                        req.setExplicitSemesterId(null); // Clear explicit semester on copy
+                        req.setDepartmentIds(rule.getTargetDepartmentIds());
+                        req.setEnabled(rule.getEnabled());
+                        return req;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+            activityScoreRuleService.replaceRules(saved.getId(), copiedRules);
+            logger.debug("Copied {} score rules for activity {} with CURRENT_OPEN_SEMESTER policy", copiedRules.size(),
+                    saved.getId());
+        }
+
         return new Response(true, "Activity copied", toResponse(saved));
     }
+
     public Response getAllActivities() {
         return getAllActivities(null);
     }
@@ -188,22 +249,21 @@ public class ActivityServiceImpl implements ActivityService {
     public Response getAllActivities(String username) {
         try {
             var list = activityRepository.findByIsDeletedFalseOrderByStartDateAsc();
-            
+
             // Filter drafts for students (non-admin/manager users)
             boolean isAdminOrManager = false;
             if (username != null) {
                 Optional<User> userOpt = userRepository.findByUsername(username);
-                isAdminOrManager = userOpt.map(user -> 
-                    user.getRole() == Role.ADMIN || 
-                    user.getRole() == Role.MANAGER)
-                    .orElse(false);
+                isAdminOrManager = userOpt.map(user -> user.getRole() == Role.ADMIN ||
+                        user.getRole() == Role.MANAGER)
+                        .orElse(false);
             }
-            
+
             final boolean filterDrafts = !isAdminOrManager;
             var filteredList = list.stream()
                     .filter(activity -> !filterDrafts || !activity.isDraft())
                     .collect(Collectors.toList());
-            
+
             var data = filteredList.stream().map(this::toResponse).toList();
             return new Response(true, "Activities retrieved successfully", data);
         } catch (Exception e) {
@@ -223,23 +283,22 @@ public class ActivityServiceImpl implements ActivityService {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
-            
+
             Activity activity = opt.get();
-            
+
             // Block students from viewing drafts
             boolean isAdminOrManager = false;
             if (username != null) {
                 Optional<User> userOpt = userRepository.findByUsername(username);
-                isAdminOrManager = userOpt.map(user -> 
-                    user.getRole() == Role.ADMIN || 
-                    user.getRole() == Role.MANAGER)
-                    .orElse(false);
+                isAdminOrManager = userOpt.map(user -> user.getRole() == Role.ADMIN ||
+                        user.getRole() == Role.MANAGER)
+                        .orElse(false);
             }
-            
+
             if (activity.isDraft() && !isAdminOrManager) {
                 return new Response(false, "Activity not found", null);
             }
-            
+
             return new Response(true, "Activity retrieved successfully", toResponse(activity));
         } catch (Exception e) {
             logger.error("Failed to retrieve activity {}: {}", id, e.getMessage(), e);
@@ -255,6 +314,7 @@ public class ActivityServiceImpl implements ActivityService {
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
 
+            scorePresetService.applyActivityPreset(request);
             String err = validateRequest(request);
             if (err != null)
                 return new Response(false, err, null);
@@ -269,14 +329,24 @@ public class ActivityServiceImpl implements ActivityService {
 
             Activity saved = activityRepository.save(a);
 
+            // Replace score rules if provided
+            activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
+            logger.debug("Replaced score rules for activity {}", saved.getId());
+
             // Auto-register students if flags changed
             // Note: autoRegisterStudents will skip if activity is draft
-            logger.debug("Activity updated (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})", 
-                saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(), saved.isMandatoryForFacultyStudents());
+            logger.debug(
+                    "Activity updated (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})",
+                    saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(),
+                    saved.isMandatoryForFacultyStudents());
             autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
+            syncSeriesMinimumRequirementReminders(saved);
 
             return new Response(true, "Activity updated successfully", toResponse(saved));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid update activity request {}: {}", id, e.getMessage());
+            return new Response(false, e.getMessage(), null);
         } catch (Exception e) {
             logger.error("Failed to update activity {}: {}", id, e.getMessage(), e);
             return new Response(false, "Failed to update activity due to server error", null);
@@ -302,22 +372,38 @@ public class ActivityServiceImpl implements ActivityService {
     }
 
     @Override
-    public List<Activity> getActivitiesByScoreType(ScoreType scoreType) {
-        return activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType);
+    public List<ActivityPresetDefinitionResponse> getActivityPresetDefinitions() {
+        return scorePresetService.getActivityPresetDefinitions();
     }
 
     @Override
-    public List<Activity> getActivitiesByMonth(LocalDate start, LocalDate end) {
-        return activityRepository.findInMonth(start, end);
+    public ActivityPresetPreviewResponse previewActivityPreset(ActivityPresetPreviewRequest request) {
+        return scorePresetService.previewActivityPreset(request);
     }
 
     @Override
-    public List<Activity> getActivitiesForDepartment(Long departmentId) {
-        return activityRepository.findForDepartment(departmentId);
+    public List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType) {
+        return activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
     @Override
-    public List<Activity> listForCurrentUser(String username) {
+    public List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end) {
+        return activityRepository.findInMonth(start, end).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ActivityResponse> getActivitiesForDepartment(Long departmentId) {
+        return activityRepository.findForDepartment(departmentId).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ActivityResponse> listForCurrentUser(String username) {
         Long deptId = studentRepository.findDepartmentIdByUsername(username);
         if (deptId == null)
             return Collections.emptyList();
@@ -329,6 +415,7 @@ public class ActivityServiceImpl implements ActivityService {
         return all.stream()
                 .filter(a -> a.getEndDate() != null &&
                         !a.getEndDate().toLocalDate().isBefore(today))
+                .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
@@ -347,8 +434,6 @@ public class ActivityServiceImpl implements ActivityService {
             result.put("requiresSubmission", activity.isRequiresSubmission());
             result.put("isImportant", activity.isImportant());
             result.put("mandatoryForFacultyStudents", activity.isMandatoryForFacultyStudents());
-            result.put("maxPoints", activity.getMaxPoints());
-            result.put("scoreType", activity.getScoreType());
 
             return new Response(true, "Submission requirement checked successfully", result);
         } catch (Exception e) {
@@ -403,8 +488,6 @@ public class ActivityServiceImpl implements ActivityService {
             return "Activity name is required";
         if (r.getType() == null)
             return "Activity type is required";
-        if (r.getScoreType() == null)
-            return "Score type is required";
         if (r.getStartDate() == null || r.getEndDate() == null)
             return "Start date and end date are required";
         if (r.getStartDate().isAfter(r.getEndDate()))
@@ -419,20 +502,20 @@ public class ActivityServiceImpl implements ActivityService {
     private void applyRequestToEntity(CreateActivityRequest req, Activity a) {
         a.setName(req.getName());
         a.setType(req.getType());
-        a.setScoreType(req.getScoreType());
+
         a.setDescription(req.getDescription());
         a.setStartDate(req.getStartDate());
         a.setEndDate(req.getEndDate());
 
         a.setRequiresSubmission(Boolean.TRUE.equals(req.getRequiresSubmission()));
-        a.setMaxPoints(req.getMaxPoints());
 
         a.setRegistrationStartDate(req.getRegistrationStartDate());
         a.setRegistrationDeadline(req.getRegistrationDeadline());
 
         a.setShareLink(req.getShareLink());
         a.setImportant(Boolean.TRUE.equals(req.getIsImportant()));
-        // Set isDraft: if explicitly provided, use it; otherwise default to true (draft)
+        // Set isDraft: if explicitly provided, use it; otherwise default to true
+        // (draft)
         if (req.getIsDraft() != null) {
             a.setDraft(req.getIsDraft());
         } else {
@@ -446,9 +529,10 @@ public class ActivityServiceImpl implements ActivityService {
         a.setBenefits(req.getBenefits());
         a.setRequirements(req.getRequirements());
         a.setContactInfo(req.getContactInfo());
-        if (req.getRequiresApproval() != null) a.setRequiresApproval(req.getRequiresApproval());
+        if (req.getRequiresApproval() != null)
+            a.setRequiresApproval(req.getRequiresApproval());
         a.setMandatoryForFacultyStudents(Boolean.TRUE.equals(req.getMandatoryForFacultyStudents()));
-        a.setPenaltyPointsIncomplete(req.getPenaltyPointsIncomplete());
+
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
@@ -468,7 +552,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setId(a.getId());
         dto.setName(a.getName());
         dto.setType(a.getType());
-        dto.setScoreType(a.getScoreType());
+
         dto.setDescription(a.getDescription());
         dto.setStartDate(a.getStartDate());
         dto.setEndDate(a.getEndDate());
@@ -476,7 +560,6 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setHasPreparation(a.isHasPreparation());
 
         dto.setRequiresSubmission(a.isRequiresSubmission());
-        dto.setMaxPoints(a.getMaxPoints());
 
         dto.setRegistrationStartDate(a.getRegistrationStartDate());
         dto.setRegistrationDeadline(a.getRegistrationDeadline());
@@ -485,7 +568,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setImportant(a.isImportant());
         dto.setDraft(a.isDraft());
         // Convert relative path to full URL for API response
-        dto.setBannerUrl(UrlUtils.toFullUrl(a.getBannerUrl(), publicUrl));
+        dto.setBannerUrl(UrlUtils.toFullUrl(a.getBannerUrl(), uploadProperties.getPublicUrl()));
         dto.setLocation(a.getLocation());
 
         dto.setTicketQuantity(a.getTicketQuantity());
@@ -495,7 +578,7 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setCheckInCode(a.getCheckInCode());
         dto.setRequiresApproval(a.isRequiresApproval());
         dto.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
-        dto.setPenaltyPointsIncomplete(a.getPenaltyPointsIncomplete());
+
         dto.setOrganizerIds(a.getOrganizers() == null ? List.of()
                 : a.getOrganizers().stream().map(Department::getId).toList());
 
@@ -506,6 +589,10 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setUpdatedAt(a.getUpdatedAt());
         dto.setCreatedBy(a.getCreatedBy());
         dto.setLastModifiedBy(a.getLastModifiedBy());
+
+        // Map score rules from ActivityScoreRuleService
+        dto.setScoreRules(activityScoreRuleService.getRuleResponses(a.getId()));
+
         return dto;
     }
 
@@ -516,13 +603,15 @@ public class ActivityServiceImpl implements ActivityService {
         try {
             // Không tự động đăng ký nếu activity là draft (chưa công bố)
             if (activity.isDraft()) {
-                logger.info("Skipping auto-registration for draft activity (id={}, name={}, isDraft={})", 
-                    activity.getId(), activity.getName(), activity.isDraft());
+                logger.info("Skipping auto-registration for draft activity (id={}, name={}, isDraft={})",
+                        activity.getId(), activity.getName(), activity.isDraft());
                 return;
             }
-            
-            logger.debug("Checking auto-registration for published activity (id={}, name={}, isImportant={}, mandatoryForFacultyStudents={})", 
-                activity.getId(), activity.getName(), activity.isImportant(), activity.isMandatoryForFacultyStudents());
+
+            logger.debug(
+                    "Checking auto-registration for published activity (id={}, name={}, isImportant={}, mandatoryForFacultyStudents={})",
+                    activity.getId(), activity.getName(), activity.isImportant(),
+                    activity.isMandatoryForFacultyStudents());
 
             List<Student> studentsToRegister = new ArrayList<>();
 
@@ -606,10 +695,12 @@ public class ActivityServiceImpl implements ActivityService {
                         String content;
                         if (activity.isImportant()) {
                             title = "Đăng ký tự động - Sự kiện quan trọng";
-                            content = String.format("Bạn đã được tự động đăng ký sự kiện quan trọng: %s", activity.getName());
+                            content = String.format("Bạn đã được tự động đăng ký sự kiện quan trọng: %s",
+                                    activity.getName());
                         } else if (activity.isMandatoryForFacultyStudents()) {
                             title = "Đăng ký tự động - Sự kiện bắt buộc";
-                            content = String.format("Bạn đã được tự động đăng ký sự kiện bắt buộc: %s", activity.getName());
+                            content = String.format("Bạn đã được tự động đăng ký sự kiện bắt buộc: %s",
+                                    activity.getName());
                         } else {
                             title = "Đăng ký tự động";
                             content = String.format("Bạn đã được tự động đăng ký sự kiện: %s", activity.getName());
@@ -631,18 +722,18 @@ public class ActivityServiceImpl implements ActivityService {
                                         content,
                                         NotificationType.ACTIVITY_REGISTRATION,
                                         null, // Không set actionUrl, để frontend tự route dựa trên metadata.activityId
-                                        metadata
-                                );
+                                        metadata);
                             } catch (Exception e) {
-                                logger.error("Failed to send auto-registration notification to user {} for activity {}: {}", 
+                                logger.error(
+                                        "Failed to send auto-registration notification to user {} for activity {}: {}",
                                         registration.getStudent().getUser().getId(), activity.getId(), e.getMessage());
                                 // Continue with next registration
                             }
                         }
-                        logger.info("Sent auto-registration notifications to {} students for activity: {}", 
+                        logger.info("Sent auto-registration notifications to {} students for activity: {}",
                                 registrations.size(), activity.getName());
                     } catch (Exception e) {
-                        logger.error("Failed to send auto-registration notifications for activity {}: {}", 
+                        logger.error("Failed to send auto-registration notifications for activity {}: {}",
                                 activity.getId(), e.getMessage(), e);
                         // Don't fail auto-registration if notification fails
                     }
@@ -761,9 +852,10 @@ public class ActivityServiceImpl implements ActivityService {
         logger.info("Auto registered {} students of departments {} for mandatory activity {}",
                 registrationsToCreate.size() + registrationsToUpdate.size(), departmentIds, activityId);
     }
-    //Tìm kiếm sự kiện
+
+    // Tìm kiếm sự kiện
     @Override
-    public List<Activity> searchUpcomingEvents(String keyword) {
+    public List<ActivityResponse> searchUpcomingEvents(String keyword) {
         Specification<Activity> spec = (root, query, cb) -> {
             query.distinct(true);
             List<Predicate> predicates = new ArrayList<>();
@@ -771,20 +863,17 @@ public class ActivityServiceImpl implements ActivityService {
             // chỉ lấy sự kiện chưa diễn ra
             predicates.add(cb.greaterThanOrEqualTo(
                     root.get("startDate"),
-                    LocalDateTime.now()
-            ));
+                    LocalDateTime.now()));
 
             if (keyword != null && !keyword.trim().isEmpty()) {
                 String k = "%" + keyword.toLowerCase() + "%";
 
-                Join<Activity, Department> deptJoin =
-                        root.join("organizers", JoinType.LEFT);
+                Join<Activity, Department> deptJoin = root.join("organizers", JoinType.LEFT);
 
                 Predicate keywordPredicate = cb.or(
                         cb.like(cb.lower(root.get("name")), k),
                         cb.like(cb.lower(root.get("description")), k),
-                        cb.like(cb.lower(deptJoin.get("name")), k)
-                );
+                        cb.like(cb.lower(deptJoin.get("name")), k));
 
                 predicates.add(keywordPredicate);
             }
@@ -792,12 +881,17 @@ public class ActivityServiceImpl implements ActivityService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        return activityRepository.findAll(spec);
+        return activityRepository.findAll(spec).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
-    //sự kiện trong tháng
+
+    // sự kiện trong tháng
     @Override
-    public List<Activity> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
-        return activityRepository.findActivitiesInMonth(start, end);
+    public List<ActivityResponse> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
+        return activityRepository.findActivitiesInMonth(start, end).stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -835,11 +929,18 @@ public class ActivityServiceImpl implements ActivityService {
 
             return Response.success(
                     String.format("Đã tạo checkInCode cho %d activity", updatedCount),
-                    Map.of("updatedCount", updatedCount, "totalActivities", activitiesWithoutCode.size())
-            );
+                    Map.of("updatedCount", updatedCount, "totalActivities", activitiesWithoutCode.size()));
         } catch (Exception e) {
             logger.error("Failed to backfill checkInCodes: {}", e.getMessage(), e);
             return Response.error("Failed to backfill checkInCodes: " + e.getMessage());
         }
+    }
+
+    private void syncSeriesMinimumRequirementReminders(Activity activity) {
+        if (activity == null || activity.getSeriesId() == null) {
+            return;
+        }
+        activitySeriesRepository.findById(activity.getSeriesId())
+                .ifPresent(reminderScheduleService::syncSeriesMinimumRequirementReminders);
     }
 }

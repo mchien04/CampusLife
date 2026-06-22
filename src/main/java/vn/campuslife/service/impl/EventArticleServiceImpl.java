@@ -13,7 +13,20 @@ import vn.campuslife.enumeration.ArticleType;
 import vn.campuslife.enumeration.ReactionType;
 import vn.campuslife.exception.BadRequestException;
 import vn.campuslife.exception.ResourceNotFoundException;
-import vn.campuslife.model.*;
+import vn.campuslife.model.ArticleCategoryRequest;
+import vn.campuslife.model.ArticleCategoryResponse;
+import vn.campuslife.model.ArticleDetailResponse;
+import vn.campuslife.model.ArticleHistoryResponse;
+import vn.campuslife.model.ArticleImageRequest;
+import vn.campuslife.model.ArticleImageResponse;
+import vn.campuslife.model.ArticleListResponse;
+import vn.campuslife.model.ArticleStatisticsResponse;
+import vn.campuslife.model.ArticleTagRequest;
+import vn.campuslife.model.ArticleTagResponse;
+import vn.campuslife.model.ArticleWishlistItemResponse;
+import vn.campuslife.model.EventArticleAdminResponse;
+import vn.campuslife.model.EventArticleUpsertRequest;
+import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.EventArticleService;
@@ -172,7 +185,7 @@ public class EventArticleServiceImpl implements EventArticleService {
             activityInfo.setEndDate(activity.getEndDate());
             activityInfo.setRegistrationStartDate(activity.getRegistrationStartDate());
             activityInfo.setRegistrationDeadline(activity.getRegistrationDeadline());
-            activityInfo.setScoreType(activity.getScoreType());
+            
             activityInfo.setShareLink(activity.getShareLink());
             response.setActivityInfo(activityInfo);
         }
@@ -1281,3 +1294,4 @@ public class EventArticleServiceImpl implements EventArticleService {
         }
     }
 }
+

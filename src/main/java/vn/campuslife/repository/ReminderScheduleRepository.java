@@ -29,6 +29,12 @@ public interface ReminderScheduleRepository extends JpaRepository<ReminderSchedu
             Collection<ReminderStatus> statuses
     );
 
+    List<ReminderSchedule> findByTargetTypeAndTargetIdAndStatusIn(
+            ReminderTargetType targetType,
+            Long targetId,
+            Collection<ReminderStatus> statuses
+    );
+
     List<ReminderSchedule> findByStatus(ReminderStatus status);
 
     List<ReminderSchedule> findByStatusAndRemindAtAfter(ReminderStatus status, LocalDateTime remindAt);

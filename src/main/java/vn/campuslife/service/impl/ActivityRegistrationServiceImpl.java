@@ -3,16 +3,20 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.Role;
-import vn.campuslife.enumeration.ScoreType;
-import vn.campuslife.model.*;
+import vn.campuslife.model.Response;
+import vn.campuslife.model.StudentResponse;
+import vn.campuslife.model.activity.ActivityParticipationRequest;
+import vn.campuslife.model.activity.ActivityParticipationResponse;
+import vn.campuslife.model.activity.ActivityRegistrationRequest;
+import vn.campuslife.model.activity.ActivityRegistrationResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.NotificationService;
@@ -32,21 +36,18 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityRegistrationServiceImpl.class);
 
-    @Value("${app.upload.public-url:http://localhost:8080}")
-    private String publicUrl;
-
+    private final UploadProperties uploadProperties;
     private final ActivityRegistrationRepository registrationRepository;
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRepository activityRepository;
     private final StudentRepository studentRepository;
-    private final StudentScoreRepository studentScoreRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
-    private final SemesterRepository semesterRepository;
-    private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ReminderScheduleService reminderScheduleService;
     private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
+    private final ActivitySeriesRepository activitySeriesRepository;
     private final SemesterHelperService semesterHelperService;
+    private final vn.campuslife.service.ScoreRuleEngine scoreRuleEngine;
+    private final TaskSubmissionRepository taskSubmissionRepository;
 
     @Override
     @Transactional
@@ -126,6 +127,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             if (saved.getStatus() == RegistrationStatus.APPROVED) {
                 try {
                     reminderScheduleService.createEventRemindersForApprovedRegistration(saved);
+                    syncSeriesMinimumRequirementReminder(activity.getSeriesId(), student);
                 } catch (Exception e) {
                     logger.error("Failed to prepare event reminders for registration {}: {}", saved.getId(),
                             e.getMessage(), e);
@@ -300,6 +302,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
                 try {
                     reminderScheduleService.createEventRemindersForApprovedRegistration(savedRegistration);
+                    syncSeriesMinimumRequirementReminder(savedRegistration.getSeriesId(),
+                            savedRegistration.getStudent());
                 } catch (Exception e) {
                     logger.error("Failed to prepare event reminders for registration {}: {}",
                             savedRegistration.getId(), e.getMessage(), e);
@@ -404,10 +408,17 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             registration = registrationRepository.findByTicketCode(request.getTicketCode())
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy ticketCode"));
         } else if (request.getStudentId() != null) {
-            registration = registrationRepository.findByStudentIdAndStatus(
+            List<ActivityRegistration> approvedRegistrations = registrationRepository.findListByStudentIdAndStatus(
                     request.getStudentId(),
-                    RegistrationStatus.APPROVED)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này"));
+                    RegistrationStatus.APPROVED);
+            if (approvedRegistrations.isEmpty()) {
+                throw new RuntimeException("Không tìm thấy đăng ký hợp lệ cho sinh viên này");
+            }
+            if (approvedRegistrations.size() > 1) {
+                throw new RuntimeException(
+                        "Sinh viên có nhiều đăng ký đã duyệt. Vui lòng dùng ticketCode để check-in đúng sự kiện");
+            }
+            registration = approvedRegistrations.get(0);
         } else {
             return Response.error("Cần cung cấp ticketCode hoặc studentId");
         }
@@ -422,12 +433,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy participation cho đăng ký này"));
 
         ParticipationType currentType = participation.getParticipationType();
+        Activity activity = registration.getActivity();
+        LocalDateTime now = LocalDateTime.now();
 
         // CHECK-IN (lần 1) - từ REGISTERED/APPROVED sang CHECKED_IN
         if (currentType == ParticipationType.REGISTERED) {
             participation.setParticipationType(ParticipationType.CHECKED_IN);
-            participation.setCheckInTime(LocalDateTime.now());
-            participation.setDate(LocalDateTime.now());
+            participation.setCheckInTime(now);
+            participation.setDate(now);
             participationRepository.save(participation);
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
@@ -435,90 +448,23 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             return Response.success("Check-in thành công. Vui lòng check-out khi rời khỏi sự kiện.", resp);
         }
 
-        // CHECK-OUT (lần 2) - từ CHECKED_IN sang CHECKED_OUT → ATTENDED
+        // CHECK-OUT (lần 2) - từ CHECKED_IN sang ATTENDED/COMPLETED
         else if (currentType == ParticipationType.CHECKED_IN) {
-            participation.setParticipationType(ParticipationType.CHECKED_OUT);
-            participation.setCheckOutTime(LocalDateTime.now());
-            participationRepository.save(participation);
-
-            // Đổi registration status sang ATTENDED
-            registration.setStatus(RegistrationStatus.ATTENDED);
-            registrationRepository.save(registration);
-
-            // Chuyển participation sang ATTENDED
-            participation.setParticipationType(ParticipationType.ATTENDED);
-            participationRepository.save(participation);
-
-            // Nếu activity không yêu cầu nộp bài, tự động cập nhật điểm và isCompleted
-            Activity activity = registration.getActivity();
-            if (!activity.isRequiresSubmission()) {
-                participation.setIsCompleted(true);
-                participation.setParticipationType(ParticipationType.COMPLETED);
-
-                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và
-                // CHUYEN_DE_DOANH_NGHIEP
-                if (activity.getSeriesId() != null) {
-                    // Activity trong series → KHÔNG tính điểm từ maxPoints
-                    participation.setPointsEarned(BigDecimal.ZERO);
-                    participationRepository.save(participation);
-
-                    // Chỉ update series progress (điểm milestone sẽ được tính tự động)
-                    try {
-                        activitySeriesService.updateStudentProgress(
-                                registration.getStudent().getId(),
-                                activity.getId());
-                        logger.info("Updated series progress for activity {} in series {}",
-                                activity.getName(), activity.getSeriesId());
-                    } catch (Exception e) {
-                        logger.warn("Failed to update series progress: {}", e.getMessage());
-                        // Không fail check-out nếu update series progress lỗi
-                    }
-                } else if (activity.getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP) {
-                    // CHUYEN_DE_DOANH_NGHIEP: Dual Score Calculation
-                    // Lưu maxPoints vào pointsEarned để dùng cho REN_LUYEN
-                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
-                    participation.setPointsEarned(points);
-                    participationRepository.save(participation);
-
-                    try {
-                        // CHUYEN_DE: Đếm số buổi (không dùng pointsEarned, chỉ đếm số participation)
-                        updateChuyenDeScoreCount(participation);
-
-                        // REN_LUYEN: Cộng điểm từ maxPoints (nếu có)
-                        if (activity.getMaxPoints() != null) {
-                            updateRenLuyenScoreFromParticipation(participation);
-                        }
-
-                        logger.info(
-                                "Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {}. Count: +1, RL Points: {}",
-                                activity.getName(), activity.getMaxPoints());
-                    } catch (Exception e) {
-                        logger.error("Failed to update dual score after auto-completion: {}", e.getMessage(), e);
-                        // Không fail check-out nếu update score lỗi, chỉ log
-                    }
-                } else {
-                    // Activity đơn lẻ khác → tính điểm bình thường từ maxPoints
-                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
-                    participation.setPointsEarned(points);
-                    participationRepository.save(participation);
-
-                    // Cập nhật StudentScore (tổng hợp)
-                    try {
-                        updateStudentScoreFromParticipation(participation);
-                        logger.info("Auto-completed participation for activity {} (no submission required). Points: {}",
-                                activity.getName(), points);
-                    } catch (Exception e) {
-                        logger.error("Failed to update student score after auto-completion: {}", e.getMessage(), e);
-                        // Không fail check-out nếu update score lỗi, chỉ log
-                    }
-                }
-            }
+            markParticipationAsAttended(registration, participation, now, true);
+            boolean completed = finalizeAttendanceOutcome(registration, participation,
+                    participation.getRegistration().getStudent().getUser());
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
 
-            String message = activity.isRequiresSubmission()
-                    ? "Check-out thành công. Đã hoàn thành tham gia sự kiện."
-                    : "Check-out thành công. Đã hoàn thành tham gia sự kiện và được điểm tự động.";
+            String message = completed
+                    ? (activity.getSeriesId() != null
+                            ? "Check-out thành công. Đã hoàn thành mốc sự kiện trong chuỗi."
+                            : "Check-out thành công. Đã hoàn thành tham gia sự kiện.")
+                    : activity.isRequiresSubmission()
+                            ? "Check-out thành công. Đã ghi nhận tham gia sự kiện, chờ bài nộp được chấm để hoàn tất."
+                            : (activity.getSeriesId() != null
+                                    ? "Check-out thành công. Đã ghi nhận tham gia mốc trong chuỗi."
+                                    : "Check-out thành công. Đã ghi nhận tham gia sự kiện.");
 
             return Response.success(message, resp);
         }
@@ -562,103 +508,23 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                         return participationRepository.save(newParticipation);
                     });
 
-            // 5. Logic check-in/check-out
+            // 5. Activity QR: xác nhận ATTENDED nhanh, không mô phỏng flow 2 bước
             LocalDateTime now = LocalDateTime.now();
-            boolean isFirstTime = participation.getCheckInTime() == null;
-
-            if (isFirstTime) {
-                // Lần đầu quét QR: Set cả checkInTime VÀ checkOutTime (check-in và check-out
-                // cùng lúc)
-                participation.setCheckInTime(now);
-                participation.setCheckOutTime(now);
-                participation.setParticipationType(ParticipationType.ATTENDED);
-                participation.setDate(now);
-                registration.setStatus(RegistrationStatus.ATTENDED);
-                registrationRepository.save(registration);
-                logger.info("Student {} checked in and out to activity {} via QR code (first time)", studentId,
-                        activity.getId());
-            } else {
-                // Đã có checkInTime: Chỉ set checkOutTime (check-out)
-                if (participation.getCheckOutTime() != null) {
-                    return Response.error("Bạn đã check-out activity này rồi");
-                }
-                participation.setCheckOutTime(now);
-                participation.setParticipationType(ParticipationType.ATTENDED);
-                registration.setStatus(RegistrationStatus.ATTENDED);
-                registrationRepository.save(registration);
-                logger.info("Student {} checked out from activity {} via QR code", studentId, activity.getId());
+            if (participation.getParticipationType() == ParticipationType.COMPLETED) {
+                return Response.error("Bạn đã hoàn thành điểm danh activity này rồi");
             }
 
-            // 7. Xử lý điểm (chỉ khi check-out, không phải check-in)
-            // Với logic mới: cả lần đầu và lần sau đều là check-out nên đều xử lý điểm
-            // CTXH: Cả sinh viên quét QR code và admin/manager quét ticketCode đều được
-            // cộng điểm
-            if (!activity.isRequiresSubmission()) {
-                participation.setIsCompleted(true);
-                participation.setParticipationType(ParticipationType.COMPLETED);
-
-                // XỬ LÝ ĐIỂM: Phân biệt activity đơn lẻ, activity trong series, và
-                // CHUYEN_DE_DOANH_NGHIEP
-                if (activity.getSeriesId() != null) {
-                    // Activity trong series → KHÔNG tính điểm từ maxPoints
-                    participation.setPointsEarned(BigDecimal.ZERO);
-                    participationRepository.save(participation);
-
-                    // Chỉ update series progress (điểm milestone sẽ được tính tự động)
-                    try {
-                        activitySeriesService.updateStudentProgress(
-                                registration.getStudent().getId(),
-                                activity.getId());
-                        logger.info("Updated series progress for activity {} in series {} via QR code",
-                                activity.getName(), activity.getSeriesId());
-                    } catch (Exception e) {
-                        logger.warn("Failed to update series progress: {}", e.getMessage());
-                        // Không fail check-in nếu update series progress lỗi
-                    }
-                } else if (activity.getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP) {
-                    // CHUYEN_DE_DOANH_NGHIEP: Dual Score Calculation
-                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
-                    participation.setPointsEarned(points);
-                    participationRepository.save(participation);
-
-                    try {
-                        // CHUYEN_DE: Đếm số buổi
-                        updateChuyenDeScoreCount(participation);
-
-                        // REN_LUYEN: Cộng điểm từ maxPoints (nếu có)
-                        if (activity.getMaxPoints() != null) {
-                            updateRenLuyenScoreFromParticipation(participation);
-                        }
-
-                        logger.info(
-                                "Auto-completed CHUYEN_DE_DOANH_NGHIEP participation for activity {} via QR code. Count: +1, RL Points: {}",
-                                activity.getName(), activity.getMaxPoints());
-                    } catch (Exception e) {
-                        logger.error("Failed to update dual score after QR code check-in: {}", e.getMessage(), e);
-                    }
-                } else {
-                    // Activity đơn lẻ khác → tính điểm bình thường từ maxPoints
-                    BigDecimal points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
-                    participation.setPointsEarned(points);
-                    participationRepository.save(participation);
-
-                    // Cập nhật StudentScore
-                    try {
-                        updateStudentScoreFromParticipation(participation);
-                        logger.info("Auto-completed participation for activity {} via QR code. Points: {}",
-                                activity.getName(), points);
-                    } catch (Exception e) {
-                        logger.error("Failed to update student score after QR code check-in for activity {}: {}",
-                                activity.getId(), e.getMessage(), e);
-                        // Không throw để không làm gián đoạn check-in, nhưng log đầy đủ
-                    }
-                }
-            }
-
-            participationRepository.save(participation);
+            markParticipationAsAttended(registration, participation, now, false);
+            boolean completed = finalizeAttendanceOutcome(registration, participation,
+                    participation.getRegistration().getStudent().getUser());
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
-            return Response.success("Điểm danh thành công bằng QR code", resp);
+            String message = completed
+                    ? (activity.getSeriesId() != null
+                            ? "Điểm danh thành công bằng QR code. Đã ghi nhận hoàn thành mốc trong chuỗi."
+                            : "Điểm danh thành công bằng QR code. Đã ghi nhận hoàn thành sự kiện.")
+                    : "Điểm danh thành công bằng QR code. Đã ghi nhận tham gia sự kiện.";
+            return Response.success(message, resp);
 
         } catch (RuntimeException e) {
             logger.error("Failed to check-in by QR code: {}", e.getMessage());
@@ -685,8 +551,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             // Kiểm tra đã ATTENDED chưa
-            if (participation.getParticipationType() != ParticipationType.ATTENDED) {
-                return Response.error("Sinh viên chưa hoàn thành check-in/check-out");
+            if (participation.getParticipationType() != ParticipationType.ATTENDED
+                    && participation.getParticipationType() != ParticipationType.COMPLETED) {
+                return Response.error("Sinh viên chưa đạt trạng thái tham dự hợp lệ");
             }
 
             Activity activity = participation.getRegistration().getActivity();
@@ -704,65 +571,55 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
                 // ✅ SỰ KIỆN CÓ BÀI NỘP: Điểm đã được cộng qua createScoreFromSubmission()
                 // Chỉ cần cập nhật status, KHÔNG set pointsEarned (để tránh cộng trùng)
-                participation.setIsCompleted(isCompleted);
-                participation.setPointsEarned(BigDecimal.ZERO); // Điểm đã cộng qua submission
-                participation.setParticipationType(ParticipationType.COMPLETED);
-                participationRepository.save(participation);
+                markParticipationCompleted(participation, isCompleted);
 
                 logger.info(
                         "Completed grading for submission-based activity {}. Points were already added via submission.",
                         activity.getName());
 
-                return Response.success("Đã chấm điểm completion (điểm đã được tính từ bài nộp)", participation);
-            }
-
-            // ✅ SỰ KIỆN KHÔNG CÓ BÀI NỘP: Tính điểm từ maxPoints/penalty
-            // Nhưng phải phân biệt giữa activity đơn lẻ và activity trong series
-
-            if (activity.getSeriesId() != null) {
-                // ✅ ACTIVITY TRONG SERIES: Không tính điểm từ maxPoints
-                // Điểm được tính từ milestone của series
-                participation.setIsCompleted(isCompleted);
-                participation.setPointsEarned(BigDecimal.ZERO); // ✅ Không set điểm
-                participation.setParticipationType(ParticipationType.COMPLETED);
-                participationRepository.save(participation);
-
-                // ✅ Gọi updateStudentProgress để cập nhật series milestone
-                try {
-                    activitySeriesService.updateStudentProgress(
-                            participation.getRegistration().getStudent().getId(),
-                            activity.getId());
-                    logger.info("Completed grading for series activity {}. Milestone will be calculated automatically.",
-                            activity.getName());
-                } catch (Exception e) {
-                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                // Nếu thuộc series, cập nhật tiến trình của sinh viên
+                if (activity.getSeriesId() != null && isCompleted) {
+                    try {
+                        activitySeriesService.updateStudentProgress(
+                                participation.getRegistration().getStudent().getId(),
+                                activity.getId());
+                    } catch (Exception e) {
+                        logger.warn("Failed to update series progress: {}", e.getMessage());
+                    }
                 }
 
-                return Response.success("Đã chấm điểm completion (điểm từ milestone series)", participation);
+                String message = activity.getSeriesId() != null
+                        ? "Đã ghi nhận hoàn thành mốc trong chuỗi sự kiện từ bài nộp"
+                        : "Đã chấm điểm completion (điểm đã được tính từ bài nộp)";
+                return Response.success(message, participation);
             }
 
-            // ✅ ACTIVITY ĐƠN LẺ: Tính điểm từ maxPoints/penalty
-            BigDecimal points;
-            if (isCompleted) {
-                points = activity.getMaxPoints() != null ? activity.getMaxPoints() : BigDecimal.ZERO;
+            markParticipationCompleted(participation, isCompleted);
+
+            if (activity.getSeriesId() != null) {
+                if (isCompleted) {
+                    try {
+                        activitySeriesService.updateStudentProgress(
+                                participation.getRegistration().getStudent().getId(),
+                                activity.getId());
+                    } catch (Exception e) {
+                        logger.warn("Failed to update series progress: {}", e.getMessage());
+                    }
+                }
             } else {
-                // Điểm trừ
-                BigDecimal penalty = activity.getPenaltyPointsIncomplete() != null
-                        ? activity.getPenaltyPointsIncomplete()
-                        : BigDecimal.ZERO;
-                points = penalty.negate(); // Chuyển thành số âm
+                try {
+                    scoreRuleEngine.applyActivityCompleted(
+                            participation,
+                            participation.getRegistration().getStudent().getUser());
+                } catch (Exception e) {
+                    logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
+                }
             }
 
-            // Cập nhật participation
-            participation.setIsCompleted(isCompleted);
-            participation.setPointsEarned(points);
-            participation.setParticipationType(ParticipationType.COMPLETED);
-            participationRepository.save(participation);
-
-            // Cập nhật StudentScore (tổng hợp)
-            updateStudentScoreFromParticipation(participation);
-
-            return Response.success("Đã chấm điểm completion", participation);
+            String message = activity.getSeriesId() != null
+                    ? "Đã ghi nhận hoàn thành mốc trong chuỗi sự kiện"
+                    : "Đã chấm điểm completion";
+            return Response.success(message, participation);
         } catch (Exception e) {
             logger.error("Failed to grade completion: {}", e.getMessage(), e);
             return Response.error("Failed to grade completion: " + e.getMessage());
@@ -773,9 +630,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
      * Helper method để kiểm tra submission đã được grade
      */
     private boolean checkHasGradedSubmission(Long studentId, Long activityId) {
-        // TODO: Implement check logic using TaskSubmissionRepository
-        // Tạm thời return true để không block
-        return true;
+        return taskSubmissionRepository.existsByActivityAndStudentAndStatus(activityId, studentId,
+                vn.campuslife.enumeration.SubmissionStatus.GRADED);
     }
 
     private ActivityRegistrationResponse toRegistrationResponse(ActivityRegistration r) {
@@ -799,22 +655,24 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         res.setSeriesId(r.getSeriesId());
         res.setImportant(a.isImportant());
         res.setMandatoryForFacultyStudents(a.isMandatoryForFacultyStudents());
-        res.setScoreType(a.getScoreType());
         return res;
     }
 
     @Override
     @Transactional(readOnly = true)
     public Response getParticipationReport(Long activityId) {
-        // Lấy tất cả registration đã duyệt
-        List<ActivityRegistration> approvedRegs = registrationRepository.findByActivityIdAndStatus(activityId,
-                RegistrationStatus.APPROVED);
+        List<ActivityRegistration> eligibleRegs = registrationRepository
+                .findByActivityIdAndActivityIsDeletedFalse(activityId)
+                .stream()
+                .filter(reg -> reg.getStatus() == RegistrationStatus.APPROVED
+                        || reg.getStatus() == RegistrationStatus.ATTENDED)
+                .toList();
 
-        // Lấy tất cả participation đã CHECKED_IN
-        List<ActivityParticipation> checkedInList = participationRepository
-                .findByActivityIdAndParticipationType(activityId, ParticipationType.CHECKED_IN);
-
-        Set<Long> checkedInStudentIds = checkedInList.stream()
+        Set<ParticipationType> attendedStates = EnumSet.of(
+                ParticipationType.ATTENDED,
+                ParticipationType.COMPLETED);
+        Set<Long> attendedStudentIds = participationRepository.findByActivityId(activityId).stream()
+                .filter(ap -> attendedStates.contains(ap.getParticipationType()))
                 .map(ap -> ap.getRegistration().getStudent().getId())
                 .collect(Collectors.toSet());
 
@@ -822,11 +680,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         List<StudentResponse> attended = new ArrayList<>();
         List<StudentResponse> notAttended = new ArrayList<>();
 
-        for (ActivityRegistration reg : approvedRegs) {
+        for (ActivityRegistration reg : eligibleRegs) {
             Student s = reg.getStudent();
-            StudentResponse dto = StudentResponse.fromEntity(s, publicUrl);
+            StudentResponse dto = StudentResponse.fromEntity(s, uploadProperties.getPublicUrl());
 
-            if (checkedInStudentIds.contains(s.getId())) {
+            if (attendedStudentIds.contains(s.getId())) {
                 attended.add(dto);
             } else {
                 notAttended.add(dto);
@@ -838,146 +696,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         result.put("notAttended", notAttended);
 
         return Response.success("Danh sách tham gia", result);
-    }
-
-    /**
-     * Tổng hợp điểm StudentScore từ ActivityParticipation
-     */
-    private void updateStudentScoreFromParticipation(ActivityParticipation participation) {
-        try {
-            Student student = participation.getRegistration().getStudent();
-            Activity activity = participation.getRegistration().getActivity();
-
-            // Validate activity có scoreType
-            if (activity.getScoreType() == null) {
-                logger.warn("Activity {} has no scoreType, skipping score update", activity.getId());
-                return;
-            }
-
-            logger.debug("Updating score for student {} activity {} scoreType {} participation {}",
-                    student.getId(), activity.getId(), activity.getScoreType(), participation.getId());
-
-            // Use SemesterHelperService to find semester based on activity timing
-            Semester semester = semesterHelperService.getSemesterForActivity(activity);
-
-            if (semester == null) {
-                logger.warn("No semester found for activity {} score aggregation", activity.getId());
-                return;
-            }
-
-            logger.debug("Using semester {} for activity {} (startDate: {})",
-                    semester.getId(), activity.getId(), activity.getStartDate());
-
-            // Tìm bản ghi StudentScore tổng hợp
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(
-                            student.getId(),
-                            semester.getId(),
-                            activity.getScoreType());
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No aggregate score record found for student {} scoreType {} in semester {}. " +
-                        "Creating new StudentScore record.",
-                        student.getId(), activity.getScoreType(), semester.getId());
-
-                // Tạo StudentScore mới nếu chưa có
-                StudentScore newScore = new StudentScore();
-                newScore.setStudent(student);
-                newScore.setSemester(semester);
-                newScore.setScoreType(activity.getScoreType());
-                newScore.setScore(BigDecimal.ZERO);
-                scoreOpt = Optional.of(studentScoreRepository.save(newScore));
-                logger.info("Created new StudentScore for student {} scoreType {} in semester {}",
-                        student.getId(), activity.getScoreType(), semester.getId());
-            }
-
-            StudentScore score = scoreOpt.get();
-
-            // Tính lại tổng điểm từ tất cả ActivityParticipation của sinh viên này
-            // Query tất cả participation có COMPLETED status và cùng scoreType trong cùng
-            // semester
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            List<ActivityParticipation> allParticipations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> {
-                        Activity act = p.getRegistration().getActivity();
-                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
-                            return false;
-                        }
-                        if (act.getScoreType() == null || !act.getScoreType().equals(activity.getScoreType())) {
-                            return false;
-                        }
-                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
-                            return false;
-                        }
-                        // ✅ Filter theo semester
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(act);
-                        return pSemester != null && pSemester.getId().equals(semester.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            BigDecimal totalFromParticipations = allParticipations.stream()
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // ✅ QUAN TRỌNG: Giữ nguyên điểm milestone từ series (nếu có)
-            // Tính điểm milestone = điểm hiện tại - điểm từ participations cũ
-            BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-
-            // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
-            BigDecimal oldParticipationScore = allParticipations.stream()
-                    .filter(p -> !p.getId().equals(participation.getId())) // Loại bỏ participation hiện tại
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // Điểm milestone = điểm hiện tại - điểm từ participations cũ
-            BigDecimal milestonePoints = oldScore.subtract(oldParticipationScore);
-            if (milestonePoints.compareTo(BigDecimal.ZERO) < 0) {
-                milestonePoints = BigDecimal.ZERO; // Không cho âm
-            }
-
-            // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone (giữ nguyên)
-            BigDecimal total = totalFromParticipations.add(milestonePoints);
-
-            // Chỉ cập nhật nếu có thay đổi
-            if (total.compareTo(oldScore) != 0) {
-                score.setScore(total);
-                studentScoreRepository.save(score);
-
-                // Tạo history
-                User systemUser = userRepository.findAll().stream()
-                        .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
-                        .findFirst()
-                        .orElse(null);
-
-                ScoreHistory history = new ScoreHistory();
-                history.setScore(score);
-                history.setOldScore(oldScore);
-                history.setNewScore(total);
-                history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-                history.setChangeDate(LocalDateTime.now());
-                history.setReason("Score from activity participation: " + activity.getName());
-                history.setActivityId(activity.getId());
-                scoreHistoryRepository.save(history);
-
-                logger.info(
-                        "Updated {} score from participation: {} -> {} for student {} (activity: {}, participation: {}, milestone: {})",
-                        activity.getScoreType(), oldScore, total, student.getId(), activity.getId(),
-                        participation.getId(), milestonePoints);
-            } else {
-                logger.debug("Score unchanged for student {} activity {}: {}",
-                        student.getId(), activity.getId(), total);
-            }
-
-        } catch (Exception e) {
-            logger.error(
-                    "Failed to update student score from participation (student: {}, activity: {}, participation: {}): {}",
-                    participation.getRegistration().getStudent().getId(),
-                    participation.getRegistration().getActivity().getId(),
-                    participation.getId(),
-                    e.getMessage(), e);
-        }
     }
 
     /**
@@ -1140,204 +858,6 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     }
 
     /**
-     * Cập nhật điểm REN_LUYEN từ ActivityParticipation (cho dual score calculation)
-     * Dùng cho CHUYEN_DE_DOANH_NGHIEP activities
-     */
-    private void updateRenLuyenScoreFromParticipation(ActivityParticipation participation) {
-        try {
-            Student student = participation.getRegistration().getStudent();
-            Activity activity = participation.getRegistration().getActivity();
-
-            // Use SemesterHelperService to find semester based on activity timing
-            Semester semester = semesterHelperService.getSemesterForActivity(activity);
-
-            if (semester == null) {
-                logger.warn("No semester found for RL score aggregation");
-                return;
-            }
-
-            // Tìm bản ghi StudentScore REN_LUYEN
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(
-                            student.getId(),
-                            semester.getId(),
-                            ScoreType.REN_LUYEN);
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No REN_LUYEN score record found for student {} in semester {}",
-                        student.getId(), semester.getId());
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-
-            // Tính lại tổng điểm REN_LUYEN từ TẤT CẢ nguồn trong cùng semester:
-            // 1. Activity có scoreType = REN_LUYEN
-            // 2. Activity có type = CHUYEN_DE_DOANH_NGHIEP (dual score)
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            List<ActivityParticipation> allParticipations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> {
-                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
-                            return false;
-                        }
-                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
-                            return false;
-                        }
-                        Activity pActivity = p.getRegistration().getActivity();
-                        boolean isRenLuyen = pActivity.getScoreType() == ScoreType.REN_LUYEN;
-                        boolean isChuyenDeDualScore = pActivity.getType() == ActivityType.CHUYEN_DE_DOANH_NGHIEP
-                                && pActivity.getMaxPoints() != null;
-                        if (!isRenLuyen && !isChuyenDeDualScore) {
-                            return false;
-                        }
-                        // ✅ Filter theo semester
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(pActivity);
-                        return pSemester != null && pSemester.getId().equals(semester.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            BigDecimal totalFromParticipations = allParticipations.stream()
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // QUAN TRỌNG: Giữ nguyên điểm milestone từ series
-            // Tính điểm milestone = điểm hiện tại - điểm từ participations cũ (trước khi
-            // thêm participation mới)
-            BigDecimal oldScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-
-            // Tính điểm từ participations CŨ (không bao gồm participation hiện tại)
-            BigDecimal oldParticipationScore = allParticipations.stream()
-                    .filter(p -> !p.getId().equals(participation.getId())) // Loại bỏ participation hiện tại
-                    .map(p -> p.getPointsEarned() != null ? p.getPointsEarned() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // Điểm milestone = điểm hiện tại - điểm từ participations cũ
-            BigDecimal milestonePoints = oldScore.subtract(oldParticipationScore);
-            if (milestonePoints.compareTo(BigDecimal.ZERO) < 0) {
-                milestonePoints = BigDecimal.ZERO; // Không cho âm
-            }
-
-            // Tổng điểm MỚI = điểm từ participations MỚI + điểm milestone (giữ nguyên)
-            BigDecimal total = totalFromParticipations.add(milestonePoints);
-
-            // Cập nhật
-            score.setScore(total);
-            studentScoreRepository.save(score);
-
-            // Tạo history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
-                    .findFirst()
-                    .orElse(null);
-
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldScore);
-            history.setNewScore(total);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason("Dual score calculation - RL points from CHUYEN_DE_DOANH_NGHIEP: " + activity.getName());
-            history.setActivityId(activity.getId());
-            scoreHistoryRepository.save(history);
-
-            logger.info(
-                    "Updated REN_LUYEN score from CHUYEN_DE_DOANH_NGHIEP participation: {} -> {} for student {} (participation: {}, milestone: {})",
-                    oldScore, total, student.getId(), totalFromParticipations, milestonePoints);
-
-        } catch (Exception e) {
-            logger.error("Failed to update REN_LUYEN score from participation: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Cập nhật điểm CHUYEN_DE bằng cách đếm số buổi tham gia
-     * Mỗi lần check-out CHUYEN_DE_DOANH_NGHIEP → tăng count lên 1
-     */
-    private void updateChuyenDeScoreCount(ActivityParticipation participation) {
-        try {
-            Student student = participation.getRegistration().getStudent();
-            Activity activity = participation.getRegistration().getActivity();
-
-            // ✅ USE: SemesterHelperService to find semester based on activity timing
-            Semester semester = semesterHelperService.getSemesterForActivity(activity);
-
-            if (semester == null) {
-                logger.warn("No semester found for CHUYEN_DE score count");
-                return;
-            }
-
-            // Tìm bản ghi StudentScore CHUYEN_DE
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(
-                            student.getId(),
-                            semester.getId(),
-                            ScoreType.CHUYEN_DE);
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No CHUYEN_DE score record found for student {} in semester {}",
-                        student.getId(), semester.getId());
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-
-            // Đếm số buổi tham gia CHUYEN_DE_DOANH_NGHIEP đã COMPLETED trong cùng semester
-            // ✅ UPDATED: Filter thêm theo semester để đảm bảo tính đúng
-            List<ActivityParticipation> allParticipations = participationRepository
-                    .findAll()
-                    .stream()
-                    .filter(p -> {
-                        if (!p.getRegistration().getStudent().getId().equals(student.getId())) {
-                            return false;
-                        }
-                        if (p.getRegistration().getActivity().getType() != ActivityType.CHUYEN_DE_DOANH_NGHIEP) {
-                            return false;
-                        }
-                        if (!p.getParticipationType().equals(ParticipationType.COMPLETED)) {
-                            return false;
-                        }
-                        // Filter theo semester
-                        Semester pSemester = semesterHelperService.getSemesterForActivity(
-                                p.getRegistration().getActivity());
-                        return pSemester != null && pSemester.getId().equals(semester.getId());
-                    })
-                    .collect(Collectors.toList());
-
-            // Số buổi = số participation đã COMPLETED trong semester
-            BigDecimal count = BigDecimal.valueOf(allParticipations.size());
-
-            // Cập nhật
-            BigDecimal oldScore = score.getScore();
-            score.setScore(count);
-            studentScoreRepository.save(score);
-
-            // Tạo history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER)
-                    .findFirst()
-                    .orElse(null);
-
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldScore);
-            history.setNewScore(count);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason("Counted CHUYEN_DE sessions from activity: " + activity.getName());
-            history.setActivityId(activity.getId());
-            scoreHistoryRepository.save(history);
-
-            logger.info("Updated CHUYEN_DE score count: {} -> {} ({} sessions) for student {} in semester {}",
-                    oldScore, count, allParticipations.size(), student.getId(), semester.getId());
-
-        } catch (Exception e) {
-            logger.error("Failed to update CHUYEN_DE score count: {}", e.getMessage(), e);
-        }
-    }
-
-    /**
      * Lấy danh sách Đăng ký của sinh theo status
      */
 
@@ -1460,6 +980,118 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
         Long approvedCount = registrationRepository.countByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
         return approvedCount < ticketQuantity;
+    }
+
+    private void markParticipationAsAttended(ActivityRegistration registration,
+            ActivityParticipation participation,
+            LocalDateTime attendedAt,
+            boolean fromTicketFlow) {
+        if (participation.getCheckInTime() == null) {
+            participation.setCheckInTime(attendedAt);
+        }
+        if (fromTicketFlow) {
+            participation.setCheckOutTime(attendedAt);
+        }
+        participation.setParticipationType(ParticipationType.ATTENDED);
+        participation.setDate(attendedAt);
+        participationRepository.save(participation);
+
+        if (registration.getStatus() != RegistrationStatus.ATTENDED) {
+            registration.setStatus(RegistrationStatus.ATTENDED);
+            registrationRepository.save(registration);
+        }
+    }
+
+    private boolean finalizeAttendanceOutcome(ActivityRegistration registration,
+            ActivityParticipation participation,
+            User actor) {
+        Activity activity = registration.getActivity();
+        if (activity == null || participation.getParticipationType() == ParticipationType.COMPLETED) {
+            return participation.getParticipationType() == ParticipationType.COMPLETED;
+        }
+
+        if (!activity.isRequiresSubmission()) {
+            markParticipationCompleted(participation, true);
+            applyStandaloneOrSeriesAttendanceResult(registration, participation, actor);
+            return true;
+        }
+
+        Optional<TaskSubmission> gradedSubmissionOpt = findLatestGradedSubmission(
+                registration.getStudent().getId(),
+                activity.getId());
+        if (gradedSubmissionOpt.isEmpty()) {
+            return false;
+        }
+
+        markParticipationCompleted(participation, gradedSubmissionOpt.get().getIsCompleted());
+        applyStandaloneOrSeriesSubmissionResult(activity, registration.getStudent(), gradedSubmissionOpt.get(), actor);
+        return true;
+    }
+
+    private void markParticipationCompleted(ActivityParticipation participation, boolean isCompleted) {
+        participation.setIsCompleted(isCompleted);
+        participation.setPointsEarned(BigDecimal.ZERO);
+        participation.setParticipationType(ParticipationType.COMPLETED);
+        participationRepository.save(participation);
+    }
+
+    private void applyStandaloneOrSeriesAttendanceResult(ActivityRegistration registration,
+            ActivityParticipation participation,
+            User actor) {
+        Activity activity = registration.getActivity();
+        if (activity.getSeriesId() != null) {
+            try {
+                activitySeriesService.updateStudentProgress(
+                        registration.getStudent().getId(),
+                        activity.getId());
+            } catch (Exception e) {
+                logger.warn("Failed to update series progress: {}", e.getMessage());
+            }
+            return;
+        }
+
+        try {
+            scoreRuleEngine.applyActivityCompleted(participation, actor);
+        } catch (Exception e) {
+            logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
+        }
+    }
+
+    private void applyStandaloneOrSeriesSubmissionResult(Activity activity,
+            Student student,
+            TaskSubmission submission,
+            User actor) {
+        if (activity.getSeriesId() != null) {
+            if (Boolean.TRUE.equals(submission.getIsCompleted())) {
+                try {
+                    activitySeriesService.updateStudentProgress(student.getId(), activity.getId());
+                } catch (Exception e) {
+                    logger.warn("Failed to update series progress: {}", e.getMessage());
+                }
+            }
+            return;
+        }
+
+        try {
+            scoreRuleEngine.applySubmissionGraded(submission, actor);
+        } catch (Exception e) {
+            logger.error("Failed to apply submission rules: {}", e.getMessage(), e);
+        }
+    }
+
+    private Optional<TaskSubmission> findLatestGradedSubmission(Long studentId, Long activityId) {
+        return taskSubmissionRepository.findByActivityAndStudentAndStatusOrderByLatest(
+                activityId,
+                studentId,
+                vn.campuslife.enumeration.SubmissionStatus.GRADED).stream().findFirst();
+    }
+
+    private void syncSeriesMinimumRequirementReminder(Long seriesId, Student student) {
+        if (seriesId == null || student == null) {
+            return;
+        }
+        activitySeriesRepository.findById(seriesId)
+                .ifPresent(series -> reminderScheduleService.syncSeriesMinimumRequirementReminder(series, student));
     }
 
 }

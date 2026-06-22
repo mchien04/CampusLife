@@ -10,24 +10,45 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.campuslife.entity.*;
+import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivityParticipation;
+import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.entity.ActivitySeries;
+import vn.campuslife.entity.Department;
+import vn.campuslife.entity.Student;
+import vn.campuslife.entity.StudentSeriesProgress;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
-import vn.campuslife.model.SeriesOverviewResponse;
-import vn.campuslife.model.SeriesProgressItemResponse;
-import vn.campuslife.model.SeriesProgressListResponse;
-import vn.campuslife.repository.*;
+import vn.campuslife.model.activity.series.SeriesResponse;
+import vn.campuslife.model.activity.series.SeriesOverviewResponse;
+import vn.campuslife.model.activity.series.SeriesProgressItemResponse;
+import vn.campuslife.model.activity.series.SeriesProgressListResponse;
+import vn.campuslife.repository.ActivityParticipationRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivitySeriesRepository;
+import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.service.SemesterHelperService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.UUID;
-import java.util.Comparator;
 
 @Service
 @RequiredArgsConstructor
@@ -40,21 +61,20 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final StudentSeriesProgressRepository progressRepository;
     private final ActivityRepository activityRepository;
     private final StudentRepository studentRepository;
-    private final StudentScoreRepository studentScoreRepository;
-    private final ScoreHistoryRepository scoreHistoryRepository;
-    private final SemesterRepository semesterRepository;
-    private final UserRepository userRepository;
     private final ActivityParticipationRepository participationRepository;
     private final ActivityRegistrationRepository registrationRepository;
     private final DepartmentRepository departmentRepository;
     private final SemesterHelperService semesterHelperService;
+    private final ScoreRuleEngine scoreRuleEngine;
+    private final ReminderScheduleService reminderScheduleService;
 
     @Override
     @Transactional
     public Response createSeries(String name, String description, String milestonePointsJson,
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
-            Boolean requiresApproval, Integer ticketQuantity) {
+            Boolean requiresApproval, Integer ticketQuantity,
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Series name is required");
@@ -62,6 +82,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         if (scoreType == null) {
             throw new IllegalArgumentException("ScoreType is required");
         }
+        validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
 
         ActivitySeries series = new ActivitySeries();
         series.setName(name);
@@ -72,6 +93,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         series.setRegistrationDeadline(registrationDeadline);
         series.setRequiresApproval(requiresApproval != null ? requiresApproval : true);
         series.setTicketQuantity(ticketQuantity);
+        series.setMinimumRequirementEnabled(Boolean.TRUE.equals(minimumRequirementEnabled));
+        series.setMinimumRequiredEvents(minimumRequiredEvents);
+        series.setMinimumPenaltyPoints(minimumPenaltyPoints);
         series.setCreatedAt(LocalDateTime.now());
         series.setDeleted(false); // Set default value for isDeleted
 
@@ -86,7 +110,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
         ActivitySeries saved = seriesRepository.save(series);
         logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
-        return Response.success("Activity series created successfully", saved);
+        return Response.success("Activity series created successfully", toSeriesResponse(saved));
     }
 
     @Override
@@ -144,15 +168,14 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         } else {
             activity.setType(null); // Mặc định null cho activity thường
         }
-        activity.setScoreType(null); // Lấy từ series (không dùng scoreType riêng của activity)
-        activity.setMaxPoints(null); // Không dùng để tính điểm
+
         activity.setRegistrationStartDate(series.getRegistrationStartDate()); // Lấy từ series
         activity.setRegistrationDeadline(series.getRegistrationDeadline()); // Lấy từ series
         activity.setRequiresApproval(series.isRequiresApproval()); // Lấy từ series
         activity.setTicketQuantity(series.getTicketQuantity()); // Lấy từ series
         activity.setImportant(false); // Không cần
         activity.setMandatoryForFacultyStudents(false); // Không cần
-        activity.setPenaltyPointsIncomplete(null); // Không cần
+
         activity.setRequiresSubmission(false);
         activity.setDraft(false); // Mặc định published
         activity.setDeleted(false);
@@ -172,6 +195,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
         // Auto-register all students who already registered any activity in this series
         autoRegisterStudentsForNewActivityInSeries(series, saved);
+        reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
 
         return Response.success("Activity created in series successfully", saved);
     }
@@ -290,6 +314,10 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 logger.info("Created {} participations for series registrations", participationsToCreate.size());
             }
 
+            if (registrations.stream().anyMatch(reg -> reg.getStatus() == RegistrationStatus.APPROVED)) {
+                reminderScheduleService.syncSeriesMinimumRequirementReminder(series, student);
+            }
+
             logger.info("Registered student {} for {} activities in series {}",
                     studentId, registrations.size(), seriesId);
 
@@ -324,6 +352,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             ActivitySeries series = seriesOpt.get();
             if (!series.isDeleted()) {
                 autoRegisterStudentsForNewActivityInSeries(series, savedActivity);
+                reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
             }
 
             logger.info("Added activity {} to series {} with order {}", activityId, seriesId, order);
@@ -493,7 +522,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 progress.setCompletedCount(completedIds.size());
                 progress.setCompletedActivityIds(objectMapper.writeValueAsString(completedIds));
                 progress.setLastUpdated(LocalDateTime.now());
-                progressRepository.save(progress);
+                progress = progressRepository.save(progress);
 
                 // Tính lại milestone points
                 calculateMilestonePoints(studentId, activity.getSeriesId());
@@ -529,56 +558,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 return Response.success("No milestone points configured", null);
             }
 
-            // Parse milestone points JSON
-            Map<String, Integer> milestonePoints;
-            try {
-                milestonePoints = objectMapper.readValue(series.getMilestonePoints(),
-                        new TypeReference<Map<String, Integer>>() {
-                        });
-            } catch (Exception e) {
-                logger.error("Failed to parse milestone points: {}", e.getMessage());
-                return Response.error("Invalid milestone points format");
-            }
-
-            // Tìm điểm milestone phù hợp với số sự kiện đã tham gia
-            Integer completedCount = progress.getCompletedCount();
-            BigDecimal pointsToAward = BigDecimal.ZERO;
-
-            // Tìm milestone cao nhất mà student đã đạt được
-            for (Map.Entry<String, Integer> entry : milestonePoints.entrySet()) {
-                try {
-                    Integer milestoneCount = Integer.parseInt(entry.getKey());
-                    if (completedCount >= milestoneCount) {
-                        Integer milestonePointsValue = entry.getValue();
-                        if (milestonePointsValue > pointsToAward.intValue()) {
-                            pointsToAward = BigDecimal.valueOf(milestonePointsValue);
-                        }
-                    }
-                } catch (NumberFormatException e) {
-                    logger.warn("Invalid milestone key: {}", entry.getKey());
-                }
-            }
-
-            // Cập nhật pointsEarned nếu có thay đổi (>= thay vì > để đảm bảo cập nhật khi
-            // bằng nhau)
-            BigDecimal currentPointsEarned = progress.getPointsEarned() != null
-                    ? progress.getPointsEarned()
-                    : BigDecimal.ZERO;
-            if (pointsToAward.compareTo(currentPointsEarned) >= 0) {
-                BigDecimal oldPoints = currentPointsEarned;
-                progress.setPointsEarned(pointsToAward);
-                progressRepository.save(progress);
-
-                // Cập nhật StudentScore (theo scoreType của series)
-                updateRenLuyenScoreFromMilestone(studentId, seriesId, oldPoints, pointsToAward);
-
-                logger.info("Awarded milestone points {} (was {}) to student {} for series {}",
-                        pointsToAward, oldPoints, studentId, seriesId);
-            } else {
-                logger.warn(
-                        "Milestone points {} is less than current points {} for student {} in series {}. Skipping update.",
-                        pointsToAward, currentPointsEarned, studentId, seriesId);
-            }
+            scoreRuleEngine.applySeriesMilestone(progress, progress.getStudent().getUser());
+            progress = progressRepository.findByStudentIdAndSeriesId(studentId, seriesId).orElse(progress);
+            logger.info("Applied series milestone via engine for student {} in series {}", studentId, seriesId);
 
             return Response.success("Milestone points calculated", progress);
         } catch (Exception e) {
@@ -590,119 +572,42 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     @Override
     @Transactional
     public Response checkMinimumRequirement(Long studentId, Long seriesId) {
-        // TODO: Implement penalty logic if student doesn't meet minimum requirement
-        // This would need additional fields in ActivitySeries: minimumRequired,
-        // penaltyPoints
-        return Response.success("Minimum requirement check not yet implemented", null);
-    }
-
-    /**
-     * Cập nhật điểm từ milestone (dùng scoreType từ series)
-     */
-    private void updateRenLuyenScoreFromMilestone(Long studentId, Long seriesId, BigDecimal oldPoints,
-            BigDecimal newPoints) {
-        ScoreType scoreType = null;
         try {
-            // Lấy series để lấy scoreType
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
             if (seriesOpt.isEmpty()) {
-                logger.warn("Series not found: {}", seriesId);
-                return;
+                return Response.error("Series not found");
             }
+
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+
             ActivitySeries series = seriesOpt.get();
-            scoreType = series.getScoreType();
+            Student student = studentOpt.get();
 
-            // Use SemesterHelperService to find semester from first activity in series
-            List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-
-            Semester semester = null;
-            if (!seriesActivities.isEmpty()) {
-                // Lấy activity có startDate sớm nhất
-                Activity firstActivity = seriesActivities.stream()
-                        .filter(a -> a.getStartDate() != null)
-                        .min(Comparator.comparing(Activity::getStartDate))
-                        .orElse(seriesActivities.get(0));
-
-                semester = semesterHelperService.getSemesterForActivity(firstActivity);
+            if (!series.isMinimumRequirementEnabled()) {
+                return Response.success("Series minimum requirement is disabled", null);
             }
 
-            // Fallback: Dùng semester đang mở
-            if (semester == null) {
-                semester = semesterRepository.findAll().stream()
-                        .filter(Semester::isOpen)
-                        .findFirst()
-                        .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
-            }
+            int completedCount = progressRepository.findByStudentIdAndSeriesId(studentId, seriesId)
+                    .map(StudentSeriesProgress::getCompletedCount)
+                    .orElse(0);
 
-            if (semester == null) {
-                logger.warn("No semester found for milestone score update");
-                return;
-            }
+            scoreRuleEngine.applySeriesMinimumRequirement(series, student, completedCount, student.getUser());
 
-            Optional<StudentScore> scoreOpt = studentScoreRepository
-                    .findByStudentIdAndSemesterIdAndScoreType(studentId, semester.getId(), scoreType);
-
-            if (scoreOpt.isEmpty()) {
-                logger.warn("No {} score record found for student {}", scoreType, studentId);
-                return;
-            }
-
-            StudentScore score = scoreOpt.get();
-            BigDecimal oldTotalScore = score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
-
-            // QUAN TRỌNG: Logic tính điểm milestone - tính theo mốc cuối đạt, KHÔNG cộng
-            // dồn
-            // Ví dụ: Mốc 1 = 5đ, Mốc 2 = 10đ
-            // - Đạt mốc 1 → tổng = 5đ
-            // - Đạt mốc 2 → tổng = 10đ (KHÔNG phải 5+10=15đ)
-            //
-            // Công thức: newTotal = (oldTotal - oldMilestone) + newMilestone
-            // oldTotal đã bao gồm: participations (từ activities đơn lẻ) + oldMilestone
-            // newTotal sẽ là: participations (từ activities đơn lẻ) + newMilestone
-
-            // Sử dụng oldPoints đã truyền vào (không lấy lại từ progress vì đã được cập
-            // nhật)
-            BigDecimal oldMilestonePoints = oldPoints != null ? oldPoints : BigDecimal.ZERO;
-
-            // Tổng điểm MỚI = (tổng điểm cũ - milestone cũ) + milestone mới
-            // Đảm bảo không cộng dồn milestone
-            BigDecimal updatedScore = oldTotalScore.subtract(oldMilestonePoints).add(newPoints);
-
-            // Đảm bảo điểm không âm
-            if (updatedScore.compareTo(BigDecimal.ZERO) < 0) {
-                logger.warn("Calculated score is negative: {}. Setting to 0.", updatedScore);
-                updatedScore = BigDecimal.ZERO;
-            }
-            score.setScore(updatedScore);
-            studentScoreRepository.save(score);
-
-            // Tạo history
-            User systemUser = userRepository.findAll().stream()
-                    .filter(user -> user.getRole() == vn.campuslife.enumeration.Role.ADMIN
-                            || user.getRole() == vn.campuslife.enumeration.Role.MANAGER)
-                    .findFirst()
-                    .orElse(null);
-
-            ScoreHistory history = new ScoreHistory();
-            history.setScore(score);
-            history.setOldScore(oldTotalScore);
-            history.setNewScore(updatedScore);
-            history.setChangedBy(systemUser != null ? systemUser : userRepository.findById(1L).orElse(null));
-            history.setChangeDate(LocalDateTime.now());
-            history.setReason(scoreType + " milestone from series '" + series.getName() + "' (ID: " + seriesId +
-                            "). Old milestone: " + oldMilestonePoints + ", New milestone: " + newPoints +
-                            ". Semester: " + semester.getName());
-            // For series milestone, activityId is null (affects multiple activities in series)
-            history.setActivityId(null);
-            scoreHistoryRepository.save(history);
-
-            logger.info("Updated {} score from milestone: {} -> {} for student {} (oldMilestone: {}, newMilestone: {})",
-                    scoreType, oldTotalScore, updatedScore, studentId, oldMilestonePoints, newPoints);
+            Map<String, Object> result = new HashMap<>();
+            result.put("studentId", studentId);
+            result.put("seriesId", seriesId);
+            result.put("completedCount", completedCount);
+            result.put("minimumRequiredEvents", series.getMinimumRequiredEvents());
+            result.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
+            result.put("minimumRequirementMet",
+                    series.getMinimumRequiredEvents() == null || completedCount >= series.getMinimumRequiredEvents());
+            return Response.success("Series minimum requirement checked", result);
         } catch (Exception e) {
-            logger.error("Failed to update score from milestone for student {} in series {} (scoreType: {}): {}",
-                    studentId, seriesId, scoreType, e.getMessage(), e);
-            // Không throw exception để không làm gián đoạn flow chính
-            // Nhưng log đầy đủ để debug
+            logger.error("Failed to check series minimum requirement: {}", e.getMessage(), e);
+            return Response.error("Failed to check series minimum requirement: " + e.getMessage());
         }
     }
 
@@ -726,6 +631,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                         seriesMap.put("registrationDeadline", series.getRegistrationDeadline());
                         seriesMap.put("requiresApproval", series.isRequiresApproval());
                         seriesMap.put("ticketQuantity", series.getTicketQuantity());
+                        seriesMap.put("minimumRequirementEnabled", series.isMinimumRequirementEnabled());
+                        seriesMap.put("minimumRequiredEvents", series.getMinimumRequiredEvents());
+                        seriesMap.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
                         seriesMap.put("createdAt", series.getCreatedAt());
                         seriesMap.put("isDeleted", series.isDeleted());
 
@@ -752,7 +660,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
             }
-            return Response.success("Series retrieved successfully", seriesOpt.get());
+            return Response.success("Series retrieved successfully", toSeriesResponse(seriesOpt.get()));
         } catch (Exception e) {
             logger.error("Failed to get series: {}", e.getMessage(), e);
             return Response.error("Failed to get series: " + e.getMessage());
@@ -886,6 +794,17 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             responseData.put("nextMilestonePoints", nextMilestonePoints);
             responseData.put("milestonePoints", milestonePoints);
             responseData.put("scoreType", series.getScoreType());
+            responseData.put("minimumRequirementEnabled", series.isMinimumRequirementEnabled());
+            responseData.put("minimumRequiredEvents", series.getMinimumRequiredEvents());
+            responseData.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
+            responseData.put("minimumRequirementMet",
+                    !series.isMinimumRequirementEnabled()
+                            || series.getMinimumRequiredEvents() == null
+                            || completedCount >= series.getMinimumRequiredEvents());
+            responseData.put("remainingToAvoidPenalty",
+                    !series.isMinimumRequirementEnabled() || series.getMinimumRequiredEvents() == null
+                            ? 0
+                            : Math.max(series.getMinimumRequiredEvents() - completedCount, 0));
 
             return Response.success("Student progress retrieved successfully", responseData);
         } catch (Exception e) {
@@ -1209,7 +1128,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     public Response updateSeries(Long seriesId, String name, String description, String milestonePointsJson,
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
-            Boolean requiresApproval, Integer ticketQuantity) {
+            Boolean requiresApproval, Integer ticketQuantity,
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints) {
         try {
             // Find series
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
@@ -1231,6 +1151,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (scoreType == null) {
                 return Response.error("ScoreType is required");
             }
+            validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
 
             // Update fields (only if provided)
             if (name != null) {
@@ -1275,10 +1196,20 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (ticketQuantity != null) {
                 series.setTicketQuantity(ticketQuantity);
             }
+            if (minimumRequirementEnabled != null) {
+                series.setMinimumRequirementEnabled(minimumRequirementEnabled);
+            }
+            if (minimumRequiredEvents != null) {
+                series.setMinimumRequiredEvents(minimumRequiredEvents);
+            }
+            if (minimumPenaltyPoints != null) {
+                series.setMinimumPenaltyPoints(minimumPenaltyPoints);
+            }
 
             ActivitySeries saved = seriesRepository.save(series);
+            reminderScheduleService.syncSeriesMinimumRequirementReminders(saved);
             logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
-            return Response.success("Activity series updated successfully", saved);
+            return Response.success("Activity series updated successfully", toSeriesResponse(saved));
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when updating series: {}", e.getMessage(), e);
             return Response.error("Invalid request: " + e.getMessage());
@@ -1330,4 +1261,46 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         }
     }
 
+    private SeriesResponse toSeriesResponse(ActivitySeries series) {
+        SeriesResponse response = new SeriesResponse();
+        response.setId(series.getId());
+        response.setName(series.getName());
+        response.setDescription(series.getDescription());
+        response.setScoreType(series.getScoreType());
+        response.setMainActivityId(series.getMainActivity() != null ? series.getMainActivity().getId() : null);
+        response.setRegistrationStartDate(series.getRegistrationStartDate());
+        response.setRegistrationDeadline(series.getRegistrationDeadline());
+        response.setRequiresApproval(series.isRequiresApproval());
+        response.setTicketQuantity(series.getTicketQuantity());
+        response.setMinimumRequirementEnabled(series.isMinimumRequirementEnabled());
+        response.setMinimumRequiredEvents(series.getMinimumRequiredEvents());
+        response.setMinimumPenaltyPoints(series.getMinimumPenaltyPoints());
+        response.setCreatedAt(series.getCreatedAt());
+        if (series.getMilestonePoints() != null && !series.getMilestonePoints().isBlank()) {
+            try {
+                response.setMilestonePoints(objectMapper.readValue(
+                        series.getMilestonePoints(),
+                        new TypeReference<Map<Integer, Integer>>() {
+                        }));
+            } catch (Exception e) {
+                logger.warn("Failed to parse milestonePoints for series response {}", series.getId(), e);
+            }
+        }
+        return response;
+    }
+
+    private void validateMinimumRequirementConfig(Boolean minimumRequirementEnabled, Integer minimumRequiredEvents,
+            Integer minimumPenaltyPoints) {
+        if (!Boolean.TRUE.equals(minimumRequirementEnabled)) {
+            return;
+        }
+        if (minimumRequiredEvents == null || minimumRequiredEvents <= 0) {
+            throw new IllegalArgumentException("minimumRequiredEvents must be greater than 0 when minimum requirement is enabled");
+        }
+        if (minimumPenaltyPoints == null || minimumPenaltyPoints <= 0) {
+            throw new IllegalArgumentException("minimumPenaltyPoints must be greater than 0 when minimum requirement is enabled");
+        }
+    }
+
 }
+

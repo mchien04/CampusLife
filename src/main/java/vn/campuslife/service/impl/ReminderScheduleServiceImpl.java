@@ -7,9 +7,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
+import vn.campuslife.entity.ActivitySeries;
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.ReminderSchedule;
+import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.ReminderCode;
@@ -41,6 +43,12 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
 
     @Value("${app.reminder.event.before-minutes:0}")
     private long eventReminderBeforeMinutes;
+
+    @Value("${app.reminder.event.no-show-grace-hours:1}")
+    private long eventNoShowGraceHours;
+
+    @Value("${app.reminder.event.no-show-grace-minutes:0}")
+    private long eventNoShowGraceMinutes;
 
     @Value("${app.reminder.task.before-days:1}")
     private long taskReminderBeforeDays;
@@ -81,8 +89,14 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         }
 
         LocalDateTime eventStart = activity.getStartDate();
-        createOrUpdateEventReminder(user, activity, ReminderCode.BEFORE_1_DAY, calculateEventBeforeDayReminderAt(eventStart));
-        createOrUpdateEventReminder(user, activity, ReminderCode.BEFORE_1_HOUR, calculateEventBeforeHourReminderAt(eventStart));
+        createOrUpdateEventReminder(user, activity, ReminderCode.BEFORE_1_DAY,
+                calculateEventBeforeDayReminderAt(eventStart));
+        createOrUpdateEventReminder(user, activity, ReminderCode.BEFORE_1_HOUR,
+                calculateEventBeforeHourReminderAt(eventStart));
+        if (activity.getSeriesId() == null) {
+            createOrUpdateEventReminder(user, activity, ReminderCode.EVENT_NO_SHOW_PENALTY,
+                    calculateEventNoShowPenaltyAt(activity.getEndDate()));
+        }
     }
 
     @Override
@@ -103,8 +117,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
                 userId,
                 ReminderTargetType.EVENT,
                 activityId,
-                EnumSet.of(ReminderStatus.PENDING, ReminderStatus.FAILED)
-        );
+                EnumSet.of(ReminderStatus.PENDING, ReminderStatus.FAILED));
 
         if (reminders.isEmpty()) {
             return;
@@ -150,17 +163,20 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
 
         boolean hasSubmission = taskSubmissionRepository.findByTaskIdAndStudentIdAndIsDeletedFalse(
                 task.getId(),
-                assignment.getStudent().getId()
-        ).isPresent();
+                assignment.getStudent().getId()).isPresent();
         if (hasSubmission) {
             cancelPendingTaskRemindersForAssignment(assignment);
             return;
         }
 
         LocalDateTime deadline = task.getDeadline();
-        createOrUpdateTaskReminder(user, task, ReminderCode.TASK_BEFORE_1_DAY, calculateTaskBeforeDayReminderAt(deadline));
-        createOrUpdateTaskReminder(user, task, ReminderCode.TASK_BEFORE_3_HOURS, calculateTaskBeforeHourReminderAt(deadline));
-        createOrUpdateTaskReminder(user, task, ReminderCode.TASK_OVERDUE, calculateTaskOverdueReminderAt(deadline));
+        createOrUpdateTaskReminder(user, task, ReminderCode.TASK_BEFORE_1_DAY,
+                calculateTaskBeforeDayReminderAt(deadline));
+        createOrUpdateTaskReminder(user, task, ReminderCode.TASK_BEFORE_3_HOURS,
+                calculateTaskBeforeHourReminderAt(deadline));
+        if (shouldScheduleTaskOverdue(task)) {
+            createOrUpdateTaskReminder(user, task, ReminderCode.TASK_OVERDUE, calculateTaskOverdueReminderAt(deadline));
+        }
     }
 
     @Override
@@ -181,8 +197,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
                 userId,
                 ReminderTargetType.TASK,
                 taskId,
-                EnumSet.of(ReminderStatus.PENDING, ReminderStatus.FAILED)
-        );
+                EnumSet.of(ReminderStatus.PENDING, ReminderStatus.FAILED));
 
         if (reminders.isEmpty()) {
             return;
@@ -205,21 +220,89 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
 
         List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(task.getId());
         for (TaskAssignment assignment : assignments) {
+            cancelPendingTaskRemindersForAssignment(assignment);
             boolean hasSubmission = taskSubmissionRepository.findByTaskIdAndStudentIdAndIsDeletedFalse(
                     task.getId(),
-                    assignment.getStudent().getId()
-            ).isPresent();
-            if (hasSubmission) {
-                cancelPendingTaskRemindersForAssignment(assignment);
-            } else {
+                    assignment.getStudent().getId()).isPresent();
+            if (!hasSubmission) {
                 createTaskRemindersForAssignment(assignment);
+            }
+        }
+    }
+
+    @Override
+    @Transactional
+    public void syncSeriesMinimumRequirementReminder(ActivitySeries series, Student student) {
+        if (series == null || series.getId() == null || student == null || student.getId() == null
+                || student.getUser() == null) {
+            return;
+        }
+
+        User user = student.getUser();
+        if (user.getId() == null) {
+            return;
+        }
+
+        boolean hasApprovedRegistration = activityRegistrationRepository
+                .findBySeriesIdAndStudentId(series.getId(), student.getId())
+                .stream()
+                .anyMatch(reg -> reg.getStatus() == RegistrationStatus.APPROVED
+                        || reg.getStatus() == RegistrationStatus.ATTENDED);
+
+        if (!hasApprovedRegistration
+                || !isSeriesMinimumRequirementConfigValid(series)
+                || user.getEmail() == null
+                || user.getEmail().isBlank()) {
+            cancelPendingSeriesMinimumRequirementReminder(user.getId(), series.getId());
+            return;
+        }
+
+        LocalDateTime remindAt = calculateSeriesMinimumRequirementAt(series);
+        if (remindAt == null) {
+            cancelPendingSeriesMinimumRequirementReminder(user.getId(), series.getId());
+            return;
+        }
+
+        createOrUpdateSeriesReminder(user, series, remindAt);
+    }
+
+    @Override
+    @Transactional
+    public void syncSeriesMinimumRequirementReminders(ActivitySeries series) {
+        if (series == null || series.getId() == null) {
+            return;
+        }
+
+        List<ActivityRegistration> registrations = activityRegistrationRepository.findBySeriesId(series.getId());
+        registrations.stream()
+                .map(ActivityRegistration::getStudent)
+                .filter(student -> student != null && student.getId() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        Student::getId,
+                        student -> student,
+                        (left, right) -> left))
+                .values()
+                .forEach(student -> syncSeriesMinimumRequirementReminder(series, student));
+
+        if (!isSeriesMinimumRequirementConfigValid(series)) {
+            List<ReminderSchedule> reminders = reminderScheduleRepository.findByTargetTypeAndTargetIdAndStatusIn(
+                    ReminderTargetType.SERIES,
+                    series.getId(),
+                    EnumSet.of(ReminderStatus.PENDING, ReminderStatus.FAILED));
+            for (ReminderSchedule reminder : reminders) {
+                reminder.setStatus(ReminderStatus.CANCELLED);
+                reminderRuntimeSchedulerService.cancelReminder(reminder.getId());
+            }
+            if (!reminders.isEmpty()) {
+                reminderScheduleRepository.saveAll(reminders);
             }
         }
     }
 
     private void createOrUpdateEventReminder(User user, Activity activity, ReminderCode reminderCode,
             LocalDateTime remindAt) {
-        if (remindAt == null || !remindAt.isAfter(LocalDateTime.now())) {
+        boolean allowImmediateDispatch = reminderCode == ReminderCode.EVENT_NO_SHOW_PENALTY;
+        if (remindAt == null || (!allowImmediateDispatch && !remindAt.isAfter(LocalDateTime.now()))) {
             return;
         }
 
@@ -293,14 +376,78 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         logger.info("Prepared {} reminder for user {} and task {}", reminderCode, user.getId(), task.getId());
     }
 
+    private void createOrUpdateSeriesReminder(User user, ActivitySeries series, LocalDateTime remindAt) {
+        if (remindAt == null || user.getEmail() == null || user.getEmail().isBlank()) {
+            return;
+        }
+
+        Optional<ReminderSchedule> reminderOpt = reminderScheduleRepository
+                .findByUserIdAndTargetTypeAndTargetIdAndReminderCode(
+                        user.getId(),
+                        ReminderTargetType.SERIES,
+                        series.getId(),
+                        ReminderCode.SERIES_MINIMUM_REQUIREMENT);
+
+        if (reminderOpt.isPresent() && reminderOpt.get().getStatus() == ReminderStatus.SENT) {
+            return;
+        }
+
+        ReminderSchedule reminder = reminderOpt.orElseGet(ReminderSchedule::new);
+        reminder.setUser(user);
+        reminder.setTargetType(ReminderTargetType.SERIES);
+        reminder.setTargetId(series.getId());
+        reminder.setReminderCode(ReminderCode.SERIES_MINIMUM_REQUIREMENT);
+        reminder.setRemindAt(remindAt);
+        reminder.setStatus(ReminderStatus.PENDING);
+        reminder.setRecipientEmail(user.getEmail());
+        reminder.setSubject("Danh gia dieu kien toi thieu cua chuoi: " + series.getName());
+        reminder.setContent(buildSeriesReminderContent(series));
+        reminder.setErrorMessage(null);
+        reminder.setSentAt(null);
+
+        reminder = reminderScheduleRepository.save(reminder);
+        reminderRuntimeSchedulerService.scheduleReminder(reminder);
+        logger.info("Prepared {} reminder for user {} and series {}", reminder.getReminderCode(), user.getId(),
+                series.getId());
+    }
+
+    private void cancelPendingSeriesMinimumRequirementReminder(Long userId, Long seriesId) {
+        if (userId == null || seriesId == null) {
+            return;
+        }
+
+        List<ReminderSchedule> reminders = reminderScheduleRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusIn(
+                userId,
+                ReminderTargetType.SERIES,
+                seriesId,
+                EnumSet.of(ReminderStatus.PENDING, ReminderStatus.FAILED));
+
+        for (ReminderSchedule reminder : reminders) {
+            reminder.setStatus(ReminderStatus.CANCELLED);
+            reminderRuntimeSchedulerService.cancelReminder(reminder.getId());
+        }
+        if (!reminders.isEmpty()) {
+            reminderScheduleRepository.saveAll(reminders);
+        }
+    }
+
     private String buildEventReminderSubject(ReminderCode reminderCode, Activity activity) {
         if (reminderCode == ReminderCode.BEFORE_1_DAY) {
             return "Nhac nho su kien truoc 1 ngay: " + activity.getName();
         }
-        return "Nhac nho su kien truoc 1 gio: " + activity.getName();
+        if (reminderCode == ReminderCode.BEFORE_1_HOUR) {
+            return "Nhac nho su kien truoc 1 gio: " + activity.getName();
+        }
+        return "Thong bao vang mat su kien: " + activity.getName();
     }
 
     private String buildEventReminderContent(ReminderCode reminderCode, Activity activity) {
+        if (reminderCode == ReminderCode.EVENT_NO_SHOW_PENALTY) {
+            String endText = activity.getEndDate() != null ? activity.getEndDate().toString() : "chua xac dinh";
+            return "Su kien \"" + activity.getName()
+                    + "\" da ket thuc vao " + endText
+                    + ". He thong ghi nhan ban chua tham gia/check-in hop le va co the ap dung no-show penalty neu co cau hinh.";
+        }
         String timeText = reminderCode == ReminderCode.BEFORE_1_DAY ? "1 ngay" : "1 gio";
         String startText = activity.getStartDate() != null ? activity.getStartDate().toString() : "chua xac dinh";
         return "Su kien \"" + activity.getName() + "\" se dien ra sau " + timeText
@@ -331,6 +478,12 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
                 + "\" se den han sau " + timeText + ". Han nop: " + deadlineText + ".";
     }
 
+    private String buildSeriesReminderContent(ActivitySeries series) {
+        return "Chuoi su kien \"" + series.getName()
+                + "\" da den thoi diem danh gia dieu kien toi thieu. He thong se kiem tra so su kien ban da hoan thanh"
+                + " va ap dung tru diem neu khong dat nguong cau hinh.";
+    }
+
     private LocalDateTime calculateEventBeforeDayReminderAt(LocalDateTime eventStart) {
         if (eventReminderBeforeMinutes > 0) {
             return eventStart.minusMinutes(eventReminderBeforeMinutes);
@@ -343,6 +496,16 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             return eventStart.minusMinutes(eventReminderBeforeMinutes);
         }
         return eventStart.minusHours(eventReminderBeforeHours);
+    }
+
+    private LocalDateTime calculateEventNoShowPenaltyAt(LocalDateTime eventEnd) {
+        if (eventEnd == null) {
+            return null;
+        }
+        if (eventNoShowGraceMinutes > 0) {
+            return eventEnd.plusMinutes(eventNoShowGraceMinutes);
+        }
+        return eventEnd.plusHours(eventNoShowGraceHours);
     }
 
     private LocalDateTime calculateTaskBeforeDayReminderAt(LocalDateTime deadline) {
@@ -364,5 +527,44 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             return deadline.plusMinutes(taskOverdueInitialMinutes);
         }
         return deadline.plusHours(taskOverdueInitialHours);
+    }
+
+    private boolean shouldScheduleTaskOverdue(ActivityTask task) {
+        if (task == null || task.getActivity() == null) {
+            return false;
+        }
+        Activity activity = task.getActivity();
+        return activity.isRequiresSubmission() && activity.getSeriesId() == null;
+    }
+
+    private LocalDateTime calculateSeriesMinimumRequirementAt(ActivitySeries series) {
+        if (series == null || series.getId() == null) {
+            return null;
+        }
+
+        LocalDateTime latestEndDate = activityRegistrationRepository.findBySeriesId(series.getId()).stream()
+                .map(ActivityRegistration::getActivity)
+                .filter(activity -> activity != null && activity.getEndDate() != null)
+                .map(Activity::getEndDate)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+
+        if (latestEndDate != null) {
+            return latestEndDate.plusMinutes(1);
+        }
+        if (series.getMainActivity() != null && series.getMainActivity().getEndDate() != null) {
+            return series.getMainActivity().getEndDate().plusMinutes(1);
+        }
+        return null;
+    }
+
+    private boolean isSeriesMinimumRequirementConfigValid(ActivitySeries series) {
+        return series != null
+                && !series.isDeleted()
+                && series.isMinimumRequirementEnabled()
+                && series.getMinimumRequiredEvents() != null
+                && series.getMinimumRequiredEvents() > 0
+                && series.getMinimumPenaltyPoints() != null
+                && series.getMinimumPenaltyPoints() > 0;
     }
 }

@@ -8,10 +8,12 @@ import java.util.List;
 public interface TaskSubmissionService {
 
     // Nộp bài cho task
-    Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files);
+    Response submitTask(Long taskId, Long studentId, String content, List<MultipartFile> files,
+            List<MultipartFile> images);
 
     // Cập nhật bài nộp
-    Response updateSubmission(Long submissionId, Long studentId, String content, List<MultipartFile> files);
+    Response updateSubmission(Long submissionId, Long studentId, String content, List<MultipartFile> files,
+            List<MultipartFile> images);
 
     // Lấy danh sách bài nộp của student cho một task
     Response getStudentSubmissions(Long taskId, Long studentId);

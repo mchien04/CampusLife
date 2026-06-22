@@ -1,0 +1,27 @@
+package vn.campuslife.model.activity.series;
+
+import lombok.Data;
+import vn.campuslife.enumeration.ScoreType;
+import vn.campuslife.enumeration.SeriesPresetCode;
+
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@Data
+public class UpdateSeriesRequest {
+    private String name;
+    private String description;
+    private Map<Integer, Integer> milestonePoints = new LinkedHashMap<>();
+    private ScoreType scoreType;
+    private Long mainActivityId;
+    private LocalDateTime registrationStartDate;
+    private LocalDateTime registrationDeadline;
+    private Boolean requiresApproval;
+    private Integer ticketQuantity;
+    private Boolean minimumRequirementEnabled;
+    private Integer minimumRequiredEvents;
+    private Integer minimumPenaltyPoints;
+    private SeriesPresetCode presetCode;
+    private SeriesPresetConfig presetConfig;
+}

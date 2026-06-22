@@ -1,24 +1,26 @@
 package vn.campuslife.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${app.upload.dir:uploads}")
-    private String uploadDir;
+    private final UploadProperties uploadProperties;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Serve static files from uploads directory
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:" + uploadDir + "/");
+        String publicPrefix = uploadProperties.getPaths().getPublicPrefix();
+        if (publicPrefix == null || publicPrefix.isBlank()) {
+            publicPrefix = "/uploads";
+        } else if (!publicPrefix.startsWith("/")) {
+            publicPrefix = "/" + publicPrefix;
+        }
 
-        // Alternative: serve from classpath if needed
-        // registry.addResourceHandler("/uploads/**")
-        // .addResourceLocations("classpath:/uploads/");
+        registry.addResourceHandler(publicPrefix + "/**")
+                .addResourceLocations("file:" + uploadProperties.getDir() + "/");
     }
 }
