@@ -214,7 +214,7 @@ public class ActivityServiceImpl implements ActivityService {
 
         Activity saved = activityRepository.save(copy);
 
-        // Copy score rules from source activity with CURRENT_OPEN_SEMESTER policy
+        // Copy score rules from source activity with ACTIVITY_SEMESTER policy
         var srcRules = activityScoreRuleService.getRuleResponses(src.getId());
         if (srcRules != null && !srcRules.isEmpty()) {
             List<vn.campuslife.model.score.ActivityScoreRuleRequest> copiedRules = srcRules.stream()
@@ -226,7 +226,7 @@ public class ActivityServiceImpl implements ActivityService {
                         req.setPoints(rule.getPoints());
                         req.setFailPoints(rule.getFailPoints());
                         req.setAudience(rule.getAudience());
-                        req.setSemesterPolicy(vn.campuslife.enumeration.ScoreSemesterPolicy.CURRENT_OPEN_SEMESTER);
+                        req.setSemesterPolicy(vn.campuslife.enumeration.ScoreSemesterPolicy.ACTIVITY_SEMESTER);
                         req.setExplicitSemesterId(null); // Clear explicit semester on copy
                         req.setDepartmentIds(rule.getTargetDepartmentIds());
                         req.setEnabled(rule.getEnabled());
@@ -234,7 +234,7 @@ public class ActivityServiceImpl implements ActivityService {
                     })
                     .collect(java.util.stream.Collectors.toList());
             activityScoreRuleService.replaceRules(saved.getId(), copiedRules);
-            logger.debug("Copied {} score rules for activity {} with CURRENT_OPEN_SEMESTER policy", copiedRules.size(),
+            logger.debug("Copied {} score rules for activity {} with ACTIVITY_SEMESTER policy", copiedRules.size(),
                     saved.getId());
         }
 

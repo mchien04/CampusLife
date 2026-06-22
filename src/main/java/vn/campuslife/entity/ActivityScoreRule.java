@@ -36,15 +36,15 @@ public class ActivityScoreRule {
     private Activity activity;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "score_type", nullable = false)
+    @Column(name = "score_type", nullable = false, length = 50)
     private ScoreType scoreType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "trigger_type", nullable = false)
+    @Column(name = "trigger_type", nullable = false, length = 50)
     private ScoreRuleTrigger triggerType;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "calculation", nullable = false)
+    @Column(name = "calculation", nullable = false, length = 50)
     private ScoreRuleCalculation calculation;
 
     @Column(nullable = false)
@@ -54,11 +54,11 @@ public class ActivityScoreRule {
     private BigDecimal failPoints = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     private ScoreRuleAudience audience;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "semester_policy", nullable = false)
+    @Column(name = "semester_policy", nullable = false, length = 50)
     private ScoreSemesterPolicy semesterPolicy;
 
     @ManyToOne(fetch = FetchType.LAZY)

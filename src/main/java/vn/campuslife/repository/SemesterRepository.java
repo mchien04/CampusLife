@@ -23,7 +23,7 @@ public interface SemesterRepository extends JpaRepository<Semester, Long> {
         AND s.endDate >= :date 
         ORDER BY s.isOpen DESC, s.startDate DESC
         """)
-    Optional<Semester> findByDate(@Param("date") LocalDate date);
+    java.util.List<Semester> findByDate(@Param("date") LocalDate date);
 
     /**
      * Tìm semester mà một LocalDateTime nằm trong khoảng startDate và endDate
@@ -32,7 +32,8 @@ public interface SemesterRepository extends JpaRepository<Semester, Long> {
         if (dateTime == null) {
             return Optional.empty();
         }
-        return findByDate(dateTime.toLocalDate());
+        java.util.List<Semester> list = findByDate(dateTime.toLocalDate());
+        return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
     }
 }
 

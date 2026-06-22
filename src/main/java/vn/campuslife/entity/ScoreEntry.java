@@ -36,7 +36,7 @@ public class ScoreEntry {
     private Semester semester;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "score_type", nullable = false)
+    @Column(name = "score_type", nullable = false, length = 50)
     private ScoreType scoreType;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -48,7 +48,7 @@ public class ScoreEntry {
     private ActivityScoreRule rule;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "source_type", nullable = false)
+    @Column(name = "source_type", nullable = false, length = 50)
     private ScoreEntrySourceType sourceType;
 
     @Column(name = "source_id", nullable = false)
@@ -58,7 +58,7 @@ public class ScoreEntry {
     private BigDecimal points;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 50)
     private ScoreEntryStatus status;
 
     @Column(columnDefinition = "TEXT")

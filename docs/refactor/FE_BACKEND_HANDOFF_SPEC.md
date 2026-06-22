@@ -102,8 +102,7 @@ export type ScoreRuleAudience =
   | "OUTSIDE_DEPARTMENTS_ONLY";  // Chỉ áp dụng cho sinh viên ngoài khoa
 
 export type ScoreSemesterPolicy =
-  | "ACTIVITY_SEMESTER"      // Tính vào học kỳ của hoạt động
-  | "CURRENT_OPEN_SEMESTER"  // Tính vào học kỳ hiện tại đang mở
+  | "ACTIVITY_SEMESTER"      // Tính vào học kỳ mà sự kiện diễn ra
   | "EXPLICIT_SEMESTER";     // Tính vào một học kỳ cụ thể chỉ định sẵn
 
 export type ScoreEntrySourceType =

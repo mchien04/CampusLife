@@ -26,13 +26,14 @@ public class ScoreSemesterResolverImpl implements ScoreSemesterResolver {
                     return rule.getExplicitSemester();
                 }
                 throw new IllegalStateException("Explicit semester is required");
-            case CURRENT_OPEN_SEMESTER:
-                return semesterRepository.findAll().stream()
-                        .filter(Semester::isOpen)
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalStateException("No open semester found"));
             case ACTIVITY_SEMESTER:
             default:
+                if (eventTime != null) {
+                    Semester sem = semesterHelperService.getSemesterForDate(eventTime.toLocalDate());
+                    if (sem != null) {
+                        return sem;
+                    }
+                }
                 return semesterHelperService.getSemesterForActivity(activity);
         }
     }
