@@ -32,6 +32,12 @@ public interface StudentSeriesProgressRepository extends JpaRepository<StudentSe
             "AND ssp.completedCount >= (SELECT COUNT(a) FROM Activity a WHERE a.seriesId = :seriesId AND a.isDeleted = false)")
     Long countCompletedStudentsBySeriesId(@Param("seriesId") Long seriesId);
 
+    @Query("SELECT COUNT(ssp) FROM StudentSeriesProgress ssp " +
+           "WHERE ssp.series.id = :seriesId " +
+           "AND ssp.student.isDeleted = false " +
+           "AND ssp.completedCount >= :minRequirement")
+    Integer countStudentsMeetingRequirement(@Param("seriesId") Long seriesId, @Param("minRequirement") Integer minRequirement);
+
     /**
      * Lấy tất cả progress của series với pagination
      */

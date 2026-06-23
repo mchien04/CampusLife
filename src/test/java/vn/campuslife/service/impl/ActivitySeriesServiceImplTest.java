@@ -180,8 +180,11 @@ public class ActivitySeriesServiceImplTest {
                         100,
                         true,
                         0,
-                        2));
+                        2, null));
 
         assertTrue(ex.getMessage().contains("minimumRequiredEvents"));
     }
 }
+
+
+

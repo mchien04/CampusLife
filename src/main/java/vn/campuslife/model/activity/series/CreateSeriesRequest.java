@@ -13,7 +13,9 @@ public class CreateSeriesRequest {
     private String name;
     private String description;
     private Map<Integer, Integer> milestonePoints = new LinkedHashMap<>();
+    
     private ScoreType scoreType;
+    private Long targetSemesterId;
     private Long mainActivityId;
     private LocalDateTime registrationStartDate;
     private LocalDateTime registrationDeadline;
@@ -25,3 +27,5 @@ public class CreateSeriesRequest {
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
 }
+
+

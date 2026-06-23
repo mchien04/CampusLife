@@ -50,6 +50,11 @@ public class ActivitySeries {
     private vn.campuslife.enumeration.ScoreType scoreType;
 
     @ManyToOne
+    @JoinColumn(name = "target_semester_id")
+    @Comment("H?c k? c?ng di?m cho chu?i s? ki?n")
+    private Semester targetSemester;
+
+    @ManyToOne
     @JoinColumn(name = "main_activity_id")
     @Comment("Activity chính (có thể null)")
     private Activity mainActivity;
@@ -78,3 +83,4 @@ public class ActivitySeries {
     @Comment("Cờ xóa mềm")
     private boolean isDeleted = false;
 }
+

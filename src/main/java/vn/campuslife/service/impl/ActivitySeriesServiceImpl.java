@@ -67,6 +67,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final SemesterHelperService semesterHelperService;
     private final ScoreRuleEngine scoreRuleEngine;
     private final ReminderScheduleService reminderScheduleService;
+    private final vn.campuslife.repository.SemesterRepository semesterRepository;
+    private final vn.campuslife.service.validator.SeriesChildActivityValidator seriesChildValidator;
+    private final vn.campuslife.service.mapper.SeriesChildActivityMapper seriesChildMapper;
 
     @Override
     @Transactional
@@ -74,7 +77,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
             Boolean requiresApproval, Integer ticketQuantity,
-            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints) {
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Series name is required");
@@ -96,6 +99,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         series.setMinimumRequirementEnabled(Boolean.TRUE.equals(minimumRequirementEnabled));
         series.setMinimumRequiredEvents(minimumRequiredEvents);
         series.setMinimumPenaltyPoints(minimumPenaltyPoints);
+        if (targetSemesterId != null) {
+            semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
+        }
         series.setCreatedAt(LocalDateTime.now());
         series.setDeleted(false); // Set default value for isDeleted
 
@@ -627,6 +633,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                         seriesMap.put("milestonePoints", series.getMilestonePoints());
                         seriesMap.put("scoreType", series.getScoreType());
                         seriesMap.put("mainActivity", series.getMainActivity());
+                        seriesMap.put("targetSemesterId", series.getTargetSemester() != null ? series.getTargetSemester().getId() : null);
                         seriesMap.put("registrationStartDate", series.getRegistrationStartDate());
                         seriesMap.put("registrationDeadline", series.getRegistrationDeadline());
                         seriesMap.put("requiresApproval", series.isRequiresApproval());
@@ -675,19 +682,97 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
             }
+            ActivitySeries series = seriesOpt.get();
 
             List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-            // Sắp xếp theo seriesOrder
             activities.sort((a1, a2) -> {
                 Integer order1 = a1.getSeriesOrder() != null ? a1.getSeriesOrder() : Integer.MAX_VALUE;
                 Integer order2 = a2.getSeriesOrder() != null ? a2.getSeriesOrder() : Integer.MAX_VALUE;
                 return order1.compareTo(order2);
             });
 
-            return Response.success("Activities in series retrieved successfully", activities);
+            List<vn.campuslife.model.activity.series.SeriesChildActivityResponse> responses = activities.stream()
+                .map(a -> seriesChildMapper.toResponse(a, series.getName()))
+                .collect(Collectors.toList());
+
+            return Response.success("Activities in series retrieved successfully", responses);
         } catch (Exception e) {
             logger.error("Failed to get activities in series: {}", e.getMessage(), e);
             return Response.error("Failed to get activities in series: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response createSeriesActivity(Long seriesId, vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request) {
+        try {
+            seriesChildValidator.validate(request, seriesId);
+            ActivitySeries series = seriesRepository.findById(seriesId).orElseThrow();
+            
+            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            Activity entity = seriesChildMapper.toEntity(request, series);
+            entity.setOrganizers(organizers);
+            
+            Activity saved = activityRepository.save(entity);
+            if (saved.getCheckInCode() == null || saved.getCheckInCode().isBlank()) {
+                String random = UUID.randomUUID().toString().substring(0, 8).toUpperCase().replace("-", "");
+                String checkInCode = String.format("ACT-%06d-%s", saved.getId(), random);
+                saved.setCheckInCode(checkInCode);
+                saved = activityRepository.save(saved);
+            }
+            return Response.success("Series activity created successfully", seriesChildMapper.toResponse(saved, series.getName()));
+        } catch (IllegalArgumentException e) {
+            return Response.error(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Failed to create series activity: {}", e.getMessage(), e);
+            return Response.error("Failed to create series activity");
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response updateSeriesActivity(Long seriesId, Long activityId, vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request) {
+        try {
+            ActivitySeries series = seriesRepository.findById(seriesId).orElseThrow(() -> new IllegalArgumentException("Series not found"));
+            Activity activity = activityRepository.findByIdAndIsDeletedFalse(activityId).orElseThrow(() -> new IllegalArgumentException("Activity not found"));
+            
+            if (!activity.getSeriesId().equals(seriesId)) {
+                return Response.error("Activity does not belong to this series");
+            }
+            
+            seriesChildMapper.applyUpdate(activity, request);
+            
+            if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
+                activity.setOrganizers(resolveOrganizers(request.getOrganizerIds()));
+            }
+            
+            Activity saved = activityRepository.save(activity);
+            return Response.success("Series activity updated successfully", seriesChildMapper.toResponse(saved, series.getName()));
+        } catch (IllegalArgumentException e) {
+            return Response.error(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Failed to update series activity: {}", e.getMessage(), e);
+            return Response.error("Failed to update series activity");
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesActivity(Long seriesId, Long activityId) {
+        try {
+            ActivitySeries series = seriesRepository.findById(seriesId).orElseThrow(() -> new IllegalArgumentException("Series not found"));
+            Activity activity = activityRepository.findByIdAndIsDeletedFalse(activityId).orElseThrow(() -> new IllegalArgumentException("Activity not found"));
+            
+            if (!activity.getSeriesId().equals(seriesId)) {
+                return Response.error("Activity does not belong to this series");
+            }
+            
+            return Response.success("Series activity retrieved successfully", seriesChildMapper.toResponse(activity, series.getName()));
+        } catch (IllegalArgumentException e) {
+            return Response.error(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Failed to get series activity: {}", e.getMessage(), e);
+            return Response.error("Failed to get series activity");
         }
     }
 
@@ -1012,6 +1097,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             response.setRegistrationDeadline(series.getRegistrationDeadline());
             response.setRequiresApproval(series.isRequiresApproval());
             response.setTicketQuantity(series.getTicketQuantity());
+            response.setMinimumRequirementEnabled(series.isMinimumRequirementEnabled());
+            response.setMinimumRequiredEvents(series.getMinimumRequiredEvents());
+            response.setMinimumPenaltyPoints(series.getMinimumPenaltyPoints());
             response.setCreatedAt(series.getCreatedAt());
 
             // Parse milestone points
@@ -1038,6 +1126,13 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             // Get total completed students (completed all activities)
             Long totalCompleted = progressRepository.countCompletedStudentsBySeriesId(seriesId);
             response.setTotalCompletedStudents(totalCompleted);
+
+            // Get count of students who met minimum requirement
+            Integer metCount = 0;
+            if (Boolean.TRUE.equals(series.isMinimumRequirementEnabled()) && series.getMinimumRequiredEvents() != null) {
+                metCount = progressRepository.countStudentsMeetingRequirement(seriesId, series.getMinimumRequiredEvents());
+            }
+            response.setMinimumRequirementMetCount(metCount);
 
             // Calculate completion rate
             Double completionRate = totalRegistered > 0 ? (double) totalCompleted / totalRegistered : 0.0;
@@ -1129,7 +1224,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
             Boolean requiresApproval, Integer ticketQuantity,
-            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints) {
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId) {
         try {
             // Find series
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
@@ -1204,6 +1299,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             }
             if (minimumPenaltyPoints != null) {
                 series.setMinimumPenaltyPoints(minimumPenaltyPoints);
+        if (targetSemesterId != null) {
+            semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
+        }
             }
 
             ActivitySeries saved = seriesRepository.save(series);
@@ -1303,4 +1401,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     }
 
 }
+
+
+
+
 

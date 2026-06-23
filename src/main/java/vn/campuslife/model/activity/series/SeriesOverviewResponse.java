@@ -17,13 +17,18 @@ public class SeriesOverviewResponse {
     private Long seriesId;
     private String seriesName;
     private String description;
+    
     private ScoreType scoreType;
+    private Long targetSemesterId;
     private String milestonePoints; // JSON string
     private Map<String, Integer> milestonePointsMap; // Parsed milestone points
     private LocalDateTime registrationStartDate;
     private LocalDateTime registrationDeadline;
     private Boolean requiresApproval;
     private Integer ticketQuantity;
+    private Boolean minimumRequirementEnabled;
+    private Integer minimumRequiredEvents;
+    private Integer minimumPenaltyPoints;
     private LocalDateTime createdAt;
 
     // Statistics
@@ -32,6 +37,7 @@ public class SeriesOverviewResponse {
     private Long totalCompletedStudents; // Hoàn thành tất cả activities
     private Double completionRate; // completedStudents / registeredStudents
     private BigDecimal totalMilestonePointsAwarded; // Tổng điểm milestone đã trao
+    private Integer minimumRequirementMetCount; // Number of students who have already met the requirement
 
     // Progress distribution by milestone
     private List<MilestoneProgressItem> milestoneProgress; // Số SV ở mỗi milestone
@@ -62,5 +68,7 @@ public class SeriesOverviewResponse {
         private Double participationRate; // participationCount / registrationCount
     }
 }
+
+
 
 

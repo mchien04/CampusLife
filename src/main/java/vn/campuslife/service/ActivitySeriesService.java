@@ -1,6 +1,8 @@
 package vn.campuslife.service;
 
 import vn.campuslife.model.Response;
+import vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest;
+import vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest;
 
 public interface ActivitySeriesService {
         /**
@@ -11,7 +13,7 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
-                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints);
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId);
 
         /**
          * Tạo activity trong series với các thuộc tính tối giản
@@ -62,6 +64,12 @@ public interface ActivitySeriesService {
          */
         Response getActivitiesInSeries(Long seriesId);
 
+        Response createSeriesActivity(Long seriesId, SeriesChildActivityCreateRequest request);
+
+        Response updateSeriesActivity(Long seriesId, Long activityId, SeriesChildActivityUpdateRequest request);
+
+        Response getSeriesActivity(Long seriesId, Long activityId);
+
         /**
          * Lấy thông tin progress của student trong series
          */
@@ -90,10 +98,11 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
-                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints);
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId);
 
         /**
          * Xóa chuỗi sự kiện (soft delete)
          */
         Response deleteSeries(Long seriesId);
 }
+

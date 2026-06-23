@@ -93,7 +93,7 @@ public class ActivitySeriesController {
             Response response = seriesService.createSeries(name, description, milestonePoints, scoreType,
                     mainActivityId,
                     registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
-                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
+                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating series: {}", e.getMessage(), e);
@@ -108,7 +108,9 @@ public class ActivitySeriesController {
 
     /**
      * Tạo activity trong series với các thuộc tính tối giản
+     * @deprecated Use POST /{seriesId}/activities instead
      */
+    @Deprecated
     @PostMapping("/{seriesId}/activities/create")
     public ResponseEntity<Response> createActivityInSeries(
             @PathVariable Long seriesId,
@@ -134,6 +136,31 @@ public class ActivitySeriesController {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to create activity in series: " + e.getMessage(), null));
         }
+    }
+
+    @PostMapping("/{seriesId}/activities")
+    public ResponseEntity<Response> createSeriesActivity(
+            @PathVariable Long seriesId,
+            @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request) {
+        Response response = seriesService.createSeriesActivity(seriesId, request);
+        return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
+    }
+
+    @PutMapping("/{seriesId}/activities/{activityId}")
+    public ResponseEntity<Response> updateSeriesActivity(
+            @PathVariable Long seriesId,
+            @PathVariable Long activityId,
+            @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request) {
+        Response response = seriesService.updateSeriesActivity(seriesId, activityId, request);
+        return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
+    }
+
+    @GetMapping("/{seriesId}/activities/{activityId}")
+    public ResponseEntity<Response> getSeriesActivity(
+            @PathVariable Long seriesId,
+            @PathVariable Long activityId) {
+        Response response = seriesService.getSeriesActivity(seriesId, activityId);
+        return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
     /**
@@ -165,7 +192,7 @@ public class ActivitySeriesController {
     /**
      * Thêm activity vào chuỗi
      */
-    @PostMapping("/{seriesId}/activities")
+    @PostMapping("/{seriesId}/activities/attach")
     public ResponseEntity<Response> addActivityToSeries(
             @PathVariable Long seriesId,
             @RequestBody AddActivityToSeriesRequest request) {
@@ -394,7 +421,7 @@ public class ActivitySeriesController {
 
             Response response = seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
                     mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
-                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
+                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId());
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -500,3 +527,6 @@ public class ActivitySeriesController {
         }
     }
 }
+
+
+
