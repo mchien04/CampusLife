@@ -425,6 +425,9 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
     }
 
     private Semester resolveSeriesSemester(ActivitySeries series) {
+        if (series.getTargetSemester() != null) {
+            return series.getTargetSemester();
+        }
         List<Activity> seriesActivities = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId());
         Activity firstActivity = seriesActivities.stream()
                 .filter(activity -> activity.getStartDate() != null)
@@ -484,3 +487,4 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         return value;
     }
 }
+

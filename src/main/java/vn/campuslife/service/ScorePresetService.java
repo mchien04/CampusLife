@@ -4,6 +4,8 @@ import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
 import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
 import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
+import vn.campuslife.model.activity.StandardActivityCreateRequest;
+import vn.campuslife.model.activity.StandardActivityUpdateRequest;
 import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
@@ -16,6 +18,10 @@ public interface ScorePresetService {
     ActivityPresetPreviewResponse previewActivityPreset(ActivityPresetPreviewRequest request);
 
     void applyActivityPreset(CreateActivityRequest request);
+
+    void applyActivityPreset(StandardActivityCreateRequest request);
+
+    void applyActivityPreset(StandardActivityUpdateRequest request);
 
     List<SeriesPresetDefinitionResponse> getSeriesPresetDefinitions();
 

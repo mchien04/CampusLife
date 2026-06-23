@@ -283,6 +283,7 @@ export interface SeriesPresetConfig {
   minimumRequirementEnabled?: boolean | null;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
+  targetSemesterId?: number | null;
 }
 
 export interface CreateSeriesRequest {
@@ -740,6 +741,7 @@ export interface AttemptDetailResponse {
         "minimumRequirementEnabled": true,
         "minimumRequiredEvents": 3,
         "minimumPenaltyPoints": 2,
+  "targetSemesterId": 1,
         "notes": ["Sinh viên sẽ bị trừ 2 điểm chuyên đề nếu tham gia dưới 3 buổi"]
       }
     }
@@ -1194,3 +1196,153 @@ Team Frontend nên phân chia các file TypeScript theo hướng module hóa đ�
    - Không tự động thêm prefix `/uploads` vào ảnh; backend trả về full link ảnh public.
    - Các API dạng raw list (`GET /api/activities/my`, `/upcoming`, `/month`, `/score-type/*`, `/department/*`) **không** dùng `ApiResponse` wrapper, hãy xử lý trực tiếp payload danh sách.
    - Luôn sử dụng kiểu dữ liệu `string` ở FE cho các trường chứa điểm (ví dụ: `pointsEarned: string`) để tương thích với `BigDecimal` phía backend, tránh bị làm tròn số không mong muốn ở trình duyệt.
+
+
+## 5. Danh Sách API Chi Tiết (Theo chuẩn apimapping)
+
+### 1. Mô tả nghiệp vụ
+
+Tạo và cập nhật cấu hình chuỗi sự kiện (Activity Series), bao gồm cấu hình điểm milestone, quy định số sự kiện tối thiểu, và thiết lập học kỳ cộng điểm (`targetSemesterId`). Điểm thưởng của chuỗi (milestone) sẽ không dựa trên `ActivityScoreRuleRequest` mà sẽ cấu hình trực tiếp trên thông tin Series thông qua `milestonePoints`.
+
+### 2. API Endpoint
+
+- **Method:** POST (Tạo mới) / PUT (Cập nhật)
+- **Path:** `/api/series` hoặc `/api/series/{seriesId}`
+- **Versioning:** Không
+- **Authentication:** Required (Quản trị viên / Ban tổ chức)
+
+### 3. Request
+
+- **Path Parameters:**
+  - `seriesId` (chỉ dùng cho method PUT): ID của chuỗi sự kiện
+- **Query Parameters:** Không
+- **Request Body:**
+  ```json
+  {
+    "name": "Workshop Doanh Nghiệp 2026",
+    "description": "Chuỗi workshop",
+    "scoreType": "CHUYEN_DE",
+    "milestonePoints": {
+      "1": 1,
+      "3": 3,
+      "5": 5
+    },
+    "minimumRequirementEnabled": true,
+    "minimumRequiredEvents": 3,
+    "minimumPenaltyPoints": 2,
+    "targetSemesterId": 1,
+    "registrationStartDate": "2026-06-01T00:00:00",
+    "registrationDeadline": "2026-06-30T23:59:59",
+    "requiresApproval": true,
+    "ticketQuantity": 200,
+    "presetCode": "ENTERPRISE_SERIES",
+    "presetConfig": null
+  }
+  ```
+
+### 4. Response
+
+- **Success (200/201):**
+
+  ```json
+  {
+    "status": true,
+    "message": "success",
+    "body": {
+      "id": 1,
+      "name": "Workshop Doanh Nghiệp 2026",
+      "description": "Chuỗi workshop",
+      "scoreType": "CHUYEN_DE",
+      "milestonePoints": {
+        "1": 1,
+        "3": 3,
+        "5": 5
+      },
+      "minimumRequirementEnabled": true,
+      "minimumRequiredEvents": 3,
+      "minimumPenaltyPoints": 2,
+      "targetSemesterId": 1,
+      "registrationStartDate": "2026-06-01T00:00:00",
+      "registrationDeadline": "2026-06-30T23:59:59",
+      "requiresApproval": true,
+      "ticketQuantity": 200,
+      "createdAt": "2026-06-24T00:00:00"
+    }
+  }
+  ```
+- **Error (JSON wrapper - đa số endpoint):**
+
+  ```json
+  {
+    "status": false,
+    "message": "error message",
+    "body": null
+  }
+  ```
+- **Error Responses:** `400 Bad Request` (thiếu dữ liệu), `403 Forbidden` (không đủ quyền), `404 Not Found` (không tìm thấy series)
+
+### 5. Documentation Notes
+
+- `targetSemesterId`: Xác định học kỳ cụ thể sẽ nhận điểm thưởng của chuỗi. Nếu bỏ qua (`null`), backend sẽ tự động suy ra học kỳ từ ngày bắt đầu của hoạt động con đầu tiên.
+- Không sử dụng `ActivityScoreRuleRequest` cho việc cấu hình điểm của chuỗi.
+
+---
+
+## Phần 3: Thống kê tổng quan Series (Dành cho Ban tổ chức)
+
+FE đang thắc mắc về trường `minimumRequirementMetCount` (Not in BE spec or FE). Đây là field thuộc về API Thống kê **dành cho Ban tổ chức (Organizer)**, chưa được ghi nhận trong spec. Trong khi đó, `minimumRequirementMet` (boolean), `completedCount` và `remainingToAvoidPenalty` thuộc về API Tiến độ **dành cho Sinh viên (Student)** (`GET /api/series/{seriesId}/progress/my`).
+
+### API Endpoint: GET /api/series/{seriesId}/overview
+- **Mục đích:** Lấy thông tin thống kê tổng quan của chuỗi sự kiện để hiển thị trên Dashboard của Admin / Organizer.
+- **Authentication:** Required (Admin / Organizer)
+- **Response Type:** `SeriesOverviewResponse`
+- **Response Body (Ví dụ):**
+```json
+{
+  "status": true,
+  "message": "success",
+  "body": {
+    "seriesId": 1,
+    "seriesName": "Workshop Doanh Nghiệp 2026",
+    "minimumRequirementEnabled": true,
+    "minimumRequiredEvents": 3,
+    "minimumPenaltyPoints": 2,
+
+    // Statistics (Thống kê tổng quan)
+    "totalActivities": 5,
+    "totalRegisteredStudents": 150,
+    "totalCompletedStudents": 45,
+    "completionRate": 0.3,
+    "totalMilestonePointsAwarded": 135.0,
+    "minimumRequirementMetCount": 80, // TỔNG SỐ LƯỢNG SINH VIÊN ĐÃ ĐẠT SỐ SỰ KIỆN TỐI THIỂU
+
+    // Phân bố tiến độ theo milestone
+    "milestoneProgress": [
+      {
+        "milestoneKey": "3",
+        "milestoneCount": 3,
+        "milestonePoints": 3,
+        "studentCount": 80,
+        "percentage": 0.53
+      }
+    ],
+
+    // Thống kê từng hoạt động con
+    "activityStats": [
+      {
+        "activityId": 10,
+        "activityName": "Workshop 1",
+        "order": 1,
+        "registrationCount": 120,
+        "participationCount": 100,
+        "participationRate": 0.83
+      }
+    ]
+  }
+}
+```
+
+**Lưu ý quan trọng cho FE:**
+- `minimumRequirementMetCount` (Integer) là tổng số lượng sinh viên đã đạt mốc tối thiểu. Trường này dùng cho biểu đồ/thống kê của **Organizer** qua endpoint `/overview`.
+- `minimumRequirementMet` (Boolean) là trạng thái cá nhân xem sinh viên hiện tại đã vượt qua mốc tối thiểu chưa. Trường này dùng cho màn hình của **Student** qua endpoint `/progress/my`.
+- FE có thể đã nhầm lẫn khi áp dụng góc nhìn của Student cho UI của Organizer. Nếu màn hình của Organizer cần hiển thị tổng số người đạt chuẩn thì **phải sử dụng** `minimumRequirementMetCount` từ endpoint `/overview` này.

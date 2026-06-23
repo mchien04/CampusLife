@@ -14,6 +14,8 @@ import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
 import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
 import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
+import vn.campuslife.model.activity.StandardActivityCreateRequest;
+import vn.campuslife.model.activity.StandardActivityUpdateRequest;
 import vn.campuslife.model.activity.series.SeriesPresetConfig;
 import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
@@ -128,6 +130,46 @@ public class ScorePresetServiceImpl implements ScorePresetService {
 
         ActivityPresetPreviewResponse preview = previewActivityPreset(previewRequest);
         request.setType(preview.getActivityType());
+        request.setRequiresSubmission(preview.isRequiresSubmission());
+        request.setScoreRules(preview.getScoreRules());
+    }
+
+    @Override
+    public void applyActivityPreset(StandardActivityCreateRequest request) {
+        if (request == null || request.getPresetCode() == null
+                || request.getPresetCode() == ActivityPresetCode.CUSTOM) {
+            return;
+        }
+
+        ActivityPresetPreviewRequest previewRequest = new ActivityPresetPreviewRequest();
+        previewRequest.setPresetCode(request.getPresetCode());
+        previewRequest.setType(request.getType());
+        previewRequest.setRequiresSubmission(request.getRequiresSubmission());
+        previewRequest.setPresetConfig(request.getPresetConfig());
+
+        ActivityPresetPreviewResponse preview = previewActivityPreset(previewRequest);
+        request.setType(preview.getActivityType());
+        request.setRequiresSubmission(preview.isRequiresSubmission());
+        request.setScoreRules(preview.getScoreRules());
+    }
+
+    @Override
+    public void applyActivityPreset(StandardActivityUpdateRequest request) {
+        if (request == null || request.getPresetCode() == null
+                || request.getPresetCode() == ActivityPresetCode.CUSTOM) {
+            return;
+        }
+
+        ActivityPresetPreviewRequest previewRequest = new ActivityPresetPreviewRequest();
+        previewRequest.setPresetCode(request.getPresetCode());
+        // Type cannot be changed in update, but preset preview might need it. We use null or existing if available.
+        // StandardActivityUpdateRequest doesn't have getType(), so we pass null and let preview resolve it.
+        previewRequest.setType(null); 
+        previewRequest.setRequiresSubmission(request.getRequiresSubmission());
+        previewRequest.setPresetConfig(request.getPresetConfig());
+
+        ActivityPresetPreviewResponse preview = previewActivityPreset(previewRequest);
+        // Do not update type on update request
         request.setRequiresSubmission(preview.isRequiresSubmission());
         request.setScoreRules(preview.getScoreRules());
     }
