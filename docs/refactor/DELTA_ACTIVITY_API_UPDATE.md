@@ -14,13 +14,15 @@ Kiến trúc Activity đã được chia nhỏ thành 3 nhánh riêng biệt đ�
 - Dùng cho các sự kiện truyền thống không liên quan tới minigame hay chuỗi (series).
 - **Create:** `POST /api/activities/standard`
 - **Update:** `PUT /api/activities/standard/{id}`
+- **Get Detail:** `GET /api/activities/standard/{id}`
 - **Payload DTO:** `StandardActivityCreateRequest` / `StandardActivityUpdateRequest`
 
 ### 2. Minigame Activity (Hoạt động Minigame)
 
 - Dùng riêng cho các sự kiện đi kèm Quiz/Minigame.
-- **Create:** `POST /api/activities/minigames`
-- **Update:** `PUT /api/activities/minigames/{id}`
+- **Create:** `POST /api/activities/minigame`
+- **Update:** `PATCH /api/activities/minigame/{id}`
+- **Get Detail:** `GET /api/activities/minigame/{id}`
 - **Payload DTO:** `MinigameActivityCreateRequest` / `MinigameActivityUpdateRequest`
 
 ### 3. Series Child Activity (Hoạt động thuộc Chuỗi)
