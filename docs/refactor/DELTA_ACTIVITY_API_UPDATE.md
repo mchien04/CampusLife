@@ -350,3 +350,47 @@ FE đang thắc mắc về trường `minimumRequirementMetCount` (Not in BE spe
 - `minimumRequirementMetCount` (Integer) là tổng số lượng sinh viên đã đạt mốc tối thiểu. Trường này dùng cho biểu đồ/thống kê của **Organizer** qua endpoint `/overview`.
 - `minimumRequirementMet` (Boolean) là trạng thái cá nhân xem sinh viên hiện tại đã vượt qua mốc tối thiểu chưa. Trường này dùng cho màn hình của **Student** qua endpoint `/progress/my`.
 - FE có thể đã nhầm lẫn khi áp dụng góc nhìn của Student cho UI của Organizer. Nếu màn hình của Organizer cần hiển thị tổng số người đạt chuẩn thì **phải sử dụng** `minimumRequirementMetCount` từ endpoint `/overview` này.
+
+
+
+### Các Interfaces Mới Của Series
+
+```typescript
+export interface CreateSeriesRequest {
+  name: string;
+  description?: string | null;
+  milestonePoints: Record<number, number>; // Map<Integer, Integer> - e.g. {3: 5, 5: 10}
+  scoreType: ScoreType; // e.g. REN_LUYEN, CTXH
+  targetSemesterId?: number | null;
+  mainActivityId?: number | null;
+  registrationStartDate?: string | null;
+  registrationDeadline?: string | null;
+  requiresApproval?: boolean | null;
+  ticketQuantity?: number | null;
+  minimumRequirementEnabled?: boolean | null;
+  minimumRequiredEvents?: number | null;
+  minimumPenaltyPoints?: number | null;
+  presetCode?: string | null;
+  presetConfig?: any | null;
+}
+
+export interface UpdateSeriesRequest extends CreateSeriesRequest {}
+
+export interface SeriesOverviewResponse {
+  id: number;
+  name: string;
+  description?: string | null;
+  targetSemesterId?: number | null;
+  targetSemesterName?: string | null;
+  scoreType: ScoreType;
+  mainActivityId?: number | null;
+  
+  activities: any[]; // SeriesChildActivityResponse[]
+  milestonePoints: Record<number, number>;
+  
+  // Organizer stats
+  totalRegistered: number;
+  totalCompletedAtLeastOne: number;
+  minimumRequirementMetCount: number; // Number of students meeting minimum required events
+}
+```
