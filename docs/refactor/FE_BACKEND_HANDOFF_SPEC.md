@@ -1,5 +1,9 @@
 # FE Backend Handoff Spec
 
+> **Version:** 2.0 (Regenerated from actual backend source code at HEAD)  
+> **Baseline:** Commit `c848ee6` → Current HEAD  
+> **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
+
 ## 1. Mục Đích
 
 Tài liệu này là bản handoff hợp nhất và mới nhất từ backend sang frontend sau các đợt refactor hệ thống tính điểm (Score Engine), chuỗi sự kiện (Series), và nhiệm vụ (Task/Submission).
@@ -9,8 +13,6 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 ---
 
 ## 2. Báo Cáo Thay Đổi Mới Nhất & Hướng Dẫn Tích Hợp (FE Action Items)
-
-Để giúp team Frontend dễ dàng rà soát mã nguồn hiện tại, dưới đây là tổng hợp các thay đổi nghiệp vụ và API kèm theo hành động cần thực hiện ở Frontend.
 
 ### 2.1 Bảng thay đổi nghiệp vụ chính
 
@@ -23,6 +25,8 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Minigame & Đáp án** | Bổ sung cấu hình `showAnswers` (cho phép xem đáp án đúng sau khi nộp). MiniGame độc lập có thể cấu hình phạt khi hết lượt mà không pass (`MINIGAME_EXHAUSTED_ATTEMPTS`). | - Form tạo/sửa MiniGame: Thêm toggle `showAnswers` (Hiển thị đáp án đúng sau khi nộp).<br>- Màn hình xem lịch sử/chi tiết attempt của sinh viên: Kiểm tra cờ `showAnswers` từ backend trả về trước khi hiển thị đáp án đúng. Không tự ý render đáp án đúng nếu cờ này bằng `false`. | **Cao** |
 | **No-show Penalty** | Preset `EVENT_BASIC` và `EVENT_WITH_SUBMISSION` mặc định bật No-show. Seminar mặc định tắt. Nếu bật No-show cho Seminar, hệ thống bắt buộc phạt sang loại điểm khác (không trừ ngược vào tích lũy chuyên đề chính). | - Form tạo hoạt động: Cho phép bật/tắt No-show và chọn loại điểm phạt phù hợp.<br>- Enforce validation loại điểm phạt của Seminar ở FE nếu bật. | **Trung bình** |
 | **Xử lý quá hạn bài nộp** | Backend chuyển sang Quartz tự động quét và đánh dấu `OVERDUE` (không dùng cron hàng ngày). | - FE chỉ hiển thị trạng thái `OVERDUE` khi backend trả về trong status. Không tự viết logic so sánh ngày tháng ở FE để hiển thị trạng thái quá hạn. | **Thấp** |
+| **Series `targetSemesterId`** | Admin có thể cấu hình trước học kỳ nào sẽ được dùng để cộng điểm thưởng (milestone) cho chuỗi sự kiện. Nếu gửi lên `null`, backend tự động tính toán học kỳ dựa trên thời gian diễn ra sự kiện đầu tiên của chuỗi. | - Form tạo/sửa Series: Thêm dropdown chọn học kỳ đích (`targetSemesterId`).<br>- Lưu ý: `SeriesResponse` hiện tại **chưa trả về** `targetSemesterId` (backend bug). Nếu cần hiển thị, dùng `GET /api/series` (danh sách) hoặc `GET /api/series/{id}/overview`. | **Trung bình** |
+| **Series Progress List (Admin)** | Admin có thể xem danh sách tiến độ của tất cả sinh viên trong chuỗi với phân trang, tìm kiếm. | - Thêm màn hình Admin xem progress danh sách. Endpoint: `GET /api/series/{seriesId}/progress?page=&size=&keyword=`. | **Trung bình** |
 
 ### 2.2 Các thay đổi về Endpoint API
 
@@ -31,22 +35,27 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
   - `POST /api/activities/presets/preview`: Preview cấu hình score rules do BE sinh trước khi tạo hoạt động.
   - `GET /api/series/presets`: Lấy danh sách preset chuỗi.
   - `POST /api/series/presets/preview`: Preview milestone/penalty của series.
-  - `GET /api/series/{seriesId}/progress/my`: Student xem tiến độ chuỗi của chính mình (bao gồm thông tin phạt).
+  - `GET /api/series/{seriesId}/progress/my`: Student xem tiến độ chuỗi của chính mình (bao gồm thông tin phạt). **Trả về `Map<string, any>`, không có DTO typed cố định.**
+  - `GET /api/series/{seriesId}/progress`: Admin xem danh sách tiến độ của tất cả SV (phân trang, tìm kiếm).
+  - `GET /api/series/{seriesId}/registration/my`: Kiểm tra SV đã đăng ký chuỗi chưa.
+  - `POST /api/series/{seriesId}/students/{studentId}/calculate-milestone`: Trigger tính lại milestone cho 1 SV.
   - `POST /api/registrations/checkin/qr`: Sinh viên tự quét Activity QR code.
   - `GET /api/scores/ranking`: Bảng xếp hạng điểm sinh viên (phân trang, filter theo khoa/lớp/loại điểm).
   - `POST /api/scores/recalculate/student/{studentId}`: Trigger tính lại điểm thủ công cho sinh viên.
   - `POST /api/scores/recalculate/all`: Trigger tính lại điểm cho toàn trường.
 - **Endpoint Thay Đổi Contract (`MODIFIED`):**
-  - `POST /api/series` & `PUT /api/series/{seriesId}`: Request body hỗ trợ các trường cấu hình phạt tối thiểu (`minimumRequirementEnabled`, `minimumRequiredEvents`, `minimumPenaltyPoints`).
-  - `POST /api/minigames` & `PUT /api/minigames/{miniGameId}`: Request body hỗ trợ trường `showAnswers`.
-  - `GET /api/minigames/attempts/{attemptId}`: Response trả thêm trường `showAnswers` và lọc đáp án đúng ở backend nếu `showAnswers` là `false`.
+  - `POST /api/series` & `PUT /api/series/{seriesId}`: Request body hỗ trợ các trường cấu hình phạt tối thiểu (`minimumRequirementEnabled`, `minimumRequiredEvents`, `minimumPenaltyPoints`) và `targetSemesterId`.
+  - `POST /api/activities/standard` & `PUT /api/activities/standard/{id}`: Endpoint mới cho Standard Activity.
+  - `POST /api/activities/minigame` & `PATCH /api/activities/minigame/{miniGameId}`: Endpoint mới cho Minigame Activity.
 
 ---
 
 ## 3. Quy Ước Chung
 
 ### 3.1 Wrapper response chuẩn
+
 Hầu hết các API backend sử dụng wrapper JSON sau:
+
 ```ts
 export interface ApiResponse<T> {
   status: boolean; // true = thành công, false = thất bại
@@ -56,7 +65,9 @@ export interface ApiResponse<T> {
 ```
 
 ### 3.2 Ngoại lệ wrapper
+
 API upload hình ảnh **không** dùng field `body` mà trả về link ảnh qua field `data`:
+
 ```ts
 export interface UploadImageApiResponse {
   status: boolean;
@@ -65,10 +76,14 @@ export interface UploadImageApiResponse {
 }
 ```
 
+> **Raw list endpoints** (không bọc `ApiResponse`): `GET /api/activities/score-type/{scoreType}`, `GET /api/activities/department/{deptId}`, `GET /api/activities/my`, `GET /api/activities/upcoming`, `GET /api/activities/month`.
+
 ### 3.3 Kiểu dữ liệu số dạng điểm số
-Các trường điểm số ở backend được lưu dưới dạng `BigDecimal` (Java) nhằm tránh sai lệch làm tròn. Ở Frontend TypeScript, hãy luôn map và hiển thị các trường này dưới dạng **`string`**.
-Các trường bị ảnh hưởng bao gồm:
-- `points`, `failPoints`, `currentScore`, `oldScore`, `newScore`, `pointsEarned`
+
+Các trường điểm số ở backend được khai báo `BigDecimal` (Java). Jackson mặc định serialize `BigDecimal` thành JSON **number** (không phải string). Tuy nhiên, tùy cấu hình Jackson, có thể trả về string. **Frontend nên định nghĩa kiểu `number | string` cho các trường điểm số** để tránh lỗi parse.
+
+Các trường bị ảnh hưởng:
+- `points`, `failPoints`, `currentScore`, `oldScore`, `newScore`, `pointsEarned`, `score`, `totalMilestonePointsAwarded`
 
 ---
 
@@ -77,33 +92,36 @@ Các trường bị ảnh hưởng bao gồm:
 Frontend có thể copy-paste trực tiếp các định nghĩa TypeScript này vào thư mục `src/types/` hoặc `src/api/` để sử dụng.
 
 ### 4.1 Enums & Types Định Danh
+
 ```ts
+export type ActivityType = "SUKIEN" | "MINIGAME" | "CONG_TAC_XA_HOI" | "CHUYEN_DE_DOANH_NGHIEP";
+
 export type ScoreType = "REN_LUYEN" | "CONG_TAC_XA_HOI" | "CHUYEN_DE";
 
 export type ScoreRuleTrigger =
-  | "PARTICIPATION_COMPLETED"      // Hoàn thành tham gia (áp dụng cho Event thường)
-  | "NO_SHOW"                      // Không tham gia dù đã đăng ký thành công
-  | "SUBMISSION_GRADED"            // Đã nộp bài và bài nộp đã được chấm điểm
-  | "MINIGAME_PASSED"              // Vượt qua minigame quiz
-  | "MINIGAME_EXHAUSTED_ATTEMPTS"  // Hết lượt thử minigame nhưng không vượt qua (phạt)
-  | "SERIES_MILESTONE_REACHED"     // Đạt mốc hoàn thành trong chuỗi sự kiện
-  | "TASK_OVERDUE";                // Quá hạn nộp bài
+  | "PARTICIPATION_COMPLETED"
+  | "NO_SHOW"
+  | "SUBMISSION_GRADED"
+  | "MINIGAME_PASSED"
+  | "MINIGAME_EXHAUSTED_ATTEMPTS"
+  | "SERIES_MILESTONE_REACHED"
+  | "TASK_OVERDUE";
 
 export type ScoreRuleCalculation =
-  | "FIXED_POINTS"       // Cộng điểm cố định
-  | "COUNT_COMPLETION"   // Tính theo số lần hoàn thành
-  | "PASS_FAIL_POINTS"   // Điểm đạt/trượt (cho submission)
-  | "PENALTY_POINTS"     // Trừ điểm (phạt no-show hoặc overdue)
-  | "SERIES_MILESTONE";  // Tính điểm mốc cho chuỗi
+  | "FIXED_POINTS"
+  | "COUNT_COMPLETION"
+  | "PASS_FAIL_POINTS"
+  | "PENALTY_POINTS"
+  | "SERIES_MILESTONE";
 
 export type ScoreRuleAudience =
-  | "ALL_PARTICIPANTS"           // Áp dụng cho mọi sinh viên
-  | "DEPARTMENT_ONLY"            // Chỉ áp dụng cho sinh viên trong khoa
-  | "OUTSIDE_DEPARTMENTS_ONLY";  // Chỉ áp dụng cho sinh viên ngoài khoa
+  | "ALL_PARTICIPANTS"
+  | "DEPARTMENT_ONLY"
+  | "OUTSIDE_DEPARTMENTS_ONLY";
 
 export type ScoreSemesterPolicy =
-  | "ACTIVITY_SEMESTER"      // Tính vào học kỳ mà sự kiện diễn ra
-  | "EXPLICIT_SEMESTER";     // Tính vào một học kỳ cụ thể chỉ định sẵn
+  | "ACTIVITY_SEMESTER"
+  | "EXPLICIT_SEMESTER";
 
 export type ScoreEntrySourceType =
   | "ACTIVITY_PARTICIPATION"
@@ -115,27 +133,6 @@ export type ScoreEntrySourceType =
   | "SERIES_MINIMUM_REQUIREMENT"
   | "MANUAL_ADJUSTMENT"
   | "RECALCULATION";
-
-export type ActivityType =
-  | "SUKIEN"
-  | "MINIGAME"
-  | "CONG_TAC_XA_HOI"
-  | "CHUYEN_DE_DOANH_NGHIEP";
-
-export type SubmissionStatus =
-  | "SUBMITTED"
-  | "GRADED"
-  | "RETURNED"
-  | "LATE"
-  | "MISSING";
-
-export type ParticipationType =
-  | "REGISTERED"
-  | "CHECKED_IN"
-  | "ATTENDED"
-  | "COMPLETED";
-
-export type MiniGameType = "QUIZ";
 
 export type ActivityPresetCode =
   | "EVENT_BASIC"
@@ -149,18 +146,27 @@ export type SeriesPresetCode =
   | "SERIES_MILESTONE_BASIC"
   | "ENTERPRISE_SERIES"
   | "CUSTOM";
+
+export type MiniGameType = "QUIZ";
+
+export type RegistrationStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "ATTENDED" | "WAITLIST";
+
+export type ParticipationType = "REGISTERED" | "CHECKED_IN" | "ATTENDED" | "COMPLETED";
+
+export type SubmissionStatus = "SUBMITTED" | "GRADED" | "RETURNED" | "LATE" | "MISSING";
 ```
 
 ### 4.2 Interfaces Dữ Liệu
 
 #### Hoạt Động (Activity & Presets)
+
 ```ts
 export interface ActivityScoreRuleRequest {
   scoreType: ScoreType;
   triggerType: ScoreRuleTrigger;
   calculation: ScoreRuleCalculation;
-  points: string;
-  failPoints?: string | null;
+  points: number | string; // BigDecimal
+  failPoints?: number | string | null;
   audience: ScoreRuleAudience;
   semesterPolicy: ScoreSemesterPolicy;
   explicitSemesterId?: number | null;
@@ -174,8 +180,8 @@ export interface ActivityScoreRuleResponse {
   scoreType: ScoreType;
   triggerType: ScoreRuleTrigger;
   calculation: ScoreRuleCalculation;
-  points: string;
-  failPoints?: string | null;
+  points: number | string; // BigDecimal
+  failPoints?: number | string | null;
   audience: ScoreRuleAudience;
   semesterPolicy: ScoreSemesterPolicy;
   explicitSemesterId?: number | null;
@@ -185,22 +191,24 @@ export interface ActivityScoreRuleResponse {
 
 export interface ActivityPresetConfig {
   primaryScoreType?: ScoreType | null;
-  participationPoints?: string | null;
-  participationFailPoints?: string | null;
+  participationPoints?: number | string | null; // BigDecimal
+  participationFailPoints?: number | string | null;
   noShowPenaltyEnabled?: boolean | null;
-  noShowPenaltyPoints?: string | null;
+  noShowPenaltyPoints?: number | string | null;
   noShowPenaltyScoreType?: ScoreType | null;
-  submissionPassPoints?: string | null;
-  submissionFailPoints?: string | null;
-  taskOverduePenaltyPoints?: string | null;
-  minigameExhaustedPenaltyPoints?: string | null;
+  submissionPassPoints?: number | string | null;
+  submissionFailPoints?: number | string | null;
+  taskOverduePenaltyPoints?: number | string | null;
+  minigameExhaustedPenaltyPoints?: number | string | null;
   bonusScoreType?: ScoreType | null;
-  bonusPoints?: string | null;
+  bonusPoints?: number | string | null;
 }
 
 export interface CreateActivityRequest {
   name: string;
   type: ActivityType;
+  presetCode?: ActivityPresetCode | null;
+  presetConfig?: ActivityPresetConfig | null;
   description?: string | null;
   startDate: string;
   endDate: string;
@@ -220,8 +228,6 @@ export interface CreateActivityRequest {
   requiresApproval?: boolean | null;
   mandatoryForFacultyStudents?: boolean | null;
   organizerIds?: number[];
-  presetCode?: ActivityPresetCode | null;
-  presetConfig?: ActivityPresetConfig | null;
 }
 
 export interface ActivityResponse {
@@ -256,14 +262,9 @@ export interface ActivityResponse {
   createdBy?: string | null;
   lastModifiedBy?: string | null;
 }
+```
 
-
-### Các Interfaces Mới (Thay thế cho CreateActivityRequest và ActivityResponse)
-
-> [!TIP]
-> Các interface `CreateActivityRequest`, `UpdateActivityRequest`, và `ActivityResponse` hiện tại vẫn có thể sử dụng (Legacy) để tương thích ngược. Tuy nhiên, FE nên ưu tiên sử dụng các interface chuyên biệt dưới đây cho các endpoint mới.
-
-#### 1. Standard Activity (Hoạt động truyền thống)
+#### Standard Activity (Hoạt động truyền thống)
 
 ```typescript
 export interface StandardActivityCreateRequest {
@@ -292,8 +293,31 @@ export interface StandardActivityCreateRequest {
   presetConfig?: ActivityPresetConfig | null;
 }
 
-export interface StandardActivityUpdateRequest extends Omit<StandardActivityCreateRequest, 'type'> {
-  // type is omitted because it cannot be changed after creation
+export interface StandardActivityUpdateRequest {
+  // Không extends StandardActivityCreateRequest trong Java. Là class standalone.
+  // type không thể thay đổi sau khi tạo.
+  name?: string | null;
+  description?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  location?: string | null;
+  organizerIds?: number[];
+  registrationStartDate?: string | null;
+  registrationDeadline?: string | null;
+  requiresSubmission?: boolean | null;
+  requiresApproval?: boolean | null;
+  ticketQuantity?: number | null;
+  isImportant?: boolean | null;
+  mandatoryForFacultyStudents?: boolean | null;
+  isDraft?: boolean | null;
+  bannerUrl?: string | null;
+  shareLink?: string | null;
+  benefits?: string | null;
+  requirements?: string | null;
+  contactInfo?: string | null;
+  scoreRules?: ActivityScoreRuleRequest[];
+  presetCode?: ActivityPresetCode | null;
+  presetConfig?: ActivityPresetConfig | null;
 }
 
 export interface StandardActivityResponse {
@@ -328,7 +352,7 @@ export interface StandardActivityResponse {
 }
 ```
 
-#### 2. Minigame Activity (Hoạt động kèm Minigame / Quiz)
+#### Minigame Activity (Hoạt động kèm Minigame / Quiz)
 
 ```typescript
 export interface MinigameActivityCreateRequest {
@@ -347,18 +371,49 @@ export interface MinigameActivityCreateRequest {
   bannerUrl?: string | null;
   shareLink?: string | null;
   scoreRules?: ActivityScoreRuleRequest[];
-  quiz?: {
-    title: string;
-    questionCount: number;
-    timeLimit: number;
-    requiredCorrectAnswers: number;
-    maxAttempts: number;
-    showAnswers: boolean;
-    questions: QuestionRequest[]; // Reuses existing Quiz Question Request
-  } | null;
+  quiz?: QuizConfigRequest | null;
 }
 
-export interface MinigameActivityUpdateRequest extends MinigameActivityCreateRequest {}
+export interface QuizConfigRequest {
+  title: string;
+  questionCount: number;
+  timeLimit: number;
+  requiredCorrectAnswers: number;
+  maxAttempts: number;
+  showAnswers?: boolean | null;
+  questions: QuestionRequest[];
+}
+
+export interface QuestionRequest {
+  questionText: string;
+  imageUrl?: string | null;
+  options: OptionRequest[];
+}
+
+export interface OptionRequest {
+  text: string;
+  isCorrect?: boolean | null;
+}
+
+export interface MinigameActivityUpdateRequest {
+  // Không extends MinigameActivityCreateRequest trong Java. Là class standalone.
+  name?: string | null;
+  description?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  organizerIds?: number[];
+  requiresApproval?: boolean | null;
+  ticketQuantity?: number | null;
+  isImportant?: boolean | null;
+  mandatoryForFacultyStudents?: boolean | null;
+  isDraft?: boolean | null;
+  registrationStartDate?: string | null;
+  registrationDeadline?: string | null;
+  bannerUrl?: string | null;
+  shareLink?: string | null;
+  scoreRules?: ActivityScoreRuleRequest[];
+  quiz?: QuizConfigRequest | null;
+}
 
 export interface MinigameActivityResponse {
   id: number;
@@ -373,22 +428,24 @@ export interface MinigameActivityResponse {
   isImportant: boolean;
   checkInCode?: string | null;
   scoreRules: ActivityScoreRuleResponse[];
-  quiz?: {
-    id: number;
-    title: string;
-    questionCount: number;
-    timeLimit: number;
-    requiredCorrectAnswers: number;
-    maxAttempts: number;
-    showAnswers: boolean;
-    isActive: boolean;
-  } | null;
+  quiz?: QuizConfigResponse | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
+
+export interface QuizConfigResponse {
+  id: number;
+  title: string;
+  questionCount: number;
+  timeLimit: number;
+  requiredCorrectAnswers: number;
+  maxAttempts: number;
+  showAnswers: boolean;
+  isActive: boolean;
+}
 ```
 
-#### 3. Series Child Activity (Hoạt động con trong chuỗi)
+#### Series Child Activity (Hoạt động con trong chuỗi)
 
 ```typescript
 export interface SeriesChildActivityCreateRequest {
@@ -404,10 +461,25 @@ export interface SeriesChildActivityCreateRequest {
   requirements?: string | null;
   contactInfo?: string | null;
   organizerIds?: number[];
-  type: ActivityType;
+  type?: ActivityType | null;
 }
 
-export interface SeriesChildActivityUpdateRequest extends SeriesChildActivityCreateRequest {}
+export interface SeriesChildActivityUpdateRequest {
+  // Không extends SeriesChildActivityCreateRequest trong Java. Là class standalone.
+  name?: string | null;
+  description?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  location?: string | null;
+  order?: number | null;
+  bannerUrl?: string | null;
+  shareLink?: string | null;
+  benefits?: string | null;
+  requirements?: string | null;
+  contactInfo?: string | null;
+  organizerIds?: number[];
+  type?: ActivityType | null;
+}
 
 export interface SeriesChildActivityResponse {
   id: number;
@@ -417,8 +489,8 @@ export interface SeriesChildActivityResponse {
   startDate: string;
   endDate: string;
   hasPreparation: boolean;
-  requiresSubmission: boolean; // Mặc định là false cho Series Child
-  scoreRules: ActivityScoreRuleResponse[]; // Rỗng hoặc kế thừa
+  requiresSubmission: boolean;
+  scoreRules: ActivityScoreRuleResponse[];
   registrationStartDate?: string | null;
   registrationDeadline?: string | null;
   shareLink?: string | null;
@@ -436,7 +508,7 @@ export interface SeriesChildActivityResponse {
   organizerIds: number[];
   seriesId?: number | null;
   seriesOrder?: number | null;
-  seriesName?: string | null; // Thêm tên của series để dễ bề render
+  seriesName?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
   createdBy?: string | null;
@@ -444,7 +516,7 @@ export interface SeriesChildActivityResponse {
 }
 ```
 
-#### 4. Activity Summary (Dùng cho API danh sách để tối ưu performance)
+#### Activity Summary (Dùng cho API danh sách để tối ưu performance)
 
 ```typescript
 export interface ActivitySummaryResponse {
@@ -462,13 +534,15 @@ export interface ActivitySummaryResponse {
 }
 ```
 
+#### Preset Definitions
 
-export interface ActivityPresetDefinition {
+```ts
+export interface ActivityPresetDefinitionResponse {
   code: ActivityPresetCode;
   displayName: string;
   description: string;
-  defaultRequiresSubmission: boolean;
   recommendedActivityTypes: ActivityType[];
+  defaultRequiresSubmission?: boolean | null;
   notes: string[];
 }
 
@@ -479,17 +553,35 @@ export interface ActivityPresetPreviewResponse {
   scoreRules: ActivityScoreRuleRequest[];
   notes: string[];
 }
-```
 
-#### Chuỗi Sự Kiện (Series & Progress)
-```ts
-export interface SeriesPresetConfig {
-  primaryScoreType?: ScoreType | null;
-  milestonePoints?: Record<number, number>; // key: số hoạt động cần hoàn thành, value: điểm thưởng
+export interface SeriesPresetDefinitionResponse {
+  code: SeriesPresetCode;
+  displayName: string;
+  description: string;
+  notes: string[];
+}
+
+export interface SeriesPresetPreviewResponse {
+  presetCode: SeriesPresetCode;
+  scoreType: ScoreType;
+  milestonePoints: Record<number, number>;
   minimumRequirementEnabled?: boolean | null;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
-  targetSemesterId?: number | null;
+  notes: string[];
+  // Không có targetSemesterId trong DTO này
+}
+```
+
+#### Chuỗi Sự Kiện (Series & Progress)
+
+```ts
+export interface SeriesPresetConfig {
+  primaryScoreType?: ScoreType | null;
+  milestonePoints?: Record<number, number>;
+  minimumRequirementEnabled?: boolean | null;
+  minimumRequiredEvents?: number | null;
+  minimumPenaltyPoints?: number | null;
 }
 
 export interface CreateSeriesRequest {
@@ -497,6 +589,7 @@ export interface CreateSeriesRequest {
   description?: string | null;
   milestonePoints?: Record<number, number>;
   scoreType?: ScoreType | null;
+  targetSemesterId?: number | null;
   mainActivityId?: number | null;
   registrationStartDate?: string | null;
   registrationDeadline?: string | null;
@@ -509,7 +602,24 @@ export interface CreateSeriesRequest {
   presetConfig?: SeriesPresetConfig | null;
 }
 
-export interface UpdateSeriesRequest extends CreateSeriesRequest {}
+export interface UpdateSeriesRequest {
+  // Không extends CreateSeriesRequest trong Java. Là class standalone.
+  name?: string | null;
+  description?: string | null;
+  milestonePoints?: Record<number, number>;
+  scoreType?: ScoreType | null;
+  targetSemesterId?: number | null;
+  mainActivityId?: number | null;
+  registrationStartDate?: string | null;
+  registrationDeadline?: string | null;
+  requiresApproval?: boolean | null;
+  ticketQuantity?: number | null;
+  minimumRequirementEnabled?: boolean | null;
+  minimumRequiredEvents?: number | null;
+  minimumPenaltyPoints?: number | null;
+  presetCode?: SeriesPresetCode | null;
+  presetConfig?: SeriesPresetConfig | null;
+}
 
 export interface SeriesResponse {
   id: number;
@@ -526,33 +636,92 @@ export interface SeriesResponse {
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
   createdAt?: string | null;
+  // ⚠️ targetSemesterId hiện chưa có trong SeriesResponse (backend bug)
 }
 
-export interface SeriesPresetDefinition {
-  code: SeriesPresetCode;
-  displayName: string;
-  description: string;
-  notes: string[];
-}
-
-export interface SeriesPresetPreviewResponse {
-  presetCode: SeriesPresetCode;
+export interface SeriesOverviewResponse {
+  seriesId: number;
+  seriesName: string;
+  description?: string | null;
   scoreType: ScoreType;
-  milestonePoints: Record<number, number>;
+  targetSemesterId?: number | null;
+  milestonePoints: string; // JSON string
+  milestonePointsMap: Record<string, number>; // Parsed map
+  registrationStartDate?: string | null;
+  registrationDeadline?: string | null;
+  requiresApproval?: boolean | null;
+  ticketQuantity?: number | null;
   minimumRequirementEnabled?: boolean | null;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
-  notes: string[];
+  createdAt?: string | null;
+
+  totalActivities: number;
+  totalRegisteredStudents: number;
+  totalCompletedStudents: number; // Hoàn thành TẤT CẢ activities
+  completionRate: number;
+  totalMilestonePointsAwarded: number | string; // BigDecimal
+  minimumRequirementMetCount: number;
+
+  milestoneProgress: MilestoneProgressItem[];
+  activityStats: ActivityStatItem[];
 }
 
-export interface SeriesStudentProgressView {
+export interface MilestoneProgressItem {
+  milestoneKey: string;
+  milestoneCount: number;
+  milestonePoints: number;
+  studentCount: number;
+  percentage: number;
+}
+
+export interface ActivityStatItem {
+  activityId: number;
+  activityName: string;
+  order: number;
+  registrationCount: number;
+  participationCount: number;
+  participationRate: number;
+}
+
+export interface SeriesProgressListResponse {
+  seriesId: number;
+  seriesName: string;
+  totalActivities: number;
+  totalRegistered: number;
+  progressList: SeriesProgressItemResponse[];
+  page: number;
+  size: number;
+  totalPages: number;
+  totalElements: number;
+}
+
+export interface SeriesProgressItemResponse {
+  studentId: number;
+  studentCode: string;
+  studentName: string;
+  className?: string | null;
+  departmentName?: string | null;
+  completedCount: number;
+  totalActivities: number;
+  pointsEarned: number | string; // BigDecimal
+  currentMilestone?: string | null;
+  completedActivityIds: number[];
+  lastUpdated?: string | null;
+  isRegistered?: boolean | null;
+}
+
+// ⚠️ KHÔNG CÓ DTO SeriesStudentProgressView trong backend.
+// GET /api/series/{seriesId}/progress/my trả về Map<string, any>.
+// Các key của Map:
+export interface SeriesStudentProgressMap {
   studentId: number;
   seriesId: number;
   seriesName: string;
   completedCount: number;
   totalActivities: number;
   completedActivityIds: number[];
-  pointsEarned: string; // milestone points hiện tại
+  pointsEarned: number | string; // BigDecimal
   lastUpdated?: string | null;
   currentMilestone?: string | null;
   nextMilestoneCount?: number | null;
@@ -567,7 +736,8 @@ export interface SeriesStudentProgressView {
 }
 ```
 
-#### Đăng Ký & Điểm Danh (Registration & Attendance)
+#### Đăng Ký & Điểm Danh (Registration & Check-in)
+
 ```ts
 export interface ActivityRegistrationRequest {
   activityId: number;
@@ -576,8 +746,8 @@ export interface ActivityRegistrationRequest {
 export interface ActivityParticipationRequest {
   ticketCode: string;
   studentId: number;
-  participationType?: ParticipationType | null; // BE tự transition nếu bỏ trống
-  pointsEarned?: string | null;
+  participationType?: ParticipationType | null;
+  pointsEarned?: number | string | null;
 }
 
 export interface RegistrationResponse {
@@ -588,23 +758,22 @@ export interface RegistrationResponse {
   ticketCode: string;
   registeredAt: string;
 }
-
-export type RegistrationStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "ATTENDED" | "WAITLIST";
 ```
 
 #### Điểm Số & Lịch Sử Điểm (Score & History)
+
 ```ts
 export interface ScoreHistoryDetailResponse {
   id: number;
-  oldScore: string;
-  newScore: string;
+  oldScore: number | string; // BigDecimal
+  newScore: number | string; // BigDecimal
   changeDate: string;
   reason?: string | null;
   activityId?: number | null;
   activityName?: string | null;
   seriesId?: number | null;
   seriesName?: string | null;
-  sourceType: ScoreEntrySourceType;
+  sourceType: string; // enum name
   changedByUsername?: string | null;
   changedByFullName?: string | null;
 }
@@ -616,7 +785,7 @@ export interface ActivityParticipationDetailResponse {
   activityType: ActivityType;
   seriesId?: number | null;
   seriesName?: string | null;
-  pointsEarned?: string | null;
+  pointsEarned?: number | string | null; // BigDecimal
   participationType: ParticipationType;
   date: string;
   isCompleted?: boolean | null;
@@ -630,7 +799,7 @@ export interface ScoreHistoryViewResponse {
   semesterId: number;
   semesterName: string;
   scoreType?: ScoreType | null;
-  currentScore: string;
+  currentScore: number | string; // BigDecimal
   scoreHistories: ScoreHistoryDetailResponse[];
   activityParticipations: ActivityParticipationDetailResponse[];
   totalRecords: number;
@@ -646,11 +815,12 @@ export interface StudentRankResponse {
   studentName: string;
   departmentName: string;
   className: string;
-  score: string;
+  score: number | string; // BigDecimal
 }
 ```
 
 #### Nhiệm Vụ & Bài Nộp (Task & Submission)
+
 ```ts
 export interface CreateActivityTaskRequest {
   activityId: number;
@@ -678,10 +848,10 @@ export interface TaskSubmissionResponse {
   studentCode: string;
   studentName: string;
   content?: string | null;
-  fileUrls: string[]; // urls cũ (tương thích ngược)
-  attachments: SubmissionAttachment[]; // Khuyên dùng cho UI mới
+  fileUrls: string[];
+  attachments: SubmissionAttachment[];
   score?: number | null;
-  isCompleted?: boolean | null; // Cờ chấm điểm đạt/không đạt
+  isCompleted?: boolean | null;
   feedback?: string | null;
   graderId?: number | null;
   graderUsername?: string | null;
@@ -692,21 +862,11 @@ export interface TaskSubmissionResponse {
 }
 ```
 
-#### MiniGame Quiz
+#### MiniGame Quiz (Standalone API)
+
 ```ts
-export interface CreateMiniGameQuestionOptionRequest {
-  text: string;
-  isCorrect: boolean;
-}
-
-export interface CreateMiniGameQuestionRequest {
-  questionText: string;
-  imageUrl?: string | null;
-  options: CreateMiniGameQuestionOptionRequest[];
-}
-
 export interface CreateMiniGameRequest {
-  activityId: number;
+  activityId?: number | null;
   title: string;
   description?: string | null;
   questionCount: number;
@@ -714,7 +874,7 @@ export interface CreateMiniGameRequest {
   requiredCorrectAnswers: number;
   maxAttempts: number;
   showAnswers?: boolean | null;
-  questions: CreateMiniGameQuestionRequest[];
+  questions: QuestionRequest[];
 }
 
 export interface UpdateMiniGameRequest {
@@ -725,7 +885,7 @@ export interface UpdateMiniGameRequest {
   requiredCorrectAnswers: number;
   maxAttempts: number;
   showAnswers?: boolean | null;
-  questions: CreateMiniGameQuestionRequest[];
+  questions: QuestionRequest[];
 }
 
 export interface MiniGameResponse {
@@ -746,35 +906,39 @@ export interface StartAttemptResponse {
   id: number;
   miniGameId: number;
   studentId: number;
-  status: string; // e.g., "IN_PROGRESS"
+  status: string; // e.g. "IN_PROGRESS"
   startedAt: string;
   timeLimit: number;
 }
 
 export interface SubmitAttemptResponse {
   id: number;
-  status: string; // e.g., "PASSED", "FAILED"
+  status: string; // "PASSED", "FAILED"
   correctCount: number;
   totalQuestions: number;
-  pointsEarned: string; // Điểm nhận được (cộng hoặc trừ)
+  pointsEarned: number | string; // BigDecimal
   startedAt: string;
   submittedAt: string;
   requiredCorrectAnswers: number;
   participation: unknown | null;
 }
 
-export interface QuizQuestionOptionDetailResponse {
+export interface QuizOptionDetailResponse {
   id: number;
   text: string;
-  isCorrect?: boolean | null; // Chỉ có giá trị nếu showAnswers=true
+  isCorrect?: boolean | null; // null nếu showAnswers=false
+  isSelected: boolean;
 }
 
 export interface QuizQuestionDetailResponse {
   id: number;
   questionText: string;
   imageUrl?: string | null;
-  options: QuizQuestionOptionDetailResponse[];
+  displayOrder?: number | null;
+  options: QuizOptionDetailResponse[];
+  correctOptionId?: number | null; // null nếu showAnswers=false
   selectedOptionId?: number | null;
+  isCorrect?: boolean | null;
 }
 
 export interface AttemptDetailResponse {
@@ -782,7 +946,7 @@ export interface AttemptDetailResponse {
   status: string;
   correctCount: number;
   totalQuestions: number;
-  pointsEarned: string;
+  pointsEarned: number | string; // BigDecimal
   startedAt: string;
   submittedAt?: string | null;
   requiredCorrectAnswers: number;
@@ -798,578 +962,327 @@ export interface AttemptDetailResponse {
 ### 5.1 Nhóm API Preset & Preview Cấu Hình
 
 #### 1. Lấy danh sách preset hoạt động
-- **Mô tả nghiệp vụ:** Lấy danh sách preset gợi ý cấu hình hoạt động để tạo dropdown trong form tạo hoạt động của Admin.
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/activities/presets`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:** Không có request body hay parameters.
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Activity presets retrieved successfully",
-      "body": [
-        {
-          "code": "EVENT_WITH_SUBMISSION",
-          "displayName": "Sự kiện có bài nộp",
-          "description": "Sự kiện yêu cầu điểm danh và nộp bài tập chấm điểm để hoàn thành",
-          "defaultRequiresSubmission": true,
-          "recommendedActivityTypes": ["SUKIEN"],
-          "notes": ["Tự động sinh Quartz overdue rule cho task", "Cần cấu hình failPoints"]
-        }
-      ]
-    }
-    ```
+- **Method:** `GET`
+- **Path:** `/api/activities/presets`
+- **Response:** `ApiResponse<ActivityPresetDefinitionResponse[]>`
 
 #### 2. Preview cấu hình Score Rules cho hoạt động
-- **Mô tả nghiệp vụ:** Preview danh sách score rules sẽ được backend sinh tự động khi chọn preset cụ thể, giúp hiển thị trước cho Admin xem trước khi tạo chính thức.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/activities/presets/preview`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Request Body:**
-    ```json
-    {
-      "presetCode": "EVENT_WITH_SUBMISSION",
-      "type": "SUKIEN",
-      "requiresSubmission": true,
-      "presetConfig": {
-        "primaryScoreType": "REN_LUYEN",
-        "noShowPenaltyEnabled": true,
-        "noShowPenaltyPoints": "5",
-        "noShowPenaltyScoreType": "REN_LUYEN",
-        "submissionPassPoints": "10",
-        "submissionFailPoints": "0",
-        "taskOverduePenaltyPoints": "5"
-      }
-    }
-    ```
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Activity preset preview generated successfully",
-      "body": {
-        "presetCode": "EVENT_WITH_SUBMISSION",
-        "activityType": "SUKIEN",
-        "requiresSubmission": true,
-        "scoreRules": [
-          {
-            "scoreType": "REN_LUYEN",
-            "triggerType": "NO_SHOW",
-            "calculation": "PENALTY_POINTS",
-            "points": "0",
-            "failPoints": "5"
-          },
-          {
-            "scoreType": "REN_LUYEN",
-            "triggerType": "SUBMISSION_GRADED",
-            "calculation": "PASS_FAIL_POINTS",
-            "points": "10",
-            "failPoints": "0"
-          },
-          {
-            "scoreType": "REN_LUYEN",
-            "triggerType": "TASK_OVERDUE",
-            "calculation": "PENALTY_POINTS",
-            "points": "0",
-            "failPoints": "5"
-          }
-        ],
-        "notes": ["Tất cả các bài nộp quá hạn sẽ bị trừ 5 điểm rèn luyện"]
-      }
-    }
-    ```
+- **Method:** `POST`
+- **Path:** `/api/activities/presets/preview`
+- **Request:** `ActivityPresetPreviewRequest`
+- **Response:** `ApiResponse<ActivityPresetPreviewResponse>`
 
 #### 3. Lấy danh sách preset chuỗi sự kiện
-- **Mô tả nghiệp vụ:** Lấy danh sách preset cho chuỗi sự kiện.
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/series/presets`
-  - **Authentication:** Required (Admin / Manager)
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Series presets retrieved successfully",
-      "body": [
-        {
-          "code": "ENTERPRISE_SERIES",
-          "displayName": "Chuỗi sự kiện doanh nghiệp",
-          "description": "Chuỗi workshop có tính mốc và phạt nếu không tham gia đủ số buổi",
-          "notes": ["Mặc định bật kiểm tra số buổi tối thiểu"]
-        }
-      ]
-    }
-    ```
+- **Method:** `GET`
+- **Path:** `/api/series/presets`
+- **Response:** `ApiResponse<SeriesPresetDefinitionResponse[]>`
 
 #### 4. Preview cấu hình chuỗi sự kiện
-- **Mô tả nghiệp vụ:** Xem trước milestone points và penalty config cho series.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/series/presets/preview`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Request Body:**
-    ```json
-    {
-      "presetCode": "ENTERPRISE_SERIES",
-      "presetConfig": {
-        "primaryScoreType": "CHUYEN_DE",
-        "milestonePoints": {
-          "3": 5,
-          "5": 10
-        },
-        "minimumRequirementEnabled": true,
-        "minimumRequiredEvents": 3,
-        "minimumPenaltyPoints": 2
-      }
-    }
-    ```
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Series preset preview generated successfully",
-      "body": {
-        "presetCode": "ENTERPRISE_SERIES",
-        "scoreType": "CHUYEN_DE",
-        "milestonePoints": {
-          "3": 5,
-          "5": 10
-        },
-        "minimumRequirementEnabled": true,
-        "minimumRequiredEvents": 3,
-        "minimumPenaltyPoints": 2,
-  "targetSemesterId": 1,
-        "notes": ["Sinh viên sẽ bị trừ 2 điểm chuyên đề nếu tham gia dưới 3 buổi"]
-      }
-    }
-    ```
+- **Method:** `POST`
+- **Path:** `/api/series/presets/preview`
+- **Request:** `SeriesPresetPreviewRequest`
+- **Response:** `ApiResponse<SeriesPresetPreviewResponse>`
 
 ---
 
 ### 5.2 Nhóm API Quản Lý Hoạt Động (Activity Management)
 
-#### 1. Tạo hoạt động mới
-- **Mô tả nghiệp vụ:** Tạo hoạt động mới kèm theo rules tính điểm tự động từ presets hoặc custom rules.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/activities`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Request Body:** Gửi DTO `CreateActivityRequest` (xem định nghĩa ở mục 4).
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<ActivityResponse>`.
-  - **Error (400):** `{"status": false, "message": "Thông tin cấu hình không hợp lệ", "body": null}`
+#### 1. Tạo hoạt động mới (Legacy)
+- **Method:** `POST`
+- **Path:** `/api/activities`
+- **Request:** `CreateActivityRequest`
+- **Response:** `ApiResponse<ActivityResponse>`
 
-#### 2. Cập nhật hoạt động
-- **Mô tả nghiệp vụ:** Cập nhật thông tin hoạt động có sẵn.
-- **API Endpoint:**
-  - **Method:** `PUT`
-  - **Path:** `/api/activities/{id}`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Path Parameters:** `id` (number) - ID của hoạt động
-  - **Request Body:** Gửi DTO `CreateActivityRequest`.
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<ActivityResponse>`.
+#### 2. Cập nhật hoạt động (Legacy)
+- **Method:** `PUT`
+- **Path:** `/api/activities/{id}`
+- **Request:** `CreateActivityRequest`
+- **Response:** `ApiResponse<ActivityResponse>`
 
 #### 3. Danh sách hoạt động trả về dạng bọc Response
-- **Mô tả nghiệp vụ:** Lấy toàn bộ danh sách hoạt động có bọc wrapper Response.
-- **API Endpoints:**
-  - `GET /api/activities` (Lấy tất cả hoạt động)
-  - `GET /api/activities/{id}` (Lấy chi tiết hoạt động)
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<ActivityResponse>` hoặc `ApiResponse<ActivityResponse[]>`.
+- **Endpoints:** `GET /api/activities`, `GET /api/activities/{id}`
+- **Response:** `ApiResponse<ActivityResponse>` hoặc `ApiResponse<ActivityResponse[]>`
 
 #### 4. Danh sách hoạt động dạng Raw List (Không bọc Response)
-> [!IMPORTANT]
-> Các endpoint dưới đây backend trả thẳng danh sách `ActivityResponse[]`, không bọc qua `ApiResponse`. Frontend cần parse trực tiếp data nhận được từ Axios/Fetch.
-- **API Endpoints:**
-  - `GET /api/activities/score-type/{scoreType}` (Lấy theo loại điểm)
-  - `GET /api/activities/department/{deptId}` (Lấy theo khoa)
-  - `GET /api/activities/my` (Hoạt động của sinh viên hiện tại đăng nhập)
-  - `GET /api/activities/upcoming` (Các hoạt động sắp diễn ra)
-  - `GET /api/activities/month` (Lịch hoạt động trong tháng)
+> **IMPORTANT:** Các endpoint dưới đây backend trả thẳng danh sách `ActivityResponse[]`, không bọc qua `ApiResponse`.
+- `GET /api/activities/score-type/{scoreType}`
+- `GET /api/activities/department/{deptId}`
+- `GET /api/activities/my`
+- `GET /api/activities/upcoming?keyword=` (opt)
+- `GET /api/activities/month?year=&month=` (opt)
+
+#### 5. Tạo Standard Activity (New)
+- **Method:** `POST`
+- **Path:** `/api/activities/standard`
+- **Request:** `StandardActivityCreateRequest`
+- **Response:** `ApiResponse<StandardActivityResponse>`
+
+#### 6. Cập nhật Standard Activity (New)
+- **Method:** `PUT`
+- **Path:** `/api/activities/standard/{id}`
+- **Request:** `StandardActivityUpdateRequest`
+- **Response:** `ApiResponse<StandardActivityResponse>`
+
+#### 7. Tạo Minigame Activity (New)
+- **Method:** `POST`
+- **Path:** `/api/activities/minigame`
+- **Request:** `MinigameActivityCreateRequest`
+- **Response:** `ApiResponse<MinigameActivityResponse>`
+
+#### 8. Cập nhật Minigame Activity (New)
+- **Method:** `PATCH`
+- **Path:** `/api/activities/minigame/{id}`
+- **Request:** `MinigameActivityUpdateRequest`
+- **Response:** `ApiResponse<MinigameActivityResponse>`
 
 ---
 
 ### 5.3 Nhóm API Chuỗi Sự Kiện (Series Management)
 
 #### 1. Tạo chuỗi sự kiện mới
-- **Mô tả nghiệp vụ:** Tạo chuỗi sự kiện mới với cấu hình mốc thưởng (milestone) và phạt tối thiểu.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/series`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Request Body:** Gửi DTO `CreateSeriesRequest`.
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<SeriesResponse>`.
-  - **Error (400):** Trả về lỗi nếu `minimumRequiredEvents` hoặc `minimumPenaltyPoints` không hợp lệ khi bật phạt.
+- **Method:** `POST`
+- **Path:** `/api/series`
+- **Request:** `CreateSeriesRequest`
+- **Response:** `ApiResponse<SeriesResponse>`
 
 #### 2. Cập nhật chuỗi sự kiện
-- **Mô tả nghiệp vụ:** Cập nhật thông tin và cấu hình phạt cho chuỗi.
-- **API Endpoint:**
-  - **Method:** `PUT`
-  - **Path:** `/api/series/{seriesId}`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Path Parameters:** `seriesId` (number)
-  - **Request Body:** Gửi DTO `UpdateSeriesRequest`.
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<SeriesResponse>`.
+- **Method:** `PUT`
+- **Path:** `/api/series/{seriesId}`
+- **Request:** `UpdateSeriesRequest`
+- **Response:** `ApiResponse<SeriesResponse>`
 
 #### 3. Student đăng ký tham gia toàn bộ chuỗi
-- **Mô tả nghiệp vụ:** Sinh viên đăng ký tham gia chuỗi sự kiện, backend sẽ tự động tạo đăng ký tham gia (registration) cho mọi hoạt động hiện có trong chuỗi.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/series/{seriesId}/register`
-  - **Authentication:** Required (Student)
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Registered for series successfully. 5 activities registered.",
-      "body": [] // Danh sách Registration Entity
-    }
-    ```
+- **Method:** `POST`
+- **Path:** `/api/series/{seriesId}/register`
+- **Response:** `ApiResponse<RegistrationResponse[]>`
 
 #### 4. Student tự xem tiến độ trong chuỗi
-- **Mô tả nghiệp vụ:** Xem chi tiết số hoạt động đã hoàn thành, điểm mốc tích lũy, cảnh báo phạt tối thiểu.
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/series/{seriesId}/progress/my`
-  - **Authentication:** Required (Student)
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Student progress retrieved successfully",
-      "body": {
-        "studentId": 15,
-        "seriesId": 10,
-        "seriesName": "Workshop Doanh Nghiệp 2026",
-        "completedCount": 2,
-        "totalActivities": 5,
-        "completedActivityIds": [101, 102],
-        "pointsEarned": "5",
-        "lastUpdated": "2026-06-22T20:00:00",
-        "currentMilestone": "2",
-        "nextMilestoneCount": 4,
-        "nextMilestonePoints": 10,
-        "milestonePoints": { "2": 5, "4": 10 },
-        "scoreType": "CHUYEN_DE",
-        "minimumRequirementEnabled": true,
-        "minimumRequiredEvents": 3,
-        "minimumPenaltyPoints": 2,
-        "minimumRequirementMet": false,
-        "remainingToAvoidPenalty": 1
-      }
-    }
-    ```
+- **Method:** `GET`
+- **Path:** `/api/series/{seriesId}/progress/my`
+- **Response:** `ApiResponse<Map<string, any>>` (không có DTO typed cố định)
 
 #### 5. Admin xem tiến độ chuỗi của một sinh viên
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/series/{seriesId}/students/{studentId}/progress`
-  - **Authentication:** Required (Admin / Manager)
-- **Response:** Giống endpoint progress/my ở trên.
+- **Method:** `GET`
+- **Path:** `/api/series/{seriesId}/students/{studentId}/progress`
+- **Response:** `ApiResponse<Map<string, any>>` (giống progress/my)
+
+#### 6. Admin xem danh sách tiến độ tất cả sinh viên (phân trang)
+- **Method:** `GET`
+- **Path:** `/api/series/{seriesId}/progress`
+- **Query:** `page`, `size`, `keyword` (opt)
+- **Response:** `ApiResponse<SeriesProgressListResponse>`
+
+#### 7. Admin xem tổng quan thống kê của chuỗi
+- **Method:** `GET`
+- **Path:** `/api/series/{seriesId}/overview`
+- **Response:** `ApiResponse<SeriesOverviewResponse>`
+
+#### 8. Tạo activity con trong chuỗi
+- **Method:** `POST`
+- **Path:** `/api/series/{seriesId}/activities`
+- **Request:** `SeriesChildActivityCreateRequest`
+- **Response:** `ApiResponse<SeriesChildActivityResponse>`
+
+#### 9. Cập nhật activity con trong chuỗi
+- **Method:** `PUT`
+- **Path:** `/api/series/{seriesId}/activities/{activityId}`
+- **Request:** `SeriesChildActivityUpdateRequest`
+- **Response:** `ApiResponse<SeriesChildActivityResponse>`
+
+#### 10. Gắn activity đã có sẵn vào chuỗi
+- **Method:** `POST`
+- **Path:** `/api/series/{seriesId}/activities/attach`
+- **Request:** `AddActivityToSeriesRequest`
+- **Response:** `ApiResponse<ActivityResponse>`
 
 ---
 
 ### 5.4 Nhóm API Đăng Ký & Quét QR Điểm Danh (Registration & Check-in)
 
 #### 1. Sinh viên điểm danh nhanh qua Activity QR Code (Student quét)
-- **Mô tả nghiệp vụ:** Sinh viên tự mở camera quét QR Code của Hoạt động (được hiển thị trên màn hình lớn của ban tổ chức). Backend sẽ cập nhật ngay trạng thái tham gia thành `ATTENDED`.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/registrations/checkin/qr`
-  - **Authentication:** Required (Student)
-- **Request:**
-  - **Request Body:**
-    ```json
-    {
-      "checkInCode": "QR_CODE_STRING_FROM_ACTIVITY"
-    }
-    ```
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Check-in successful. Status updated to ATTENDED.",
-      "body": null
-    }
-    ```
+- **Method:** `POST`
+- **Path:** `/api/registrations/checkin/qr`
+- **Request:** `{ checkInCode: string }`
+- **Response:** `ApiResponse<null>` (hoặc thông tin participation)
 
 #### 2. Ban tổ chức điểm danh qua Ticket QR Code của Sinh viên (Organizer quét)
-- **Mô tả nghiệp vụ:** Ban tổ chức quét mã ticket cá nhân của từng sinh viên. Hỗ trợ thay đổi trạng thái theo bước quét: Lần 1 quét chuyển từ `REGISTERED -> CHECKED_IN`, Lần 2 quét chuyển từ `CHECKED_IN -> ATTENDED`.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/registrations/checkin`
-  - **Authentication:** Required (Admin / Manager / Organizer)
-- **Request:**
-  - **Request Body:**
-    ```json
-    {
-      "ticketCode": "TICKET_CODE_FROM_STUDENT",
-      "studentId": 15,
-      "participationType": null // Có thể truyền CHECKED_IN hoặc ATTENDED, hoặc để null BE tự transition
-    }
-    ```
-- **Response:**
-  - **Success (201):** Trả về participation status sau khi check-in thành công.
+- **Method:** `POST`
+- **Path:** `/api/registrations/checkin`
+- **Request:** `ActivityParticipationRequest`
+- **Response:** `ApiResponse<ActivityParticipationResponse>`
+
+#### 3. Validate ticketCode trước khi check-in
+- **Method:** `GET`
+- **Path:** `/api/registrations/checkin/validate`
+- **Query:** `ticketCode`
+- **Response:** `ApiResponse<Map>`
+
+#### 4. Lấy danh sách đăng ký của sinh viên
+- **Method:** `GET`
+- **Path:** `/api/registrations/my`
+- **Response:** `ApiResponse<RegistrationResponse[]>`
+
+#### 5. Lấy danh sách đăng ký theo sự kiện (Admin/Manager)
+- **Method:** `GET`
+- **Path:** `/api/registrations/activity/{activityId}`
+- **Response:** `ApiResponse<RegistrationResponse[]>`
+
+#### 6. Lấy danh sách đăng ký theo chuỗi sự kiện (Admin/Manager)
+- **Method:** `GET`
+- **Path:** `/api/registrations/series/{seriesId}`
+- **Response:** `ApiResponse<RegistrationResponse[]>`
+
+#### 7. Cập nhật trạng thái đăng ký (Admin/Manager)
+- **Method:** `PUT`
+- **Path:** `/api/registrations/{registrationId}/status`
+- **Query:** `status`
+- **Response:** `ApiResponse<RegistrationResponse>`
+
+#### 8. Chấm điểm completion (đạt/không đạt)
+- **Method:** `PUT`
+- **Path:** `/api/registrations/participations/{participationId}/grade`
+- **Query:** `isCompleted`, `notes` (opt)
+- **Response:** `ApiResponse<ActivityParticipationResponse>`
+
+#### 9. Lấy báo cáo tham gia / chưa tham gia (Admin/Manager)
+- **Method:** `GET`
+- **Path:** `/api/registrations/activities/{activityId}/report`
+- **Response:** `ApiResponse<Map>`
+
+#### 10. Lấy danh sách participations theo activityId
+- **Method:** `GET`
+- **Path:** `/api/registrations/activities/{activityId}/participations`
+- **Response:** `ApiResponse<ActivityParticipationResponse[]>`
+
+#### 11. Lấy danh sách đăng ký theo status của 1 sinh viên
+- **Method:** `GET`
+- **Path:** `/api/registrations/my/{status}`
+- **Response:** `ApiResponse<RegistrationResponse[]>`
+
+#### 12. Tìm kiếm đăng ký
+- **Method:** `GET`
+- **Path:** `/api/registrations/search`
+- **Query:** `keyword`, `status` (opt)
+- **Response:** `ApiResponse<RegistrationResponse[]>`
+
+#### 13. Backfill participations còn thiếu
+- **Method:** `POST`
+- **Path:** `/api/registrations/backfill/participations`
+- **Response:** `ApiResponse<Map>`
+
+#### 14. Lịch cá nhân (sự kiện đã tham gia)
+- **Method:** `GET`
+- **Path:** `/api/registrations/personal-calendar`
+- **Response:** `ApiResponse<Map>`
 
 ---
 
-### 5.5 Nhóm API Nhiệm Vụ & Bài Nộp (Task & Submission)
-
-#### 1. Nộp bài cho nhiệm vụ
-- **Mô tả nghiệp vụ:** Sinh viên nộp bài làm (văn bản và file đính kèm/ảnh) cho một task cụ thể.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/submissions/task/{taskId}`
-  - **Authentication:** Required (Student)
-  - **Content-Type:** `multipart/form-data`
-- **Request:**
-  - **Path Parameters:** `taskId` (number)
-  - **FormData Fields:**
-    - `content` (string, optional)
-    - `files` (List<MultipartFile>, optional)
-    - `images` (List<MultipartFile>, optional)
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<TaskSubmissionResponse>`.
-
-#### 2. Chấm điểm bài nộp (Đạt / Không đạt)
-- **Mô tả nghiệp vụ:** Admin/Manager chấm điểm bài nộp. Đạt (`isCompleted=true`) sẽ kích hoạt cộng điểm pass. Không đạt (`isCompleted=false`) sẽ tính điểm fail.
-- **API Endpoint:**
-  - **Method:** `PUT`
-  - **Path:** `/api/submissions/{submissionId}/grade`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Path Parameters:** `submissionId` (number)
-  - **Query Parameters:**
-    - `isCompleted` (boolean, required): `true` = Đạt, `false` = Không đạt.
-    - `feedback` (string, optional): Nhận xét từ người chấm.
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<TaskSubmissionResponse>`.
-
----
-
-### 5.6 Nhóm API MiniGame Quiz
+### 5.5 Nhóm API MiniGame Quiz
 
 #### 1. Tạo mới MiniGame cho hoạt động
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/minigames`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Request Body:** Gửi DTO `CreateMiniGameRequest` (chú ý cờ `showAnswers`).
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<unknown>`. Sau khi tạo, FE nên reload lại chi tiết.
+- **Method:** `POST`
+- **Path:** `/api/minigames`
+- **Request:** `CreateMiniGameRequest`
+- **Response:** `ApiResponse<MiniGameResponse>`
 
 #### 2. Lấy thông tin MiniGame của hoạt động
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/minigames/activity/{activityId}`
-  - **Authentication:** Required
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<MiniGameResponse>`.
+- **Method:** `GET`
+- **Path:** `/api/minigames/activity/{activityId}`
+- **Response:** `ApiResponse<MiniGameResponse>`
 
-#### 3. Bắt đầu lượt chơi MiniGame
-- **Mô tả nghiệp vụ:** Tạo lượt thử (attempt) mới cho sinh viên chơi game.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/minigames/{miniGameId}/start`
-  - **Authentication:** Required (Student)
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<StartAttemptResponse>`.
+#### 3. Kiểm tra xem activity đã có minigame/quiz chưa
+- **Method:** `GET`
+- **Path:** `/api/minigames/activity/{activityId}/check`
+- **Response:** `ApiResponse<boolean>`
 
-#### 4. Nộp kết quả MiniGame
-- **Mô tả nghiệp vụ:** Sinh viên nộp bài chọn phương án trả lời.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/minigames/attempts/{attemptId}/submit`
-  - **Authentication:** Required (Student)
-- **Request:**
-  - **Request Body:**
-    ```json
-    {
-      "answers": {
-        "1": 25, // questionId: optionId
-        "2": 28
-      }
-    }
-    ```
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<SubmitAttemptResponse>`.
+#### 4. Bắt đầu lượt chơi MiniGame
+- **Method:** `POST`
+- **Path:** `/api/minigames/{miniGameId}/start`
+- **Response:** `ApiResponse<StartAttemptResponse>`
 
-#### 5. Xem chi tiết lượt thử (Quiz Details)
-- **Mô tả nghiệp vụ:** Xem lại danh sách câu hỏi, câu trả lời đã chọn và đáp án đúng.
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/minigames/attempts/{attemptId}`
-  - **Authentication:** Required (Student sở hữu hoặc Admin)
-- **Response:**
-  - **Success (200):** Trả về `ApiResponse<AttemptDetailResponse>`.
-  - **Chú ý:** Nếu cờ `showAnswers` của minigame là `false`, backend sẽ **không** trả về cờ `isCorrect` hoặc đáp án đúng trong list options câu hỏi. FE chỉ hiển thị phương án sinh viên đã chọn, không hiển thị đáp án đúng.
+#### 5. Nộp kết quả MiniGame
+- **Method:** `POST`
+- **Path:** `/api/minigames/attempts/{attemptId}/submit`
+- **Request:** `{ answers: { [questionId: string]: optionId } }`
+- **Response:** `ApiResponse<SubmitAttemptResponse>`
+
+#### 6. Xem chi tiết lượt thử (Quiz Details)
+- **Method:** `GET`
+- **Path:** `/api/minigames/attempts/{attemptId}`
+- **Response:** `ApiResponse<AttemptDetailResponse>`
+- **Chú ý:** Nếu cờ `showAnswers` của minigame là `false`, backend sẽ **không** trả về cờ `isCorrect` hoặc đáp án đúng trong list options câu hỏi. FE chỉ hiển thị phương án sinh viên đã chọn, không hiển thị đáp án đúng.
+
+#### 7. Lấy danh sách câu hỏi (không có đáp án đúng)
+- **Method:** `GET`
+- **Path:** `/api/minigames/{miniGameId}/questions`
+- **Response:** `ApiResponse<QuizQuestionDetailResponse[]>`
+
+#### 8. Lấy danh sách câu hỏi cho admin chỉnh sửa (có đáp án đúng)
+- **Method:** `GET`
+- **Path:** `/api/minigames/{miniGameId}/questions/edit`
+- **Response:** `ApiResponse<QuizQuestionEditResponse[]>`
+
+#### 9. Lấy lịch sử attempts của student
+- **Method:** `GET`
+- **Path:** `/api/minigames/{miniGameId}/attempts/my`
+- **Response:** `ApiResponse<AttemptDetailResponse[]>`
+
+#### 10. Cập nhật MiniGame
+- **Method:** `PUT`
+- **Path:** `/api/minigames/{miniGameId}`
+- **Request:** `UpdateMiniGameRequest`
+- **Response:** `ApiResponse<MiniGameResponse>`
+
+#### 11. Xóa MiniGame (soft delete)
+- **Method:** `DELETE`
+- **Path:** `/api/minigames/{miniGameId}`
+- **Response:** `ApiResponse<null>`
+
+#### 12. Lấy tất cả minigames (Admin/Manager)
+- **Method:** `GET`
+- **Path:** `/api/minigames`
+- **Response:** `ApiResponse<MiniGameResponse[]>`
 
 ---
 
-### 5.7 Nhóm API Điểm Số & Xếp Hạng (Score & Ranking)
+### 5.6 Nhóm API Điểm Số & Xếp Hạng (Score & Ranking)
 
 #### 1. Lấy bảng xếp hạng điểm sinh viên (Ranking)
-- **Mô tả nghiệp vụ:** Xem xếp hạng điểm rèn luyện, chuyên đề, công tác xã hội toàn trường, theo khoa hoặc theo lớp.
-- **API Endpoint:**
-  - **Method:** `GET`
-  - **Path:** `/api/scores/ranking`
-  - **Authentication:** Required
-- **Request:**
-  - **Query Parameters:**
-    - `semesterId` (number, required): ID học kỳ.
-    - `scoreType` (string, optional): `"REN_LUYEN"`, `"CONG_TAC_XA_HOI"`, `"CHUYEN_DE"`. Nếu không truyền, tính tổng tất cả loại điểm.
-    - `departmentId` (number, optional): ID khoa.
-    - `classId` (number, optional): ID lớp.
-    - `sortOrder` (string, optional, default: `"DESC"`): `"ASC"` hoặc `"DESC"`.
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Bảng xếp hạng điểm sinh viên",
-      "body": {
-        "semesterId": 1,
-        "semesterName": "Học kỳ I 2025-2026",
-        "scoreType": "REN_LUYEN",
-        "departmentId": null,
-        "classId": null,
-        "sortOrder": "DESC",
-        "totalStudents": 1,
-        "rankings": [
-          {
-            "rank": 1,
-            "studentId": 12,
-            "studentCode": "SV0012",
-            "studentName": "Nguyễn Văn A",
-            "departmentId": 2,
-            "departmentName": "Công nghệ thông tin",
-            "classId": 5,
-            "className": "D19-CNTT1",
-            "semesterId": 1,
-            "semesterName": "Học kỳ I 2025-2026",
-            "scoreType": "REN_LUYEN",
-            "score": "95.5",
-            "scoreTypeLabel": "Điểm rèn luyện"
-          }
-        ]
-      }
-    }
-    ```
+- **Method:** `GET`
+- **Path:** `/api/scores/ranking`
+- **Query:** `semesterId` (req), `scoreType` (opt), `departmentId` (opt), `classId` (opt), `sortOrder` (opt, default: "DESC")
+- **Response:** `ApiResponse<Map>` (với `rankings: StudentRankResponse[]`)
 
-#### 2. Trigger tính toán lại điểm thủ công cho một sinh viên (Recalculate)
-- **Mô tả nghiệp vụ:** Yêu cầu backend quét và tính toán lại điểm toàn bộ hoạt động & chuỗi sự kiện của 1 sinh viên trong học kỳ (thường dùng khi có khiếu nại hoặc dữ liệu đồng bộ chậm).
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/scores/recalculate/student/{studentId}`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Path Parameters:** `studentId` (number)
-  - **Query Parameters:**
-    - `semesterId` (number, optional): Nếu bỏ trống, backend tự động lấy học kỳ hiện tại đang mở.
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Score recalculated successfully",
-      "body": null
-    }
-    ```
-- **Documentation Notes:**
-  - > [!IMPORTANT]
-    > Đây là API chạy **Đồng bộ (Synchronous)**. Tác vụ tính toán lại điểm cho sinh viên sẽ được thực hiện trực tiếp trên luồng HTTP request này. FE nên hiển thị loading indicator cho đến khi nhận được response.
+#### 2. Trigger tính toán lại điểm thủ công cho một sinh viên
+- **Method:** `POST`
+- **Path:** `/api/scores/recalculate/student/{studentId}`
+- **Query:** `semesterId` (opt)
+- **Response:** `ApiResponse<null>`
+- **Lưu ý:** API chạy **đồng bộ (Synchronous)**.
 
-#### 3. Trigger tính toán lại điểm cho tất cả sinh viên (Recalculate All)
-- **Mô tả nghiệp vụ:** Yêu cầu backend quét và tính toán lại điểm cho toàn bộ sinh viên trong một học kỳ.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/scores/recalculate/all`
-  - **Authentication:** Required (Admin / Manager)
-- **Request:**
-  - **Query Parameters:**
-    - `semesterId` (number, optional): Nếu bỏ trống, backend tự động lấy học kỳ hiện tại đang mở.
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "Recalculated all student scores",
-      "body": {
-        "semesterId": 1,
-        "semesterName": "Học kỳ I 2025-2026",
-        "totalStudents": 1500,
-        "successCount": 1498,
-        "errorCount": 2,
-        "errors": [
-          {
-            "studentId": 45,
-            "studentCode": "SV0045",
-            "error": "Lỗi kết nối cơ sở dữ liệu khi cập nhật điểm"
-          }
-        ]
-      }
-    }
-    ```
-- **Documentation Notes:**
-  - > [!IMPORTANT]
-    > Đây là API chạy **Đồng bộ (Synchronous)**. Backend sẽ duyệt qua toàn bộ danh sách sinh viên để tính lại điểm. Thời gian phản hồi có thể kéo dài đáng kể (vài chục giây đến vài phút tùy theo quy mô dữ liệu). FE **bắt buộc** hiển thị màn hình loading chờ/khóa UI cho Admin và cảnh báo tác vụ đang xử lý.
+#### 3. Trigger tính toán lại điểm cho tất cả sinh viên
+- **Method:** `POST`
+- **Path:** `/api/scores/recalculate/all`
+- **Query:** `semesterId` (opt)
+- **Response:** `ApiResponse<Map>` (với `successCount`, `errorCount`, `errors`)
+- **Lưu ý:** API chạy **đồng bộ (Synchronous)**. Thời gian phản hồi có thể kéo dài.
 
+#### 4. Xem lịch sử điểm của student
+- **Method:** `GET`
+- **Path:** `/api/scores/history/student/{studentId}`
+- **Query:** `semesterId` (req), `scoreType` (opt), `page`, `size`
+- **Response:** `ApiResponse<ScoreHistoryViewResponse>`
+- **Lưu ý:** Student chỉ có thể xem lịch sử của chính mình.
 
----
+#### 5. Xem điểm theo loại (Score View)
+- **Method:** `GET`
+- **Path:** `/api/scores/student/{studentId}/semester/{semesterId}`
+- **Response:** `ApiResponse<ScoreViewResponse>`
 
-### 5.8 Nhóm API Upload Hình Ảnh (File Upload Exception)
-
-#### 1. Upload hình ảnh (Dạng Raw Data - Ngoại lệ Wrapper)
-- **Mô tả nghiệp vụ:** Gửi ảnh lưu trữ lên server để lấy URL ảnh public.
-- **API Endpoint:**
-  - **Method:** `POST`
-  - **Path:** `/api/upload/image`
-  - **Authentication:** Required
-  - **Content-Type:** `multipart/form-data`
-- **Request:**
-  - **FormData Fields:**
-    - `file` (MultipartFile, required): File ảnh cần upload (tối đa 5MB, định dạng image/*).
-- **Response:**
-  - **Success (200):**
-    ```json
-    {
-      "status": true,
-      "message": "File uploaded successfully",
-      "data": "https://server.domain/uploads/images/abc-123.jpg"
-    }
-    ```
-  - **Chú ý:** Trường chứa URL trả về là **`data`**, không phải `body`.
-
-#### 2. Xóa hình ảnh
-- **API Endpoint:**
-  - **Method:** `DELETE`
-  - **Path:** `/api/upload/image`
-  - **Authentication:** Required
-- **Request:**
-  - **Query Parameters:**
-    - `fileUrl` (string, required): URL đầy đủ của ảnh cần xóa.
-- **Response:**
-  - **Success (200):** `{"status": true, "message": "File deleted successfully"}`
+#### 6. Xem tổng điểm (Total Score)
+- **Method:** `GET`
+- **Path:** `/api/scores/student/{studentId}/semester/{semesterId}/total`
+- **Response:** `ApiResponse<Map>` (với `grandTotal`, `totalsByType`)
 
 ---
 
@@ -1379,176 +1292,157 @@ Team Frontend nên phân chia các file TypeScript theo hướng module hóa đ�
 
 1. **Thư mục `src/types/`**:
    - `presets.ts`: Khai báo các loại Preset, Preset Config cho Activity và Series.
-   - `activity.ts`: Định nghĩa Create/Update Request và Activity Response.
-   - `series.ts`: Định nghĩa Create/Update Request, Series Response và SeriesStudentProgressView.
-   - `score.ts`: Định nghĩa ScoreHistory, ActivityParticipation và StudentRank.
+   - `activity.ts`: Định nghĩa Create/Update Request và Activity Response (Standard, Minigame, SeriesChild, Legacy, Summary).
+   - `series.ts`: Định nghĩa Create/Update Request, SeriesResponse, SeriesOverviewResponse, SeriesProgressListResponse, SeriesProgressItemResponse.
+   - `score.ts`: Định nghĩa ScoreHistory, ActivityParticipation, StudentRank, ScoreView.
    - `submission.ts`: Định nghĩa các cấu trúc bài nộp.
-   - `minigame.ts`: Định nghĩa các request/response cho Quiz.
+   - `minigame.ts`: Định nghĩa các request/response cho Quiz (standalone API).
 
 2. **Thư mục `src/api/`**:
    Tạo các hàm fetch/post bọc Axios, ví dụ:
    ```ts
    import axios from 'axios';
    import { ApiResponse } from '@/types/common';
-   import { SeriesStudentProgressView } from '@/types/series';
+   import { SeriesProgressListResponse } from '@/types/series';
 
-   export const getMySeriesProgress = async (seriesId: number): Promise<SeriesStudentProgressView> => {
-     const response = await axios.get<ApiResponse<SeriesStudentProgressView>>(`/api/series/${seriesId}/progress/my`);
-     return response.data.body; // Unwraps ApiResponse wrapper
+   export const getSeriesProgressList = async (
+     seriesId: number, page = 0, size = 20, keyword?: string
+   ): Promise<SeriesProgressListResponse> => {
+     const response = await axios.get<ApiResponse<SeriesProgressListResponse>>(
+       `/api/series/${seriesId}/progress`, { params: { page, size, keyword } }
+     );
+     return response.data.body;
    };
    ```
 
 3. **Cảnh giác (Common Pitfalls) ở FE:**
    - Không tự động thêm prefix `/uploads` vào ảnh; backend trả về full link ảnh public.
    - Các API dạng raw list (`GET /api/activities/my`, `/upcoming`, `/month`, `/score-type/*`, `/department/*`) **không** dùng `ApiResponse` wrapper, hãy xử lý trực tiếp payload danh sách.
-   - Luôn sử dụng kiểu dữ liệu `string` ở FE cho các trường chứa điểm (ví dụ: `pointsEarned: string`) để tương thích với `BigDecimal` phía backend, tránh bị làm tròn số không mong muốn ở trình duyệt.
-
-
-## 5. Danh Sách API Chi Tiết (Theo chuẩn apimapping)
-
-### 1. Mô tả nghiệp vụ
-
-Tạo và cập nhật cấu hình chuỗi sự kiện (Activity Series), bao gồm cấu hình điểm milestone, quy định số sự kiện tối thiểu, và thiết lập học kỳ cộng điểm (`targetSemesterId`). Điểm thưởng của chuỗi (milestone) sẽ không dựa trên `ActivityScoreRuleRequest` mà sẽ cấu hình trực tiếp trên thông tin Series thông qua `milestonePoints`.
-
-### 2. API Endpoint
-
-- **Method:** POST (Tạo mới) / PUT (Cập nhật)
-- **Path:** `/api/series` hoặc `/api/series/{seriesId}`
-- **Versioning:** Không
-- **Authentication:** Required (Quản trị viên / Ban tổ chức)
-
-### 3. Request
-
-- **Path Parameters:**
-  - `seriesId` (chỉ dùng cho method PUT): ID của chuỗi sự kiện
-- **Query Parameters:** Không
-- **Request Body:**
-  ```json
-  {
-    "name": "Workshop Doanh Nghiệp 2026",
-    "description": "Chuỗi workshop",
-    "scoreType": "CHUYEN_DE",
-    "milestonePoints": {
-      "1": 1,
-      "3": 3,
-      "5": 5
-    },
-    "minimumRequirementEnabled": true,
-    "minimumRequiredEvents": 3,
-    "minimumPenaltyPoints": 2,
-    "targetSemesterId": 1,
-    "registrationStartDate": "2026-06-01T00:00:00",
-    "registrationDeadline": "2026-06-30T23:59:59",
-    "requiresApproval": true,
-    "ticketQuantity": 200,
-    "presetCode": "ENTERPRISE_SERIES",
-    "presetConfig": null
-  }
-  ```
-
-### 4. Response
-
-- **Success (200/201):**
-
-  ```json
-  {
-    "status": true,
-    "message": "success",
-    "body": {
-      "id": 1,
-      "name": "Workshop Doanh Nghiệp 2026",
-      "description": "Chuỗi workshop",
-      "scoreType": "CHUYEN_DE",
-      "milestonePoints": {
-        "1": 1,
-        "3": 3,
-        "5": 5
-      },
-      "minimumRequirementEnabled": true,
-      "minimumRequiredEvents": 3,
-      "minimumPenaltyPoints": 2,
-      "targetSemesterId": 1,
-      "registrationStartDate": "2026-06-01T00:00:00",
-      "registrationDeadline": "2026-06-30T23:59:59",
-      "requiresApproval": true,
-      "ticketQuantity": 200,
-      "createdAt": "2026-06-24T00:00:00"
-    }
-  }
-  ```
-- **Error (JSON wrapper - đa số endpoint):**
-
-  ```json
-  {
-    "status": false,
-    "message": "error message",
-    "body": null
-  }
-  ```
-- **Error Responses:** `400 Bad Request` (thiếu dữ liệu), `403 Forbidden` (không đủ quyền), `404 Not Found` (không tìm thấy series)
-
-### 5. Documentation Notes
-
-- `targetSemesterId`: Xác định học kỳ cụ thể sẽ nhận điểm thưởng của chuỗi. Nếu bỏ qua (`null`), backend sẽ tự động suy ra học kỳ từ ngày bắt đầu của hoạt động con đầu tiên.
-- Không sử dụng `ActivityScoreRuleRequest` cho việc cấu hình điểm của chuỗi.
+   - Luôn sử dụng kiểu dữ liệu `number | string` ở FE cho các trường chứa điểm (ví dụ: `pointsEarned: number | string`) để tương thích với `BigDecimal` phía backend, tránh bị lỗi parse khi Jackson trả về number hoặc string.
+   - `GET /api/series/{seriesId}/progress/my` và `GET /api/series/{seriesId}/students/{studentId}/progress` trả về `Map<string, any>`, không có DTO typed cố định. FE nên khai báo interface `SeriesStudentProgressMap` để type-safe.
+   - `SeriesResponse` hiện tại **thiếu `targetSemesterId`**. Nếu cần hiển thị, lấy từ `GET /api/series` (danh sách) hoặc `GET /api/series/{id}/overview`.
+   - Tất cả `*UpdateRequest` trong Java đều là **standalone class**, không extends CreateRequest. FE có thể dùng `Partial<CreateRequest>` nhưng cần aware rằng backend không có inheritance.
 
 ---
 
-## Phần 3: Thống kê tổng quan Series (Dành cho Ban tổ chức)
+## 7. Kiến trúc Activity & Hướng dẫn Tích hợp
 
-FE đang thắc mắc về trường `minimumRequirementMetCount` (Not in BE spec or FE). Đây là field thuộc về API Thống kê **dành cho Ban tổ chức (Organizer)**, chưa được ghi nhận trong spec. Trong khi đó, `minimumRequirementMet` (boolean), `completedCount` và `remainingToAvoidPenalty` thuộc về API Tiến độ **dành cho Sinh viên (Student)** (`GET /api/series/{seriesId}/progress/my`).
+### 7.1 Activity Architecture
 
-### API Endpoint: GET /api/series/{seriesId}/overview
-- **Mục đích:** Lấy thông tin thống kê tổng quan của chuỗi sự kiện để hiển thị trên Dashboard của Admin / Organizer.
-- **Authentication:** Required (Admin / Organizer)
-- **Response Type:** `SeriesOverviewResponse`
-- **Response Body (Ví dụ):**
-```json
-{
-  "status": true,
-  "message": "success",
-  "body": {
-    "seriesId": 1,
-    "seriesName": "Workshop Doanh Nghiệp 2026",
-    "minimumRequirementEnabled": true,
-    "minimumRequiredEvents": 3,
-    "minimumPenaltyPoints": 2,
+Hệ thống hiện có 3 nhánh Activity riêng biệt:
 
-    // Statistics (Thống kê tổng quan)
-    "totalActivities": 5,
-    "totalRegisteredStudents": 150,
-    "totalCompletedStudents": 45,
-    "completionRate": 0.3,
-    "totalMilestonePointsAwarded": 135.0,
-    "minimumRequirementMetCount": 80, // TỔNG SỐ LƯỢNG SINH VIÊN ĐÃ ĐẠT SỐ SỰ KIỆN TỐI THIỂU
+1. **Standard Activities**: Sự kiện thông thường (SUKIEN, CONG_TAC_XA_HOI, CHUYEN_DE_DOANH_NGHIEP). Có điểm riêng lẻ qua `ActivityScoreRule`.
+2. **Minigames**: Sự kiện kèm Quiz. Điểm cộng qua `MINIGAME_PASSED` hoặc phạt qua `MINIGAME_EXHAUSTED_ATTEMPTS`.
+3. **Series Child Activities**: Sự kiện con trong chuỗi. **Không cộng điểm riêng lẻ**. Điểm chỉ cộng qua `SERIES_MILESTONE_REACHED` và phạt qua `SERIES_MINIMUM_REQUIREMENT`.
 
-    // Phân bố tiến độ theo milestone
-    "milestoneProgress": [
-      {
-        "milestoneKey": "3",
-        "milestoneCount": 3,
-        "milestonePoints": 3,
-        "studentCount": 80,
-        "percentage": 0.53
-      }
-    ],
+### 7.2 Frontend Integration Guidance
 
-    // Thống kê từng hoạt động con
-    "activityStats": [
-      {
-        "activityId": 10,
-        "activityName": "Workshop 1",
-        "order": 1,
-        "registrationCount": 120,
-        "participationCount": 100,
-        "participationRate": 0.83
-      }
-    ]
-  }
-}
-```
+| Tác vụ | Endpoint nên dùng | DTO nên dùng |
+|--------|-------------------|--------------|
+| Tạo sự kiện thường | `POST /api/activities/standard` | `StandardActivityCreateRequest` |
+| Tạo sự kiện minigame | `POST /api/activities/minigame` | `MinigameActivityCreateRequest` |
+| Tạo sự kiện con trong chuỗi | `POST /api/series/{seriesId}/activities` | `SeriesChildActivityCreateRequest` |
+| Lấy chi tiết sự kiện thường | `GET /api/activities/standard/{id}` | `StandardActivityResponse` |
+| Lấy chi tiết sự kiện minigame | `GET /api/activities/minigame/{id}` | `MinigameActivityResponse` |
+| Lấy chi tiết sự kiện con | `GET /api/series/{seriesId}/activities/{activityId}` | `SeriesChildActivityResponse` |
+| Legacy (vẫn hoạt động) | `POST /api/activities`, `PUT /api/activities/{id}` | `CreateActivityRequest`, `ActivityResponse` |
 
-**Lưu ý quan trọng cho FE:**
-- `minimumRequirementMetCount` (Integer) là tổng số lượng sinh viên đã đạt mốc tối thiểu. Trường này dùng cho biểu đồ/thống kê của **Organizer** qua endpoint `/overview`.
-- `minimumRequirementMet` (Boolean) là trạng thái cá nhân xem sinh viên hiện tại đã vượt qua mốc tối thiểu chưa. Trường này dùng cho màn hình của **Student** qua endpoint `/progress/my`.
-- FE có thể đã nhầm lẫn khi áp dụng góc nhìn của Student cho UI của Organizer. Nếu màn hình của Organizer cần hiển thị tổng số người đạt chuẩn thì **phải sử dụng** `minimumRequirementMetCount` từ endpoint `/overview` này.
+### 7.3 Score Rules
+
+- **Cấu trúc payload:** `ActivityScoreRuleRequest` / `ActivityScoreRuleResponse`
+- **Validation rules:**
+  - `points` và `failPoints` là `BigDecimal` (nên dùng `number | string` ở FE).
+  - `calculation = PASS_FAIL_POINTS` hoặc `PENALTY_POINTS` → backend tự động negate `failPoints`.
+  - `semesterPolicy = EXPLICIT_SEMESTER` → bắt buộc `explicitSemesterId`.
+- **Semester support:** `ACTIVITY_SEMESTER` (tự suy ra từ ngày activity) hoặc `EXPLICIT_SEMESTER` (chỉ định cụ thể).
+- **Department targeting:** `ALL_PARTICIPANTS`, `DEPARTMENT_ONLY`, `OUTSIDE_DEPARTMENTS_ONLY`.
+
+### 7.4 Series Features
+
+- **Overview:** `GET /api/series/{seriesId}/overview` → `SeriesOverviewResponse`
+  - `totalCompletedStudents`: số SV hoàn thành **tất cả** activities.
+  - `minimumRequirementMetCount`: số SV đạt mốc tối thiểu.
+  - `milestoneProgress`: phân bố SV theo từng milestone.
+  - `activityStats`: thống kê từng activity con.
+- **Progress (Student):** `GET /api/series/{seriesId}/progress/my` → `Map<string, any>`
+  - `completedCount`, `totalActivities`, `pointsEarned`, `currentMilestone`, `nextMilestoneCount`, `nextMilestonePoints`.
+  - `minimumRequirementMet`: boolean.
+  - `remainingToAvoidPenalty`: số activity còn thiếu để tránh phạt.
+- **Progress (Admin list):** `GET /api/series/{seriesId}/progress` → `SeriesProgressListResponse`
+- **Milestones:** `milestonePoints` là `Map<number, number>`. VD: `{3: 5, 5: 10}` nghĩa là hoàn thành 3 activity được 5 điểm, hoàn thành 5 activity được 10 điểm.
+- **Minimum requirements:**
+  - `minimumRequirementEnabled`: bật/tắt kiểm tra số buổi tối thiểu.
+  - `minimumRequiredEvents`: số buổi tối thiểu.
+  - `minimumPenaltyPoints`: số điểm bị trừ nếu không đạt (frontend gửi số dương, backend tự negate).
+
+---
+
+## 8. Migration Recommendations
+
+### 8.1 Từ Legacy sang Specialized APIs
+
+| Legacy | Thay thế bằng | Lý do |
+|--------|---------------|-------|
+| `POST /api/activities` | `POST /api/activities/standard` hoặc `POST /api/activities/minigame` | Tránh dùng chung DTO cồng kềnh, validation rõ ràng hơn. |
+| `PUT /api/activities/{id}` | `PUT /api/activities/standard/{id}` hoặc `PATCH /api/activities/minigame/{id}` | Tương tự. |
+| `GET /api/activities/{id}` | `GET /api/activities/standard/{id}` hoặc `GET /api/activities/minigame/{id}` | Response DTO chuyên biệt, đầy đủ field hơn. |
+
+### 8.2 Series Integration
+
+1. **Form tạo Series:**
+   - Sử dụng `CreateSeriesRequest`.
+   - `milestonePoints` là `Record<number, number>`.
+   - `targetSemesterId` optional.
+   - Có thể dùng `presetCode` + `presetConfig` để auto-fill.
+
+2. **Form tạo Series Child Activity:**
+   - Sử dụng `SeriesChildActivityCreateRequest`.
+   - Không cần gửi `scoreRules` (sẽ bị bỏ qua hoặc empty).
+   - `order` = `seriesOrder`.
+
+3. **Màn hình tiến độ Student:**
+   - Gọi `GET /api/series/{seriesId}/progress/my`.
+   - Parse response như `SeriesStudentProgressMap`.
+   - Hiển thị `completedCount / totalActivities`, `pointsEarned`, `currentMilestone`, `nextMilestoneCount`.
+   - Hiển thị cảnh báo `remainingToAvoidPenalty` nếu `minimumRequirementEnabled = true` và `minimumRequirementMet = false`.
+
+4. **Màn hình Overview Admin:**
+   - Gọi `GET /api/series/{seriesId}/overview`.
+   - Dùng `milestoneProgress` cho biểu đồ phân bố milestone.
+   - Dùng `activityStats` cho bảng thống kê từng activity.
+   - Dùng `minimumRequirementMetCount` cho số liệu "đạt mốc tối thiểu".
+
+### 8.3 MiniGame Integration
+
+1. **Tạo minigame qua Activity shell:**
+   - Dùng `POST /api/activities/minigame` với `MinigameActivityCreateRequest`.
+   - `quiz` là `QuizConfigRequest`.
+   - Mỗi `QuestionRequest` cần ≥2 `OptionRequest` và ≥1 `isCorrect = true`.
+
+2. **Tạo standalone minigame:**
+   - Dùng `POST /api/minigames` với `CreateMiniGameRequest`.
+   - Dùng khi cần gắn quiz vào activity đã tồn tại (cung cấp `activityId`).
+
+3. **Xem lịch sử attempt:**
+   - Dùng `GET /api/minigames/attempts/{attemptId}`.
+   - Kiểm tra `showAnswers` trước khi render đáp án đúng.
+   - `QuizOptionDetailResponse.isCorrect` sẽ là `null` nếu `showAnswers = false`.
+
+---
+
+## 9. Lưu ý đặc biệt (Gotchas)
+
+1. **`SeriesResponse` thiếu `targetSemesterId`**: Nếu FE cần hiển thị học kỳ đích của Series, hãy dùng `GET /api/series` (danh sách, trả về ad-hoc Map có `targetSemesterId`) hoặc `GET /api/series/{id}/overview`.
+2. **`SeriesPresetPreviewResponse` không có `targetSemesterId`**: Khi preview preset, không có trường này.
+3. **Điểm số là `BigDecimal`**: Jackson serialize thành JSON **number** (có thể là string tùy config). FE nên dùng `number | string`.
+4. **`GET /api/series/{seriesId}/progress/my` trả về `Map<string, any>`**: Không có DTO typed cố định. FE nên tự định nghĩa interface `SeriesStudentProgressMap`.
+5. **Tất cả `*UpdateRequest` là standalone**: Không extends CreateRequest trong Java. FE có thể dùng `Partial<T>` nhưng cần aware.
+6. **Legacy endpoints vẫn hoạt động**: `POST /api/activities`, `PUT /api/activities/{id}`, etc. vẫn đầy đủ chức năng. FE có thể migrate dần.
+7. **Raw list endpoints**: `GET /api/activities/my`, `/upcoming`, `/month`, `/score-type/*`, `/department/*` không bọc `ApiResponse`.
+8. **Activity QR vs Ticket QR**: Sinh viên quét `checkInCode` (Activity QR) → `/api/registrations/checkin/qr`. Ban tổ chức quét `ticketCode` (Ticket QR của SV) → `/api/registrations/checkin`.
+9. **Auto-generated `checkInCode`**: Format `ACT-{000000}-{8 random chars}`. Không cần FE tạo.
+10. **Score recalculation là synchronous**: `POST /api/scores/recalculate/student/{studentId}` và `POST /api/scores/recalculate/all` chạy đồng bộ. FE cần hiển thị loading.
+
+---
+
+*End of FE_BACKEND_HANDOFF_SPEC.md*
