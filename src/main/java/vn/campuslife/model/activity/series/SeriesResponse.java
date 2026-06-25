@@ -15,6 +15,7 @@ public class SeriesResponse {
     private Map<Integer, Integer> milestonePoints = new LinkedHashMap<>();
     private ScoreType scoreType;
     private Long mainActivityId;
+    private Long targetSemesterId;
     private LocalDateTime registrationStartDate;
     private LocalDateTime registrationDeadline;
     private boolean requiresApproval;
