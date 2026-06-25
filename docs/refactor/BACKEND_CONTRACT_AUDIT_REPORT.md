@@ -420,6 +420,7 @@
 | `milestonePoints` | `Map<Integer, Integer>` | Yes | Parsed from JSON string. |
 | `scoreType` | `ScoreType` | No | |
 | `mainActivityId` | `Long` | Yes | |
+| `targetSemesterId` | `Long` | Yes | Added in fix. FK to `semesters` table. |
 | `registrationStartDate` | `LocalDateTime` | Yes | |
 | `registrationDeadline` | `LocalDateTime` | Yes | |
 | `requiresApproval` | `boolean` | No | |
@@ -429,7 +430,7 @@
 | `minimumPenaltyPoints` | `Integer` | Yes | |
 | `createdAt` | `LocalDateTime` | Yes | |
 
-> **⚠️ CRITICAL:** `SeriesResponse` is **missing** `targetSemesterId` in the actual source code. The `toSeriesResponse` method in `ActivitySeriesServiceImpl` does not populate it. `getAllSeries` returns an ad-hoc `Map` that includes `targetSemesterId`, but the official DTO does not.
+> **✅ FIXED:** `SeriesResponse` previously **missing** `targetSemesterId` in the actual source code. The `toSeriesResponse` method in `ActivitySeriesServiceImpl` now populates it (field added to `SeriesResponse` DTO and set in `toSeriesResponse`). `getAllSeries` still returns an ad-hoc `Map` that includes `targetSemesterId`.
 
 #### `SeriesOverviewResponse`
 

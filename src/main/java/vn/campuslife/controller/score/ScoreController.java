@@ -35,7 +35,7 @@ public class ScoreController {
      * Lấy bảng xếp hạng điểm sinh viên
      * 
      * @param semesterId ID học kỳ (required)
-     * @param scoreType Loại điểm (optional - null = tổng điểm tất cả loại): REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE, KHAC
+     * @param scoreType Loại điểm (optional - null = tổng điểm tất cả loại): REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE
      * @param departmentId ID khoa (optional - null = tất cả khoa)
      * @param classId ID lớp (optional - null = tất cả lớp)
      * @param sortOrder Thứ tự sắp xếp: "ASC" (thấp đến cao) hoặc "DESC" (cao xuống thấp, mặc định)

@@ -323,7 +323,7 @@ export interface ActivitySummaryResponse {
 Trong `CreateSeriesRequest`, `UpdateSeriesRequest` và `SeriesResponse`, đã được bổ sung thêm các trường cấu hình phạt tối thiểu và milestone.
 
 > [!IMPORTANT]
-> `SeriesResponse` hiện tại **thiếu `targetSemesterId`** trong source code Java. Trường này tồn tại trên Entity và trong Request DTO, nhưng `toSeriesResponse()` chưa map nó. Frontend nên lấy `targetSemesterId` từ API `GET /api/series` (danh sách, trả về Map) hoặc từ `GET /api/series/{seriesId}/overview`.
+> `SeriesResponse` hiện tại **đã có `targetSemesterId`** (đã fix trong backend). Trường này tồn tại trên Entity, Request DTO, và Response DTO.
 
 ```typescript
 export interface CreateSeriesRequest {
@@ -376,9 +376,10 @@ export interface SeriesResponse {
   ticketQuantity?: number | null;
   minimumRequirementEnabled: boolean;
   minimumRequiredEvents?: number | null;
+  targetSemesterId?: number | null;
   minimumPenaltyPoints?: number | null;
   createdAt?: string | null;
-  // ⚠️ targetSemesterId hiện chưa có trong SeriesResponse (backend bug)
+  // ✅ targetSemesterId đã có trong SeriesResponse (đã fix backend)
 }
 ```
 

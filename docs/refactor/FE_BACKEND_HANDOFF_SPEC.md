@@ -25,7 +25,7 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Minigame & Đáp án** | Bổ sung cấu hình `showAnswers` (cho phép xem đáp án đúng sau khi nộp). MiniGame độc lập có thể cấu hình phạt khi hết lượt mà không pass (`MINIGAME_EXHAUSTED_ATTEMPTS`). | - Form tạo/sửa MiniGame: Thêm toggle `showAnswers` (Hiển thị đáp án đúng sau khi nộp).<br>- Màn hình xem lịch sử/chi tiết attempt của sinh viên: Kiểm tra cờ `showAnswers` từ backend trả về trước khi hiển thị đáp án đúng. Không tự ý render đáp án đúng nếu cờ này bằng `false`. | **Cao** |
 | **No-show Penalty** | Preset `EVENT_BASIC` và `EVENT_WITH_SUBMISSION` mặc định bật No-show. Seminar mặc định tắt. Nếu bật No-show cho Seminar, hệ thống bắt buộc phạt sang loại điểm khác (không trừ ngược vào tích lũy chuyên đề chính). | - Form tạo hoạt động: Cho phép bật/tắt No-show và chọn loại điểm phạt phù hợp.<br>- Enforce validation loại điểm phạt của Seminar ở FE nếu bật. | **Trung bình** |
 | **Xử lý quá hạn bài nộp** | Backend chuyển sang Quartz tự động quét và đánh dấu `OVERDUE` (không dùng cron hàng ngày). | - FE chỉ hiển thị trạng thái `OVERDUE` khi backend trả về trong status. Không tự viết logic so sánh ngày tháng ở FE để hiển thị trạng thái quá hạn. | **Thấp** |
-| **Series `targetSemesterId`** | Admin có thể cấu hình trước học kỳ nào sẽ được dùng để cộng điểm thưởng (milestone) cho chuỗi sự kiện. Nếu gửi lên `null`, backend tự động tính toán học kỳ dựa trên thời gian diễn ra sự kiện đầu tiên của chuỗi. | - Form tạo/sửa Series: Thêm dropdown chọn học kỳ đích (`targetSemesterId`).<br>- Lưu ý: `SeriesResponse` hiện tại **chưa trả về** `targetSemesterId` (backend bug). Nếu cần hiển thị, dùng `GET /api/series` (danh sách) hoặc `GET /api/series/{id}/overview`. | **Trung bình** |
+| **Series `targetSemesterId`** | Admin có thể cấu hình trước học kỳ nào sẽ được dùng để cộng điểm thưởng (milestone) cho chuỗi sự kiện. Nếu gửi lên `null`, backend tự động tính toán học kỳ dựa trên thời gian diễn ra sự kiện đầu tiên của chuỗi. | - Form tạo/sửa Series: Thêm dropdown chọn học kỳ đích (`targetSemesterId`).<br>- Lưu ý: `SeriesResponse` hiện tại **đã trả về** `targetSemesterId` (đã fix backend). | **Trung bình** |
 | **Series Progress List (Admin)** | Admin có thể xem danh sách tiến độ của tất cả sinh viên trong chuỗi với phân trang, tìm kiếm. | - Thêm màn hình Admin xem progress danh sách. Endpoint: `GET /api/series/{seriesId}/progress?page=&size=&keyword=`. | **Trung bình** |
 
 ### 2.2 Các thay đổi về Endpoint API
@@ -635,8 +635,9 @@ export interface SeriesResponse {
   minimumRequirementEnabled: boolean;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
+  targetSemesterId?: number | null;
   createdAt?: string | null;
-  // ⚠️ targetSemesterId hiện chưa có trong SeriesResponse (backend bug)
+  // ✅ targetSemesterId đã có trong SeriesResponse (đã fix backend)
 }
 
 export interface SeriesOverviewResponse {
@@ -1320,7 +1321,7 @@ Team Frontend nên phân chia các file TypeScript theo hướng module hóa đ�
    - Các API dạng raw list (`GET /api/activities/my`, `/upcoming`, `/month`, `/score-type/*`, `/department/*`) **không** dùng `ApiResponse` wrapper, hãy xử lý trực tiếp payload danh sách.
    - Luôn sử dụng kiểu dữ liệu `number | string` ở FE cho các trường chứa điểm (ví dụ: `pointsEarned: number | string`) để tương thích với `BigDecimal` phía backend, tránh bị lỗi parse khi Jackson trả về number hoặc string.
    - `GET /api/series/{seriesId}/progress/my` và `GET /api/series/{seriesId}/students/{studentId}/progress` trả về `Map<string, any>`, không có DTO typed cố định. FE nên khai báo interface `SeriesStudentProgressMap` để type-safe.
-   - `SeriesResponse` hiện tại **thiếu `targetSemesterId`**. Nếu cần hiển thị, lấy từ `GET /api/series` (danh sách) hoặc `GET /api/series/{id}/overview`.
+   - `SeriesResponse` hiện tại **đã có `targetSemesterId`** (đã fix backend).
    - Tất cả `*UpdateRequest` trong Java đều là **standalone class**, không extends CreateRequest. FE có thể dùng `Partial<CreateRequest>` nhưng cần aware rằng backend không có inheritance.
 
 ---
@@ -1432,7 +1433,7 @@ Hệ thống hiện có 3 nhánh Activity riêng biệt:
 
 ## 9. Lưu ý đặc biệt (Gotchas)
 
-1. **`SeriesResponse` thiếu `targetSemesterId`**: Nếu FE cần hiển thị học kỳ đích của Series, hãy dùng `GET /api/series` (danh sách, trả về ad-hoc Map có `targetSemesterId`) hoặc `GET /api/series/{id}/overview`.
+1. **`SeriesResponse` đã có `targetSemesterId`** (đã fix backend): `GET /api/series/{id}` và `POST/PUT /api/series` giờ trả về đầy đủ field.
 2. **`SeriesPresetPreviewResponse` không có `targetSemesterId`**: Khi preview preset, không có trường này.
 3. **Điểm số là `BigDecimal`**: Jackson serialize thành JSON **number** (có thể là string tùy config). FE nên dùng `number | string`.
 4. **`GET /api/series/{seriesId}/progress/my` trả về `Map<string, any>`**: Không có DTO typed cố định. FE nên tự định nghĩa interface `SeriesStudentProgressMap`.

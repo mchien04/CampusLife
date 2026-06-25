@@ -1366,6 +1366,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         response.setDescription(series.getDescription());
         response.setScoreType(series.getScoreType());
         response.setMainActivityId(series.getMainActivity() != null ? series.getMainActivity().getId() : null);
+        response.setTargetSemesterId(series.getTargetSemester() != null ? series.getTargetSemester().getId() : null);
         response.setRegistrationStartDate(series.getRegistrationStartDate());
         response.setRegistrationDeadline(series.getRegistrationDeadline());
         response.setRequiresApproval(series.isRequiresApproval());
