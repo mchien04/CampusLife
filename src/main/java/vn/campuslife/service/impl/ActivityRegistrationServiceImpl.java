@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 public class ActivityRegistrationServiceImpl implements ActivityRegistrationService {
 
     private static final Logger logger = LoggerFactory.getLogger(ActivityRegistrationServiceImpl.class);
+    private static final long CHECK_IN_GRACE_HOURS_AFTER_END = 3;
 
     private final UploadProperties uploadProperties;
     private final ActivityRegistrationRepository registrationRepository;
@@ -438,6 +439,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
         // CHECK-IN (lần 1) - từ REGISTERED/APPROVED sang CHECKED_IN
         if (currentType == ParticipationType.REGISTERED) {
+            String checkInWindowError = getCheckInWindowError(activity, now);
+            if (checkInWindowError != null) {
+                return Response.error(checkInWindowError);
+            }
+
             participation.setParticipationType(ParticipationType.CHECKED_IN);
             participation.setCheckInTime(now);
             participation.setDate(now);
@@ -510,6 +516,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
             // 5. Activity QR: xác nhận ATTENDED nhanh, không mô phỏng flow 2 bước
             LocalDateTime now = LocalDateTime.now();
+            String checkInWindowError = getCheckInWindowError(activity, now);
+            if (checkInWindowError != null) {
+                return Response.error(checkInWindowError);
+            }
             if (participation.getParticipationType() == ParticipationType.COMPLETED) {
                 return Response.error("Bạn đã hoàn thành điểm danh activity này rồi");
             }
@@ -745,6 +755,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             // Build response with student and activity info
+            LocalDateTime now = LocalDateTime.now();
+            String checkInWindowError = getCheckInWindowError(registration.getActivity(), now);
             Map<String, Object> info = new HashMap<>();
             info.put("ticketCode", registration.getTicketCode());
             info.put("studentId", registration.getStudent().getId());
@@ -753,8 +765,13 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             info.put("activityId", registration.getActivity().getId());
             info.put("activityName", registration.getActivity().getName());
             info.put("currentStatus", participation.getParticipationType().name());
-            info.put("canCheckIn", participation.getParticipationType() == ParticipationType.REGISTERED);
+            info.put("canCheckIn",
+                    participation.getParticipationType() == ParticipationType.REGISTERED && checkInWindowError == null);
             info.put("canCheckOut", participation.getParticipationType() == ParticipationType.CHECKED_IN);
+            info.put("checkInOpenAt", registration.getActivity().getStartDate() != null
+                    ? registration.getActivity().getStartDate().minusHours(1)
+                    : null);
+            info.put("checkInClosedAt", getCheckInClosedAt(registration.getActivity()));
 
             return Response.success("Mã vé hợp lệ", info);
         } catch (Exception e) {
@@ -980,6 +997,30 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
         Long approvedCount = registrationRepository.countByActivityIdAndStatus(activityId, RegistrationStatus.APPROVED);
         return approvedCount < ticketQuantity;
+    }
+
+    private String getCheckInWindowError(Activity activity, LocalDateTime now) {
+        if (activity == null) {
+            return "Khong tim thay thong tin su kien";
+        }
+
+        if (activity.getStartDate() != null && now.isBefore(activity.getStartDate().minusHours(1))) {
+            return "Chi duoc check-in tu 1 gio truoc khi su kien bat dau";
+        }
+
+        LocalDateTime checkInClosedAt = getCheckInClosedAt(activity);
+        if (checkInClosedAt != null && now.isAfter(checkInClosedAt)) {
+            return "Da qua thoi gian check-in cua su kien";
+        }
+
+        return null;
+    }
+
+    private LocalDateTime getCheckInClosedAt(Activity activity) {
+        if (activity == null || activity.getEndDate() == null) {
+            return null;
+        }
+        return activity.getEndDate().plusHours(CHECK_IN_GRACE_HOURS_AFTER_END);
     }
 
     private void markParticipationAsAttended(ActivityRegistration registration,
