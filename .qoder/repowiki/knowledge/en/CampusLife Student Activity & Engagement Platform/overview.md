@@ -1,1 +1,0 @@
-A Spring Boot backend managing student activities, scoring, event preparation, and communication for a university campus environment.

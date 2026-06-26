@@ -1,4 +1,0 @@
-- Services are defined as interfaces in `service/` with implementations in `service/impl/`, injected via constructor dependency injection.
-- Request and Response objects are strictly separated into DTOs within the `model/` package, avoiding direct entity exposure in controllers.
-- Business logic methods that modify state are annotated with `@Transactional` to ensure data consistency.
-- Custom exceptions (e.g., `ResourceNotFoundException`, `ForbiddenException`) are handled globally by `GlobalExceptionHandler` to provide consistent API error responses.

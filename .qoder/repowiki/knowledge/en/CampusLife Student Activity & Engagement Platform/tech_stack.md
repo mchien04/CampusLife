@@ -1,6 +1,0 @@
-- Spring Boot 3.5.5 with Java 21.
-- MySQL database with Spring Data JPA and Hibernate.
-- JWT authentication using `io.jsonwebtoken:jjwt` (v0.11.5).
-- Firebase Admin SDK (v9.2.0) for push notifications.
-- Apache POI (v5.2.5) and OpenPDF (v1.3.39) for Excel/PDF exports.
-- Quartz Scheduler for background tasks like reminders.

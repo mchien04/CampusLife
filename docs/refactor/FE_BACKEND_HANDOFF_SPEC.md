@@ -20,7 +20,7 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | :--- | :--- | :--- | :--- |
 | **Sự kiện thuộc chuỗi (Series Child Activity)** | Hoạt động con trong chuỗi **không** cộng điểm riêng lẻ. Điểm chỉ được cộng theo mốc hoàn thành chuỗi (Series Milestone) và bị phạt nếu không đạt số hoạt động tối thiểu. | - Ẩn phần hiển thị điểm riêng của hoạt động con nếu nó thuộc Series.<br>- Màn hình Tiến độ chuỗi (Series Progress) cần hiển thị: tiến độ mốc, số sự kiện tối thiểu, trạng thái đạt/chưa đạt (`minimumRequirementMet`), và số sự kiện còn thiếu để tránh bị phạt (`remainingToAvoidPenalty`). | **Cao** |
 | **requiresSubmission = false** | Hoạt động không bắt buộc nộp bài vẫn có thể có task/assignment đi kèm. Tuy nhiên, các task này được coi là optional: **không tính điểm, không bị quá hạn (overdue penalty), không khóa completion**. | - Ở màn hình chi tiết hoạt động, ẩn cảnh báo quá hạn hoặc điểm phạt đối với các task optional.<br>- BE tự động chặn không cho tạo quy tắc tính điểm dạng submission cho hoạt động này. | **Trung bình** |
-| **requiresSubmission = true** | Hoạt động hoàn thành (COMPLETED) khi và chỉ khi sinh viên **đã điểm danh (ATTENDED)** và **đã được chấm bài (GRADED)** (kể cả chấm trượt). Quy tắc phạt quá hạn (`TASK_OVERDUE`) sẽ lấy đúng theo `failPoints` cấu hình của bài nộp, không tự suy từ điểm cộng. | - Form tạo hoạt động dạng này phải bắt buộc người dùng nhập `failPoints` (điểm khi trượt/quá hạn).<br>- Trạng thái hoàn thành hoạt động phụ thuộc cả 2 yếu tố điểm danh & chấm điểm. | **Cao** |
+| **requiresSubmission = true** | Hoạt động hoàn thành (COMPLETED) khi và chỉ khi sinh viên **đã điểm danh (ATTENDED)** và **đã được chấm bài (GRADED)** (kể cả chấm trượt).<br>✅ **Order-independent finalization**: Sinh viên có thể nộp bài ngay cả khi chưa điểm danh. Hệ thống treo (defer) điểm cho đến khi **cả hai** điều kiện điểm danh & chấm bài đều đạt. Quy tắc phạt quá hạn (`TASK_OVERDUE`) sẽ lấy đúng theo `failPoints`. | - Form tạo hoạt động dạng này phải bắt buộc người dùng nhập `failPoints` (điểm khi trượt/quá hạn).<br>- Sinh viên không còn bị block nộp bài nếu chưa điểm danh (miễn là status `APPROVED` hoặc `ATTENDED`). | **Cao** |
 | **Hai luồng quét QR điểm danh** | Tách biệt hoàn toàn:<br>1. **Activity QR** (`checkInCode`): Sinh viên tự quét -> lên thẳng trạng thái `ATTENDED` (điểm danh nhanh).<br>2. **Ticket QR** (`ticketCode`): Ban tổ chức quét ticket của sinh viên -> luồng transition stateful: quét lần 1 lên `CHECKED_IN`, quét lần 2 lên `ATTENDED`. | - Màn hình quét QR trên App của Sinh viên chỉ dùng để quét mã của hoạt động (Activity QR). Gọi endpoint `/api/registrations/checkin/qr`.<br>- Màn hình quét QR dành cho Ban tổ chức (Organizer) để check-in cho sinh viên. Gọi endpoint `/api/registrations/checkin`. | **Cao** |
 | **Minigame & Đáp án** | Bổ sung cấu hình `showAnswers` (cho phép xem đáp án đúng sau khi nộp). MiniGame độc lập có thể cấu hình phạt khi hết lượt mà không pass (`MINIGAME_EXHAUSTED_ATTEMPTS`). | - Form tạo/sửa MiniGame: Thêm toggle `showAnswers` (Hiển thị đáp án đúng sau khi nộp).<br>- Màn hình xem lịch sử/chi tiết attempt của sinh viên: Kiểm tra cờ `showAnswers` từ backend trả về trước khi hiển thị đáp án đúng. Không tự ý render đáp án đúng nếu cờ này bằng `false`. | **Cao** |
 | **Minigame Quiz Hierarchy** | Đã sửa lỗi mất dữ liệu khi lưu. Backend giờ đây lưu trọn vẹn cấu trúc `quiz -> questions -> options` khi tạo/cập nhật sự kiện Minigame. Khi cập nhật (`PATCH`), backend sẽ xóa các câu hỏi/đáp án cũ và tái tạo lại theo payload mới. Các `imageUrl` của câu hỏi cũng tự động được chuẩn hóa đường dẫn. | - Payload gọi API POST/PATCH Minigame cần truyền đầy đủ mảng `questions` và `options`.<br>- Vì backend áp dụng cơ chế xóa-tạo lại, nếu người dùng chỉ muốn sửa 1 câu hỏi, FE vẫn phải gửi lên toàn bộ danh sách câu hỏi hiện tại. | **Cao** |
@@ -31,6 +31,7 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Task Assignment Validation (P0)** | Backend **chặn** gán task cho sinh viên **không đăng ký** hoạt động sở hữu task. Trả về lỗi kèm danh sách `studentIds` chưa đăng ký. | - FE hiển thị lỗi validation rõ ràng khi gán task: "Students not registered for activity: [ids]".<br>- FE nên pre-filter danh sách sinh viên theo registration trước khi gọi API. | **Cao** |
 | **Score History Pagination (P1)** | `GET /api/scores/history/student/{studentId}` dùng **DB-level pagination** (không còn load toàn bộ). Chạy nhanh hơn với dữ liệu lớn. Thêm filter `startDate`, `endDate`, `keyword`. | - FE truyền thêm query params `startDate`, `endDate`, `keyword` (tùy chọn).<br>- Response structure giữ nguyên `ScoreHistoryViewResponse`, FE không cần thay đổi logic parse. | **Trung bình** |
 | **Preset Validation (P2)** | Backend **từ chối** gửi `scoreRules` tùy chỉnh kèm `presetCode` (không phải `CUSTOM`). Rules do preset sinh ra được đánh dấu `isPresetGenerated = true`. | - FE không gửi `scoreRules` khi dùng preset (chỉ gửi `presetConfig`).<br>- Hiển thị badge/tag "Preset" cho rules có `isPresetGenerated = true` để phân biệt với rules thủ công. | **Trung bình** |
+| **Rich Preset Descriptors & UI Keys** | API `/presets` trả về `supportedRules` kèm chi tiết `FieldDefinition` (kiểu input, mặc định, bắt buộc,...). Backend áp dụng Single Source of Truth để xử lý fallback động (vd: tự động lấy điểm participation làm điểm phạt vắng mặt nếu để trống). | - FE dùng metadata trả về để **render dynamic form** thay vì hardcode giao diện cho từng preset.<br>- Dùng `ruleKey` (`PARTICIPATION_COMPLETED`, `NO_SHOW`, v.v.) làm key định danh ổn định trên UI. | **Cao** |
 | **Async Recalculation (P3)** | Thêm API async recalculation chạy nền với batch processing, timeout protection, progress tracking. Thay thế sync cho bulk recalculation. | - FE dùng `POST /api/scores/recalculate/async` thay vì `/recalculate/all` cho bulk.<br>- Poll `GET /api/scores/recalculate/status/{jobId}` để hiển thị progress bar.<br>- Nếu job FAILED/TIMEOUT, FE cho phép retry qua `POST /api/scores/recalculate/retry/{jobId}`. | **Cao** |
 | **Score Breakdown (P3)** | `GET /api/statistics/scores/breakdown` phân tích điểm theo `sourceType` (ACTIVITY_PARTICIPATION, MINIGAME_ATTEMPT, SERIES_PROGRESS, ...). | - FE thêm tab/section hiển thị breakdown biểu đồ tròn hoặc stacked bar.<br>- Student chỉ xem được của mình; Admin xem được tất cả hoặc filter theo `studentId`. | **Trung bình** |
 | **Async Notifications (P3)** | Gửi notification bulk chạy async qua `@Async("notificationExecutor")`. Không block request khi gửi FCM cho nhiều sinh viên. | - FE không cần thay đổi API contract. Response time cải thiện đáng kể cho bulk notification. | **Thấp** |
@@ -794,6 +795,32 @@ export interface RegistrationResponse {
   status: RegistrationStatus;
   ticketCode: string;
   registeredAt: string;
+}
+
+export interface AppliedScoreAward {
+  ruleId?: number | null;
+  scoreType: ScoreType;
+  scoreTypeLabel: string;
+  points: number | string; // BigDecimal
+  displayUnit: string;
+  displayText: string; // e.g., "+5 điểm rèn luyện"
+  triggerType?: ScoreRuleTrigger | null;
+  scoreEntryId?: number | null;
+}
+
+export interface ActivityParticipationResponse {
+  id: number;
+  registrationId: number;
+  activityId: number;
+  activityName: string;
+  studentId: number;
+  studentName: string;
+  participationType: ParticipationType;
+  pointsEarned: number | string; // Tổng điểm cộng gộp (tương thích ngược)
+  scoreAwards: AppliedScoreAward[]; // Danh sách điểm chi tiết hiển thị UI
+  date: string;
+  isCompleted?: boolean | null;
+  notes?: string | null;
 }
 ```
 
