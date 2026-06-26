@@ -9,7 +9,13 @@ import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.activity.ActivityPresetConfig;
 import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
 import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
+import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
+import vn.campuslife.model.activity.PresetRuleDescriptor;
+import vn.campuslife.model.activity.FieldDefinition;
+import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
+import vn.campuslife.enumeration.SeriesPresetCode;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
+import java.util.List;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -100,5 +106,72 @@ class ScorePresetServiceImplTest {
         ActivityScoreRuleRequest noShowRule = noShowRuleOpt.get();
         assertEquals(ScoreType.REN_LUYEN, noShowRule.getScoreType());
         assertEquals(BigDecimal.valueOf(-3), noShowRule.getFailPoints());
+    }
+
+    @Test
+    void getActivityPresetDefinitions_ReturnsValidRichDescriptors() {
+        List<ActivityPresetDefinitionResponse> responses = scorePresetService.getActivityPresetDefinitions();
+        assertNotNull(responses);
+        assertFalse(responses.isEmpty());
+
+        Optional<ActivityPresetDefinitionResponse> eventBasicOpt = responses.stream()
+                .filter(p -> p.getCode() == ActivityPresetCode.EVENT_BASIC)
+                .findFirst();
+
+        assertTrue(eventBasicOpt.isPresent());
+        ActivityPresetDefinitionResponse eventBasic = eventBasicOpt.get();
+        assertFalse(eventBasic.getSupportedRules().isEmpty());
+
+        PresetRuleDescriptor partRule = eventBasic.getSupportedRules().stream()
+                .filter(r -> "PARTICIPATION_COMPLETED".equals(r.getRuleKey()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(partRule);
+        assertTrue(partRule.isRequired());
+        assertEquals("Cộng điểm hoàn thành", partRule.getLabel());
+
+        FieldDefinition primaryScoreTypeField = partRule.getFieldDefinitions().stream()
+                .filter(f -> "primaryScoreType".equals(f.getFieldName()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(primaryScoreTypeField);
+        assertEquals("SELECT", primaryScoreTypeField.getInputType());
+        assertEquals("REN_LUYEN", primaryScoreTypeField.getDefaultValue());
+        assertNotNull(primaryScoreTypeField.getOptions());
+        assertTrue(primaryScoreTypeField.getOptions().contains("REN_LUYEN"));
+    }
+
+    @Test
+    void getSeriesPresetDefinitions_ReturnsValidRichDescriptors() {
+        List<SeriesPresetDefinitionResponse> responses = scorePresetService.getSeriesPresetDefinitions();
+        assertNotNull(responses);
+        assertFalse(responses.isEmpty());
+
+        Optional<SeriesPresetDefinitionResponse> milestoneBasicOpt = responses.stream()
+                .filter(p -> p.getCode() == SeriesPresetCode.SERIES_MILESTONE_BASIC)
+                .findFirst();
+
+        assertTrue(milestoneBasicOpt.isPresent());
+        SeriesPresetDefinitionResponse milestoneBasic = milestoneBasicOpt.get();
+        assertEquals(2, milestoneBasic.getSupportedRules().size());
+
+        PresetRuleDescriptor milestoneRule = milestoneBasic.getSupportedRules().stream()
+                .filter(r -> "MILESTONE_POINTS".equals(r.getRuleKey()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(milestoneRule);
+        assertTrue(milestoneRule.isRequired());
+
+        PresetRuleDescriptor minReqRule = milestoneBasic.getSupportedRules().stream()
+                .filter(r -> "MINIMUM_REQUIREMENT".equals(r.getRuleKey()))
+                .findFirst()
+                .orElse(null);
+
+        assertNotNull(minReqRule);
+        assertFalse(minReqRule.isRequired());
+        assertFalse(minReqRule.isEnabledByDefault());
     }
 }

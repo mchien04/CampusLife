@@ -134,6 +134,9 @@ export interface StandardActivityResponse {
 
 #### 2. Minigame Activity (Hoạt động kèm Minigame / Quiz)
 
+> [!NOTE]
+> Lỗi backend bỏ qua câu hỏi (`questions`) và đáp án (`options`) khi tạo/sửa Minigame đã được khắc phục. Khi update, hệ thống xóa dữ liệu cũ và ghi đè bằng payload gửi lên. Do đó, FE cần gửi trọn vẹn cây dữ liệu quiz cho mỗi lần cập nhật.
+
 ```typescript
 export interface MinigameActivityCreateRequest {
   name: string;

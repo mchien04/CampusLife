@@ -5,19 +5,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.Department;
 import vn.campuslife.entity.MiniGame;
+import vn.campuslife.entity.MiniGameQuiz;
+import vn.campuslife.entity.MiniGameQuizOption;
+import vn.campuslife.entity.MiniGameQuizQuestion;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.minigame.MinigameActivityCreateRequest;
 import vn.campuslife.model.activity.minigame.MinigameActivityUpdateRequest;
+import vn.campuslife.model.activity.quiz.CreateMiniGameRequest;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.MiniGameAnswerRepository;
+import vn.campuslife.repository.MiniGameQuizOptionRepository;
+import vn.campuslife.repository.MiniGameQuizQuestionRepository;
+import vn.campuslife.repository.MiniGameQuizRepository;
 import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.MinigameActivityService;
 import vn.campuslife.service.mapper.MinigameActivityMapper;
 import vn.campuslife.service.validator.MinigameActivityValidator;
+import vn.campuslife.util.UrlUtils;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -35,9 +45,14 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     private final ActivityRepository activityRepository;
     private final MiniGameRepository miniGameRepository;
     private final DepartmentRepository departmentRepository;
+    private final MiniGameQuizRepository quizRepository;
+    private final MiniGameQuizQuestionRepository questionRepository;
+    private final MiniGameQuizOptionRepository optionRepository;
+    private final MiniGameAnswerRepository answerRepository;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final MinigameActivityValidator validator;
     private final MinigameActivityMapper mapper;
+    private final UploadProperties uploadProperties;
 
     @Override
     @Transactional
@@ -66,6 +81,9 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
 
             MiniGame miniGame = mapper.toMiniGameEntity(request.getQuiz(), savedShell);
             miniGame = miniGameRepository.save(miniGame);
+
+            // Persist quiz, questions, and options
+            persistQuizQuestionsAndOptions(miniGame, request.getQuiz());
 
             return Response.success("Minigame created successfully", mapper.toResponse(savedShell, miniGame));
         } catch (IllegalArgumentException e) {
@@ -106,14 +124,21 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
                     miniGame = miniGameOpt.get();
                     mapper.applyMiniGameUpdate(miniGame, request.getQuiz());
                     miniGame = miniGameRepository.save(miniGame);
+
+                    // Rebuild quiz questions/options if provided
+                    if (request.getQuiz().getQuestions() != null && !request.getQuiz().getQuestions().isEmpty()) {
+                        rebuildQuizQuestionsAndOptions(miniGame, request.getQuiz());
+                    }
                 } else {
-                    // It shouldn't happen for a valid MINIGAME type but just in case
                     miniGame = mapper.toMiniGameEntity(new MinigameActivityCreateRequest.QuizConfigRequest(
                             request.getQuiz().getTitle(), request.getQuiz().getQuestionCount(),
                             request.getQuiz().getTimeLimit(), request.getQuiz().getRequiredCorrectAnswers(),
                             request.getQuiz().getMaxAttempts(), request.getQuiz().getShowAnswers(),
                             request.getQuiz().getQuestions()), savedShell);
                     miniGame = miniGameRepository.save(miniGame);
+
+                    // Persist quiz, questions, and options
+                    persistQuizQuestionsAndOptions(miniGame, request.getQuiz());
                 }
             } else {
                 miniGame = miniGameRepository.findByActivityId(shell.getId()).orElse(null);
@@ -150,5 +175,89 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             throw new IllegalArgumentException("Department ids not found: " + missing);
         }
         return new LinkedHashSet<>(deps);
+    }
+
+    /**
+     * Create MiniGameQuiz + questions + options for a newly created MiniGame.
+     */
+    private void persistQuizQuestionsAndOptions(MiniGame miniGame, MinigameActivityCreateRequest.QuizConfigRequest quizReq) {
+        if (quizReq == null || quizReq.getQuestions() == null || quizReq.getQuestions().isEmpty()) {
+            return;
+        }
+
+        MiniGameQuiz quiz = new MiniGameQuiz();
+        quiz.setMiniGame(miniGame);
+        quiz = quizRepository.save(quiz);
+
+        createQuestionsAndOptions(quiz, quizReq.getQuestions());
+    }
+
+    /**
+     * Create MiniGameQuiz + questions + options for a newly created MiniGame (update path).
+     */
+    private void persistQuizQuestionsAndOptions(MiniGame miniGame, MinigameActivityUpdateRequest.QuizConfigRequest quizReq) {
+        if (quizReq == null || quizReq.getQuestions() == null || quizReq.getQuestions().isEmpty()) {
+            return;
+        }
+
+        MiniGameQuiz quiz = new MiniGameQuiz();
+        quiz.setMiniGame(miniGame);
+        quiz = quizRepository.save(quiz);
+
+        createQuestionsAndOptions(quiz, quizReq.getQuestions());
+    }
+
+    /**
+     * Rebuild quiz questions/options for an existing MiniGame (update path).
+     * Deletes old answers, questions, options and recreates them.
+     */
+    private void rebuildQuizQuestionsAndOptions(MiniGame miniGame, MinigameActivityUpdateRequest.QuizConfigRequest quizReq) {
+        Optional<MiniGameQuiz> quizOpt = quizRepository.findByMiniGameId(miniGame.getId());
+        MiniGameQuiz quiz;
+
+        if (quizOpt.isPresent()) {
+            quiz = quizOpt.get();
+            // Delete old answers linked to this quiz to avoid FK constraint errors
+            answerRepository.deleteByQuizId(quiz.getId());
+            // Delete old questions (cascade removes options)
+            questionRepository.deleteAll(quiz.getQuestions());
+            quiz.getQuestions().clear();
+        } else {
+            quiz = new MiniGameQuiz();
+            quiz.setMiniGame(miniGame);
+            quiz = quizRepository.save(quiz);
+        }
+
+        createQuestionsAndOptions(quiz, quizReq.getQuestions());
+    }
+
+    /**
+     * Shared logic: create questions and options for a quiz.
+     */
+    private void createQuestionsAndOptions(MiniGameQuiz quiz, List<CreateMiniGameRequest.QuestionRequest> questions) {
+        int order = 0;
+        for (CreateMiniGameRequest.QuestionRequest questionData : questions) {
+            MiniGameQuizQuestion question = new MiniGameQuizQuestion();
+            question.setQuestionText(questionData.getQuestionText());
+            String imageUrl = questionData.getImageUrl();
+            if (imageUrl != null && !imageUrl.trim().isEmpty()) {
+                imageUrl = UrlUtils.toRelativePath(imageUrl, uploadProperties.getPublicUrl());
+            }
+            question.setImageUrl(imageUrl);
+            question.setMiniGameQuiz(quiz);
+            question.setDisplayOrder(order++);
+            MiniGameQuizQuestion savedQuestion = questionRepository.save(question);
+
+            List<CreateMiniGameRequest.QuestionRequest.OptionRequest> options = questionData.getOptions();
+            if (options != null) {
+                for (CreateMiniGameRequest.QuestionRequest.OptionRequest optionData : options) {
+                    MiniGameQuizOption option = new MiniGameQuizOption();
+                    option.setText(optionData.getText());
+                    option.setCorrect(Boolean.TRUE.equals(optionData.getIsCorrect()));
+                    option.setQuestion(savedQuestion);
+                    optionRepository.save(option);
+                }
+            }
+        }
     }
 }

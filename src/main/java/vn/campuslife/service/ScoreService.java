@@ -3,6 +3,7 @@ package vn.campuslife.service;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ScoreService {
@@ -56,5 +57,6 @@ public interface ScoreService {
      * @param requestingStudentId ID của student đang request (null nếu là Admin/Manager)
      * @return Lịch sử điểm với thông tin nguồn (activity/series)
      */
-    Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId);
+    Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId,
+                             LocalDateTime startDate, LocalDateTime endDate, String keyword);
 }

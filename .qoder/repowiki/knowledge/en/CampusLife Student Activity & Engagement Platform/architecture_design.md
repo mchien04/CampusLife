@@ -1,0 +1,5 @@
+- Follows a layered architecture with clear boundaries: `controller` (REST endpoints), `service`/`service/impl` (business logic), `repository` (data access), and `entity` (JPA models).
+- Security is enforced via `SecurityConfig` using a stateless JWT filter (`JwtAuthenticationFilter`) and role-based access control (ADMIN, MANAGER, STUDENT).
+- Core business logic is encapsulated in services, notably a rule-based scoring engine (`ScoreRuleEngineImpl`) that processes activity completions, submissions, and minigame results to update student scores.
+- Database schema evolution is managed via Flyway-style SQL migrations in `db/migration/`, while runtime configuration relies on `application.properties` with environment variable overrides.
+- Entry point is `CampusLifeApplication.java`, which initializes the Spring context and sets the default timezone to Asia/Ho_Chi_Minh.

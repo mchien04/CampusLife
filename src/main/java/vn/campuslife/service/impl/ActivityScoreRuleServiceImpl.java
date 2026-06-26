@@ -77,6 +77,7 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
                 }
 
                 rule.setEnabled(req.getEnabled() != null ? req.getEnabled() : true);
+                rule.setPresetGenerated(req.getIsPresetGenerated() != null ? req.getIsPresetGenerated() : false);
                 ruleRepository.save(rule);
             }
         }
@@ -155,6 +156,7 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
                 .map(Department::getId)
                 .collect(Collectors.toList()));
         res.setEnabled(rule.isEnabled());
+        res.setIsPresetGenerated(rule.isPresetGenerated());
         return res;
     }
 }

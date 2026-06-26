@@ -177,5 +177,36 @@ public class StatisticsController {
         }
     }
 
+    /**
+     * Score source-type breakdown
+     * ADMIN: Xem toàn bộ hoặc theo studentId
+     * STUDENT: Chỉ xem của mình
+     */
+    @GetMapping("/scores/breakdown")
+    public ResponseEntity<Response> getScoreBreakdown(
+            @RequestParam(required = false) Long semesterId,
+            @RequestParam(required = false) Long studentId,
+            @RequestParam(required = false) Long departmentId,
+            Authentication authentication) {
+        try {
+            // Students can only view their own breakdown
+            if (authentication != null && authentication.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_STUDENT"))) {
+                try {
+                    studentId = studentService.getStudentIdByUsername(authentication.getName());
+                } catch (Exception e) {
+                    logger.warn("Could not get student ID for user: {}", authentication.getName());
+                }
+            }
+
+            Response response = statisticsService.getScoreBreakdown(semesterId, studentId, departmentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error in getScoreBreakdown: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(Response.error("Failed to get score breakdown: " + e.getMessage()));
+        }
+    }
+
 }
 

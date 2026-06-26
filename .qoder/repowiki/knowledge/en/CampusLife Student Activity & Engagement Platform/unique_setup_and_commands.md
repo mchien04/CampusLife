@@ -1,0 +1,3 @@
+- Build and test using Maven Wrapper: `./mvnw test` or `./mvnw -DskipTests clean package`.
+- Database credentials and JWT secrets are configured via environment variables (e.g., `DATABASE_URL`, `JWT_SECRET`) as defined in `application.properties`.
+- CI/CD pipelines are defined in `.github/workflows/ci.yml` and `cd.yml`, triggering tests and Render deployments.

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.*;
 import vn.campuslife.model.Response;
+import vn.campuslife.model.score.ScoreBreakdownResponse;
 import vn.campuslife.model.statistics.*;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.StatisticsService;
@@ -35,6 +36,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final MiniGameAttemptRepository miniGameAttemptRepository;
     private final SemesterRepository semesterRepository;
     private final DepartmentRepository departmentRepository;
+    private final ScoreEntryRepository scoreEntryRepository;
 
     @Override
     public Response getDashboardOverview(Long studentId) {
@@ -609,6 +611,74 @@ public class StatisticsServiceImpl implements StatisticsService {
         } catch (Exception e) {
             logger.error("Error getting minigame statistics: {}", e.getMessage(), e);
             return Response.error("Failed to get minigame statistics: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Response getScoreBreakdown(Long semesterId, Long studentId, Long departmentId) {
+        try {
+            // Resolve semester
+            Semester semester;
+            if (semesterId != null) {
+                Optional<Semester> semesterOpt = semesterRepository.findById(semesterId);
+                if (semesterOpt.isEmpty()) {
+                    return Response.error("Semester not found");
+                }
+                semester = semesterOpt.get();
+            } else {
+                semester = semesterRepository.findAll().stream()
+                        .filter(Semester::isOpen)
+                        .findFirst()
+                        .orElse(semesterRepository.findAll().stream().findFirst().orElse(null));
+                if (semester == null) {
+                    return Response.error("No semester found");
+                }
+            }
+
+            ScoreBreakdownResponse response = new ScoreBreakdownResponse();
+            response.setSemesterId(semester.getId());
+            response.setSemesterName(semester.getName());
+            response.setStudentId(studentId);
+
+            List<Object[]> results;
+            if (studentId != null) {
+                results = scoreEntryRepository.sumPointsBySourceTypeForStudent(
+                        studentId, semester.getId(), ScoreEntryStatus.ACTIVE);
+            } else {
+                results = scoreEntryRepository.sumPointsBySourceType(
+                        semester.getId(), ScoreEntryStatus.ACTIVE);
+            }
+
+            List<ScoreBreakdownResponse.SourceBreakdown> breakdowns = new ArrayList<>();
+            for (Object[] row : results) {
+                ScoreBreakdownResponse.SourceBreakdown item = new ScoreBreakdownResponse.SourceBreakdown();
+                item.setSourceType((ScoreEntrySourceType) row[0]);
+                item.setTotalPoints(row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO);
+                // Count entries per source type (approximate from sum)
+                item.setEntryCount(null); // Not available from aggregate query
+                breakdowns.add(item);
+            }
+
+            // Get entry counts separately if needed
+            for (ScoreBreakdownResponse.SourceBreakdown breakdown : breakdowns) {
+                List<ScoreEntry> entries;
+                if (studentId != null) {
+                    entries = scoreEntryRepository.findByStudentIdAndSemesterIdAndStatusOrderByCreatedAtAsc(
+                            studentId, semester.getId(), ScoreEntryStatus.ACTIVE);
+                } else {
+                    entries = scoreEntryRepository.findAll(); // Fallback
+                }
+                long count = entries.stream()
+                        .filter(e -> e.getSourceType() == breakdown.getSourceType())
+                        .count();
+                breakdown.setEntryCount(count);
+            }
+
+            response.setBreakdowns(breakdowns);
+            return Response.success("Score breakdown retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Error getting score breakdown: {}", e.getMessage(), e);
+            return Response.error("Failed to get score breakdown: " + e.getMessage());
         }
     }
 

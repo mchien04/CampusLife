@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: error_handling
+title: Centralized Exception Handling with Custom Runtime Exceptions
+scope: []
+source_files:
+    - src/main/java/vn/campuslife/exception/GlobalExceptionHandler.java
+    - src/main/java/vn/campuslife/exception/BadRequestException.java
+    - src/main/java/vn/campuslife/exception/ResourceNotFoundException.java
+    - src/main/java/vn/campuslife/exception/ForbiddenException.java
+    - src/main/java/vn/campuslife/exception/InsufficientBudgetException.java
+    - src/main/java/vn/campuslife/exception/OverBudgetException.java
+    - src/main/java/vn/campuslife/exception/FeatureNotEnabledException.java
+    - src/main/java/vn/campuslife/model/Response.java
+    - src/main/java/vn/campuslife/model/preparation/OverBudgetInfoDto.java
+depends_on: []
+related_to: []

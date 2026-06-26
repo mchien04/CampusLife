@@ -1,7 +1,7 @@
 # FE Backend Handoff Spec
 
-> **Version:** 2.0 (Regenerated from actual backend source code at HEAD)  
-> **Baseline:** Commit `c848ee6` → Current HEAD  
+> **Version:** 3.1 (Fixed Minigame Quiz persistence — now creates questions/options)  
+> **Baseline:** Commit `c848ee6` → Current HEAD (post minigame quiz fix)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
 ## 1. Mục Đích
@@ -23,10 +23,17 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **requiresSubmission = true** | Hoạt động hoàn thành (COMPLETED) khi và chỉ khi sinh viên **đã điểm danh (ATTENDED)** và **đã được chấm bài (GRADED)** (kể cả chấm trượt). Quy tắc phạt quá hạn (`TASK_OVERDUE`) sẽ lấy đúng theo `failPoints` cấu hình của bài nộp, không tự suy từ điểm cộng. | - Form tạo hoạt động dạng này phải bắt buộc người dùng nhập `failPoints` (điểm khi trượt/quá hạn).<br>- Trạng thái hoàn thành hoạt động phụ thuộc cả 2 yếu tố điểm danh & chấm điểm. | **Cao** |
 | **Hai luồng quét QR điểm danh** | Tách biệt hoàn toàn:<br>1. **Activity QR** (`checkInCode`): Sinh viên tự quét -> lên thẳng trạng thái `ATTENDED` (điểm danh nhanh).<br>2. **Ticket QR** (`ticketCode`): Ban tổ chức quét ticket của sinh viên -> luồng transition stateful: quét lần 1 lên `CHECKED_IN`, quét lần 2 lên `ATTENDED`. | - Màn hình quét QR trên App của Sinh viên chỉ dùng để quét mã của hoạt động (Activity QR). Gọi endpoint `/api/registrations/checkin/qr`.<br>- Màn hình quét QR dành cho Ban tổ chức (Organizer) để check-in cho sinh viên. Gọi endpoint `/api/registrations/checkin`. | **Cao** |
 | **Minigame & Đáp án** | Bổ sung cấu hình `showAnswers` (cho phép xem đáp án đúng sau khi nộp). MiniGame độc lập có thể cấu hình phạt khi hết lượt mà không pass (`MINIGAME_EXHAUSTED_ATTEMPTS`). | - Form tạo/sửa MiniGame: Thêm toggle `showAnswers` (Hiển thị đáp án đúng sau khi nộp).<br>- Màn hình xem lịch sử/chi tiết attempt của sinh viên: Kiểm tra cờ `showAnswers` từ backend trả về trước khi hiển thị đáp án đúng. Không tự ý render đáp án đúng nếu cờ này bằng `false`. | **Cao** |
+| **Minigame Quiz Hierarchy** | Đã sửa lỗi mất dữ liệu khi lưu. Backend giờ đây lưu trọn vẹn cấu trúc `quiz -> questions -> options` khi tạo/cập nhật sự kiện Minigame. Khi cập nhật (`PATCH`), backend sẽ xóa các câu hỏi/đáp án cũ và tái tạo lại theo payload mới. Các `imageUrl` của câu hỏi cũng tự động được chuẩn hóa đường dẫn. | - Payload gọi API POST/PATCH Minigame cần truyền đầy đủ mảng `questions` và `options`.<br>- Vì backend áp dụng cơ chế xóa-tạo lại, nếu người dùng chỉ muốn sửa 1 câu hỏi, FE vẫn phải gửi lên toàn bộ danh sách câu hỏi hiện tại. | **Cao** |
 | **No-show Penalty** | Preset `EVENT_BASIC` và `EVENT_WITH_SUBMISSION` mặc định bật No-show. Seminar mặc định tắt. Nếu bật No-show cho Seminar, hệ thống bắt buộc phạt sang loại điểm khác (không trừ ngược vào tích lũy chuyên đề chính). | - Form tạo hoạt động: Cho phép bật/tắt No-show và chọn loại điểm phạt phù hợp.<br>- Enforce validation loại điểm phạt của Seminar ở FE nếu bật. | **Trung bình** |
 | **Xử lý quá hạn bài nộp** | Backend chuyển sang Quartz tự động quét và đánh dấu `OVERDUE` (không dùng cron hàng ngày). | - FE chỉ hiển thị trạng thái `OVERDUE` khi backend trả về trong status. Không tự viết logic so sánh ngày tháng ở FE để hiển thị trạng thái quá hạn. | **Thấp** |
 | **Series `targetSemesterId`** | Admin có thể cấu hình trước học kỳ nào sẽ được dùng để cộng điểm thưởng (milestone) cho chuỗi sự kiện. Nếu gửi lên `null`, backend tự động tính toán học kỳ dựa trên thời gian diễn ra sự kiện đầu tiên của chuỗi. | - Form tạo/sửa Series: Thêm dropdown chọn học kỳ đích (`targetSemesterId`).<br>- Lưu ý: `SeriesResponse` hiện tại **đã trả về** `targetSemesterId` (đã fix backend). | **Trung bình** |
 | **Series Progress List (Admin)** | Admin có thể xem danh sách tiến độ của tất cả sinh viên trong chuỗi với phân trang, tìm kiếm. | - Thêm màn hình Admin xem progress danh sách. Endpoint: `GET /api/series/{seriesId}/progress?page=&size=&keyword=`. | **Trung bình** |
+| **Task Assignment Validation (P0)** | Backend **chặn** gán task cho sinh viên **không đăng ký** hoạt động sở hữu task. Trả về lỗi kèm danh sách `studentIds` chưa đăng ký. | - FE hiển thị lỗi validation rõ ràng khi gán task: "Students not registered for activity: [ids]".<br>- FE nên pre-filter danh sách sinh viên theo registration trước khi gọi API. | **Cao** |
+| **Score History Pagination (P1)** | `GET /api/scores/history/student/{studentId}` dùng **DB-level pagination** (không còn load toàn bộ). Chạy nhanh hơn với dữ liệu lớn. Thêm filter `startDate`, `endDate`, `keyword`. | - FE truyền thêm query params `startDate`, `endDate`, `keyword` (tùy chọn).<br>- Response structure giữ nguyên `ScoreHistoryViewResponse`, FE không cần thay đổi logic parse. | **Trung bình** |
+| **Preset Validation (P2)** | Backend **từ chối** gửi `scoreRules` tùy chỉnh kèm `presetCode` (không phải `CUSTOM`). Rules do preset sinh ra được đánh dấu `isPresetGenerated = true`. | - FE không gửi `scoreRules` khi dùng preset (chỉ gửi `presetConfig`).<br>- Hiển thị badge/tag "Preset" cho rules có `isPresetGenerated = true` để phân biệt với rules thủ công. | **Trung bình** |
+| **Async Recalculation (P3)** | Thêm API async recalculation chạy nền với batch processing, timeout protection, progress tracking. Thay thế sync cho bulk recalculation. | - FE dùng `POST /api/scores/recalculate/async` thay vì `/recalculate/all` cho bulk.<br>- Poll `GET /api/scores/recalculate/status/{jobId}` để hiển thị progress bar.<br>- Nếu job FAILED/TIMEOUT, FE cho phép retry qua `POST /api/scores/recalculate/retry/{jobId}`. | **Cao** |
+| **Score Breakdown (P3)** | `GET /api/statistics/scores/breakdown` phân tích điểm theo `sourceType` (ACTIVITY_PARTICIPATION, MINIGAME_ATTEMPT, SERIES_PROGRESS, ...). | - FE thêm tab/section hiển thị breakdown biểu đồ tròn hoặc stacked bar.<br>- Student chỉ xem được của mình; Admin xem được tất cả hoặc filter theo `studentId`. | **Trung bình** |
+| **Async Notifications (P3)** | Gửi notification bulk chạy async qua `@Async("notificationExecutor")`. Không block request khi gửi FCM cho nhiều sinh viên. | - FE không cần thay đổi API contract. Response time cải thiện đáng kể cho bulk notification. | **Thấp** |
 
 ### 2.2 Các thay đổi về Endpoint API
 
@@ -43,10 +50,16 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
   - `GET /api/scores/ranking`: Bảng xếp hạng điểm sinh viên (phân trang, filter theo khoa/lớp/loại điểm).
   - `POST /api/scores/recalculate/student/{studentId}`: Trigger tính lại điểm thủ công cho sinh viên.
   - `POST /api/scores/recalculate/all`: Trigger tính lại điểm cho toàn trường.
+  - `POST /api/scores/recalculate/async`: Bắt đầu job tính lại điểm async (chạy nền, trả về `jobId`).
+  - `GET /api/scores/recalculate/status/{jobId}`: Lấy trạng thái job recalculation (progress %, error count).
+  - `POST /api/scores/recalculate/retry/{jobId}`: Retry job recalculation bị FAILED/TIMEOUT.
+  - `GET /api/statistics/scores/breakdown`: Phân tích điểm theo `sourceType` (ACTIVITY_PARTICIPATION, MINIGAME_ATTEMPT, ...).
 - **Endpoint Thay Đổi Contract (`MODIFIED`):**
   - `POST /api/series` & `PUT /api/series/{seriesId}`: Request body hỗ trợ các trường cấu hình phạt tối thiểu (`minimumRequirementEnabled`, `minimumRequiredEvents`, `minimumPenaltyPoints`) và `targetSemesterId`.
   - `POST /api/activities/standard` & `PUT /api/activities/standard/{id}`: Endpoint mới cho Standard Activity.
   - `POST /api/activities/minigame` & `PATCH /api/activities/minigame/{miniGameId}`: Endpoint mới cho Minigame Activity.
+  - `GET /api/scores/history/student/{studentId}`: Thêm query params `startDate`, `endDate`, `keyword` (tùy chọn). Response structure giữ nguyên.
+  - `ActivityScoreRuleRequest` & `ActivityScoreRuleResponse`: Thêm trường `isPresetGenerated` (Boolean, optional).
 
 ---
 
@@ -172,6 +185,7 @@ export interface ActivityScoreRuleRequest {
   explicitSemesterId?: number | null;
   departmentIds?: number[];
   enabled?: boolean | null;
+  isPresetGenerated?: boolean | null; // true nếu rule do preset sinh ra
 }
 
 export interface ActivityScoreRuleResponse {
@@ -187,6 +201,7 @@ export interface ActivityScoreRuleResponse {
   explicitSemesterId?: number | null;
   targetDepartmentIds: number[];
   enabled?: boolean | null;
+  isPresetGenerated?: boolean | null; // true nếu rule do preset sinh ra
 }
 
 export interface ActivityPresetConfig {
@@ -537,6 +552,25 @@ export interface ActivitySummaryResponse {
 #### Preset Definitions
 
 ```ts
+export interface FieldDefinition {
+  fieldName: string;
+  label: string;
+  inputType: 'NUMBER' | 'BOOLEAN' | 'SELECT' | 'MAP';
+  required: boolean;
+  defaultValue: any;
+  visibility: 'ALWAYS' | 'rule_enabled';
+  options?: string[] | null;
+}
+
+export interface PresetRuleDescriptor {
+  ruleKey: string;
+  label: string;
+  description: string;
+  required: boolean;
+  enabledByDefault: boolean;
+  fieldDefinitions: FieldDefinition[];
+}
+
 export interface ActivityPresetDefinitionResponse {
   code: ActivityPresetCode;
   displayName: string;
@@ -544,6 +578,7 @@ export interface ActivityPresetDefinitionResponse {
   recommendedActivityTypes: ActivityType[];
   defaultRequiresSubmission?: boolean | null;
   notes: string[];
+  supportedRules: PresetRuleDescriptor[];
 }
 
 export interface ActivityPresetPreviewResponse {
@@ -559,6 +594,7 @@ export interface SeriesPresetDefinitionResponse {
   displayName: string;
   description: string;
   notes: string[];
+  supportedRules: PresetRuleDescriptor[];
 }
 
 export interface SeriesPresetPreviewResponse {
@@ -818,6 +854,37 @@ export interface StudentRankResponse {
   className: string;
   score: number | string; // BigDecimal
 }
+
+export interface ScoreBreakdownItem {
+  sourceType: ScoreEntrySourceType; // enum name
+  totalPoints: number | string; // BigDecimal
+  entryCount: number;
+  percentage: number; // 0-100
+}
+
+export interface ScoreBreakdownResponse {
+  studentId: number;
+  semesterId: number;
+  scoreType?: ScoreType | null;
+  totalScore: number | string; // BigDecimal
+  breakdown: ScoreBreakdownItem[];
+}
+
+export type RecalculationJobStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "TIMEOUT";
+
+export interface RecalculationJobResponse {
+  id: number;
+  semesterId: number;
+  status: RecalculationJobStatus;
+  totalStudents: number;
+  processedStudents: number;
+  errorCount: number;
+  progressPercent: number; // 0-100
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  errorDetails?: string | null;
+}
 ```
 
 #### Nhiệm Vụ & Bài Nộp (Task & Submission)
@@ -1024,17 +1091,19 @@ export interface AttemptDetailResponse {
 - **Request:** `StandardActivityUpdateRequest`
 - **Response:** `ApiResponse<StandardActivityResponse>`
 
-#### 7. Tạo Minigame Activity (New)
+#### 7. Tạo Minigame Activity (New) ✅ Fixed: now persists quiz
 - **Method:** `POST`
 - **Path:** `/api/activities/minigame`
 - **Request:** `MinigameActivityCreateRequest`
 - **Response:** `ApiResponse<MinigameActivityResponse>`
+- **Lưu ý:** Request **phải** có `quiz.questions[]` với đầy đủ `options[]` cho mỗi câu hỏi. Backend tạo: `MiniGameQuiz` → `MiniGameQuizQuestion[]` → `MiniGameQuizOption[]`. Validator chặn nếu không có quiz hoặc thiếu options.
 
-#### 8. Cập nhật Minigame Activity (New)
+#### 8. Cập nhật Minigame Activity (New) ✅ Fixed: rebuilds quiz
 - **Method:** `PATCH`
 - **Path:** `/api/activities/minigame/{id}`
 - **Request:** `MinigameActivityUpdateRequest`
 - **Response:** `ApiResponse<MinigameActivityResponse>`
+- **Lưu ý:** Nếu payload có `quiz.questions[]`, backend **xóa toàn bộ** questions/options cũ (kèm answers của student) và tái tạo theo payload mới. FE phải gửi đầy đủ danh sách questions, không chỉ gửi questions cần sửa.
 
 ---
 
@@ -1266,24 +1335,49 @@ export interface AttemptDetailResponse {
 - **Path:** `/api/scores/recalculate/all`
 - **Query:** `semesterId` (opt)
 - **Response:** `ApiResponse<Map>` (với `successCount`, `errorCount`, `errors`)
-- **Lưu ý:** API chạy **đồng bộ (Synchronous)**. Thời gian phản hồi có thể kéo dài.
+- **Lưu ý:** API chạy **đồng bộ (Synchronous)**. Thời gian phản hồi có thể kéo dài. **Khuyến nghị dùng async endpoint bên dưới thay thế.**
 
-#### 4. Xem lịch sử điểm của student
+#### 4. Bắt đầu job tính lại điểm async (New)
+- **Method:** `POST`
+- **Path:** `/api/scores/recalculate/async`
+- **Query:** `semesterId` (opt)
+- **Response:** `ApiResponse<Map>` (với `jobId`, `semesterId`, `totalStudents`, `status`)
+- **Lưu ý:** Job chạy nền, FE poll status endpoint để theo dõi tiến độ.
+
+#### 5. Lấy trạng thái job recalculation (New)
+- **Method:** `GET`
+- **Path:** `/api/scores/recalculate/status/{jobId}`
+- **Response:** `ApiResponse<RecalculationJobResponse>`
+- **Lưu ý:** Response chứa `progressPercent` (0-100), `processedStudents`, `errorCount`, `status`.
+
+#### 6. Retry job recalculation bị FAILED/TIMEOUT (New)
+- **Method:** `POST`
+- **Path:** `/api/scores/recalculate/retry/{jobId}`
+- **Response:** `ApiResponse<Map>` (job info mới, giống async start)
+
+#### 7. Xem lịch sử điểm của student
 - **Method:** `GET`
 - **Path:** `/api/scores/history/student/{studentId}`
-- **Query:** `semesterId` (req), `scoreType` (opt), `page`, `size`
+- **Query:** `semesterId` (req), `scoreType` (opt), `page`, `size`, `startDate` (opt, ISO datetime), `endDate` (opt, ISO datetime), `keyword` (opt)
 - **Response:** `ApiResponse<ScoreHistoryViewResponse>`
-- **Lưu ý:** Student chỉ có thể xem lịch sử của chính mình.
+- **Lưu ý:** Student chỉ có thể xem lịch sử của chính mình. Backend dùng DB-level pagination, không load toàn bộ dữ liệu.
 
-#### 5. Xem điểm theo loại (Score View)
+#### 8. Xem điểm theo loại (Score View)
 - **Method:** `GET`
 - **Path:** `/api/scores/student/{studentId}/semester/{semesterId}`
 - **Response:** `ApiResponse<ScoreViewResponse>`
 
-#### 6. Xem tổng điểm (Total Score)
+#### 9. Xem tổng điểm (Total Score)
 - **Method:** `GET`
 - **Path:** `/api/scores/student/{studentId}/semester/{semesterId}/total`
 - **Response:** `ApiResponse<Map>` (với `grandTotal`, `totalsByType`)
+
+#### 10. Phân tích điểm theo nguồn (Score Breakdown) (New)
+- **Method:** `GET`
+- **Path:** `/api/statistics/scores/breakdown`
+- **Query:** `semesterId` (opt), `studentId` (opt), `departmentId` (opt)
+- **Response:** `ApiResponse<ScoreBreakdownResponse>`
+- **Lưu ý:** Student chỉ xem được của mình; Admin xem tất cả hoặc filter theo `studentId`.
 
 ---
 
@@ -1295,7 +1389,7 @@ Team Frontend nên phân chia các file TypeScript theo hướng module hóa đ�
    - `presets.ts`: Khai báo các loại Preset, Preset Config cho Activity và Series.
    - `activity.ts`: Định nghĩa Create/Update Request và Activity Response (Standard, Minigame, SeriesChild, Legacy, Summary).
    - `series.ts`: Định nghĩa Create/Update Request, SeriesResponse, SeriesOverviewResponse, SeriesProgressListResponse, SeriesProgressItemResponse.
-   - `score.ts`: Định nghĩa ScoreHistory, ActivityParticipation, StudentRank, ScoreView.
+   - `score.ts`: Định nghĩa ScoreHistory, ActivityParticipation, StudentRank, ScoreView, ScoreBreakdownResponse, RecalculationJobResponse.
    - `submission.ts`: Định nghĩa các cấu trúc bài nộp.
    - `minigame.ts`: Định nghĩa các request/response cho Quiz (standalone API).
 
@@ -1376,6 +1470,23 @@ Hệ thống hiện có 3 nhánh Activity riêng biệt:
   - `minimumRequiredEvents`: số buổi tối thiểu.
   - `minimumPenaltyPoints`: số điểm bị trừ nếu không đạt (frontend gửi số dương, backend tự negate).
 
+### 7.5 Async Recalculation Flow
+
+Luồng tích hợp tính lại điểm async cho Admin/Manager:
+
+1. **Khởi tạo job:** Gọi `POST /api/scores/recalculate/async?semesterId=...`
+2. **Polling tiến độ:** Gọi `GET /api/scores/recalculate/status/{jobId}` mỗi 3-5 giây.
+   - Hiển thị progress bar dựa trên `progressPercent`.
+   - Hiển thị `processedStudents / totalStudents`.
+   - Nếu `status = RUNNING`: tiếp tục poll.
+   - Nếu `status = COMPLETED`: hiển thị thành công, dừng poll.
+   - Nếu `status = FAILED` hoặc `TIMEOUT`: hiển thị lỗi, cho phép retry.
+3. **Retry:** Gọi `POST /api/scores/recalculate/retry/{jobId}` để tạo job mới.
+4. **Lưu ý:**
+   - Chỉ có 1 job active per semester (concurrency lock).
+   - Timeout tối đa 30 phút.
+   - Job xử lý theo batch 100 SV/lần.
+
 ---
 
 ## 8. Migration Recommendations
@@ -1415,16 +1526,22 @@ Hệ thống hiện có 3 nhánh Activity riêng biệt:
 
 ### 8.3 MiniGame Integration
 
-1. **Tạo minigame qua Activity shell:**
+1. **Tạo minigame qua Activity shell (Unified flow):**
    - Dùng `POST /api/activities/minigame` với `MinigameActivityCreateRequest`.
-   - `quiz` là `QuizConfigRequest`.
-   - Mỗi `QuestionRequest` cần ≥2 `OptionRequest` và ≥1 `isCorrect = true`.
+   - `quiz` là `QuizConfigRequest`, **bắt buộc** có `questions[]` với đầy đủ `options[]`.
+   - Backend tự động tạo: Activity (MINIGAME) → MiniGame → MiniGameQuiz → MiniGameQuizQuestion[] → MiniGameQuizOption[].
+   - **Không cần gọi thêm** `POST /api/minigames` nữa.
 
-2. **Tạo standalone minigame:**
+2. **Tạo standalone minigame (Legacy/Alternative):**
    - Dùng `POST /api/minigames` với `CreateMiniGameRequest`.
-   - Dùng khi cần gắn quiz vào activity đã tồn tại (cung cấp `activityId`).
+   - Dùng khi cần gắn quiz vào activity MINIGAME đã tồn tại (cung cấp `activityId`).
 
-3. **Xem lịch sử attempt:**
+3. **Cập nhật minigame:**
+   - Dùng `PATCH /api/activities/minigame/{id}` với `MinigameActivityUpdateRequest`.
+   - Nếu gửi `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (cả answers của student).
+   - FE phải gửi **đầy đủ** danh sách questions, không chỉ gửi questions cần sửa.
+
+4. **Xem lịch sử attempt:**
    - Dùng `GET /api/minigames/attempts/{attemptId}`.
    - Kiểm tra `showAnswers` trước khi render đáp án đúng.
    - `QuizOptionDetailResponse.isCorrect` sẽ là `null` nếu `showAnswers = false`.
@@ -1442,7 +1559,13 @@ Hệ thống hiện có 3 nhánh Activity riêng biệt:
 7. **Raw list endpoints**: `GET /api/activities/my`, `/upcoming`, `/month`, `/score-type/*`, `/department/*` không bọc `ApiResponse`.
 8. **Activity QR vs Ticket QR**: Sinh viên quét `checkInCode` (Activity QR) → `/api/registrations/checkin/qr`. Ban tổ chức quét `ticketCode` (Ticket QR của SV) → `/api/registrations/checkin`.
 9. **Auto-generated `checkInCode`**: Format `ACT-{000000}-{8 random chars}`. Không cần FE tạo.
-10. **Score recalculation là synchronous**: `POST /api/scores/recalculate/student/{studentId}` và `POST /api/scores/recalculate/all` chạy đồng bộ. FE cần hiển thị loading.
+10. **Score recalculation synchronous cũ vẫn tồn tại**: `POST /api/scores/recalculate/student/{studentId}` và `POST /api/scores/recalculate/all` vẫn chạy đồng bộ. FE nên chuyển sang dùng `POST /api/scores/recalculate/async` cho bulk để tránh timeout.
+11. **Task assignment validation**: Backend chặn gán task cho SV không đăng ký hoạt động. FE nên pre-filter danh sách SV theo registration trước khi gọi API.
+12. **Preset + custom rules conflict**: Backend từ chối gửi `scoreRules` tùy chỉnh kèm `presetCode` (không phải `CUSTOM`). FE chỉ gửi `presetConfig` khi dùng preset.
+13. **`isPresetGenerated` flag**: `ActivityScoreRuleResponse` có thêm trường `isPresetGenerated` (boolean). FE có thể dùng để hiển thị badge/tag phân biệt rule preset vs thủ công.
+14. **Score history filter params**: `GET /api/scores/history/student/{studentId}` hỗ trợ thêm `startDate`, `endDate` (ISO datetime string), `keyword` (tìm kiếm theo tên hoạt động).
+15. **Minigame Quiz delete-recreate**: Khi update minigame (`PATCH /api/activities/minigame/{id}`) với `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (gồm cả answers của student). FE phải gửi đầy đủ danh sách questions, không chỉ questions cần sửa.
+16. **Unified minigame creation**: `POST /api/activities/minigame` giờ tạo đầy đủ quiz hierarchy (Activity → MiniGame → MiniGameQuiz → Questions → Options). Không cần gọi thêm `POST /api/minigames`.
 
 ---
 

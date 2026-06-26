@@ -3,8 +3,11 @@ package vn.campuslife.service.impl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Notification;
@@ -24,6 +27,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(NotificationServiceImpl.class);
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
@@ -143,6 +148,69 @@ public class NotificationServiceImpl implements NotificationService {
         } catch (Exception e) {
             return new Response(false, "Failed to send bulk notification: " + e.getMessage(), null);
         }
+    }
+
+    /**
+     * Async version of bulk notification - saves notifications synchronously,
+     * then sends FCM pushes asynchronously in parallel.
+     */
+    @Async("notificationExecutor")
+    @Transactional
+    public void sendBulkNotificationAsync(
+            List<Long> userIds,
+            String title,
+            String content,
+            NotificationType type,
+            String actionUrl,
+            Map<String, Object> metadata
+    ) {
+        logger.info("Starting async bulk notification to {} users", userIds.size());
+        int successCount = 0;
+        int failCount = 0;
+
+        for (Long userId : userIds) {
+            try {
+                Optional<User> userOpt = userRepository.findById(userId);
+                if (userOpt.isEmpty()) continue;
+
+                Notification notification = new Notification();
+                notification.setUser(userOpt.get());
+                notification.setTitle(title);
+                notification.setContent(content);
+                notification.setType(type);
+                notification.setActionUrl(actionUrl);
+                notification.setStatus(NotificationStatus.UNREAD);
+
+                if (metadata != null && !metadata.isEmpty()) {
+                    notification.setMetadata(objectMapper.writeValueAsString(metadata));
+                }
+
+                notification = notificationRepository.save(notification);
+                successCount++;
+
+                Map<String, String> data = new HashMap<>();
+                data.put("notificationId", notification.getId().toString());
+                data.put("type", notification.getType().name());
+                if (actionUrl != null) {
+                    data.put("actionUrl", actionUrl);
+                }
+
+                List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
+                for (DeviceToken dt : tokens) {
+                    try {
+                        fcmService.send(dt.getToken(), notification.getTitle(), notification.getContent(), data);
+                    } catch (Exception fcmEx) {
+                        logger.warn("FCM send failed for user {}: {}", userId, fcmEx.getMessage());
+                        failCount++;
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Failed to send async notification to user {}: {}", userId, e.getMessage());
+                failCount++;
+            }
+        }
+
+        logger.info("Async bulk notification completed: {} success, {} failures", successCount, failCount);
     }
 
 

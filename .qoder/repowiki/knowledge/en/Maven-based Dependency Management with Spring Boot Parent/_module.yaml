@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: dependency_management
+title: Maven-based Dependency Management with Spring Boot Parent
+scope: []
+source_files:
+    - pom.xml
+    - .mvn/wrapper/maven-wrapper.properties
+    - Dockerfile
+    - .github/workflows/ci.yml
+depends_on: []
+related_to: []

@@ -24,4 +24,5 @@ public class ActivityScoreRuleResponse {
     private Long explicitSemesterId;
     private List<Long> targetDepartmentIds;
     private Boolean enabled;
+    private Boolean isPresetGenerated;
 }

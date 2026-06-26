@@ -60,6 +60,11 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     Page<Student> findByIsDeletedFalse(Pageable pageable);
 
     /**
+     * Lấy tất cả sinh viên chưa bị xóa (non-paginated)
+     */
+    List<Student> findByIsDeletedFalse();
+
+    /**
      * Tìm kiếm sinh viên theo tên
      */
     Page<Student> findByFullNameContainingIgnoreCaseAndIsDeletedFalse(String keyword, Pageable pageable);
