@@ -46,6 +46,7 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Auto-register service extraction (P5)** | Auto-register logic được trích thành service chung `ActivityRegistrationAutoService`, dùng chung cho Standard, Minigame, Legacy activity create/update, và Series create/update. Auto-register **không bao giờ throw** — lỗi bị swallow nội bộ, không làm fail create/update. | - FE không có thay đổi API contract. Behavior auto-register nhất quán trên mọi type (Standard/Minigame/Legacy/Series).<br>- Nếu sinh viên đã có registration thì skip (idempotent). | **Thấp** |
 | **Series isDraft (P5)** | `ActivitySeries` có thêm `isDraft` (boolean, default `true`). Auto-register chỉ chạy khi Series **non-draft** (`isDraft=false`). | - Form tạo/sửa Series: thêm toggle "Bản nháp" (`isDraft`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có field `isDraft`. | **Cao** |
 | **Per-rule audience config (P5)** | `ActivityPresetConfig` thêm per-trigger override fields: `submissionAudience`, `noShowAudience`, `participationAudience`, `taskOverdueAudience`, `bonusAudience`, `minigamePassedAudience`, `minigameExhaustedAudience` (kèm `*SemesterPolicy`, `*ExplicitSemesterId`, `*DepartmentIds`). `buildRule()` ưu tiên per-rule override, fallback về top-level `audience`. | - Form preset config: thêm section cho phép cấu hình audience riêng theo từng trigger.<br>- Nếu không set per-rule, BE dùng `audience` top-level như cũ (backward compatible). | **Cao** |
+| **CUSTOM preset `suggestedCombinations` (P5)** | `GET /api/activities/presets` với CUSTOM preset giờ trả về **tất cả** rule descriptors (không còn empty). Mỗi descriptor có thêm field `suggestedCombinations: ScoreRuleTrigger[]` — danh sách các rule có thể kết hợp. | - FE khi render CUSTOM mode: dùng `suggestedCombinations` để hiển thị gợi ý "Có thể kết hợp với: ..." khi user chọn 1 rule.<br>- VD: chọn `SUBMISSION_GRADED` → gợi ý `TASK_OVERDUE`, `NO_SHOW`. | **Trung bình** |
 | **Minigame dual-creation modes (P5)** | Có 2 cách tạo Minigame: (1) **All-at-once** qua `POST /api/activities/minigame` với `MinigameActivityCreateRequest` (shell + `quiz`) — backend tạo trọn Activity→MiniGame→Quiz→Questions→Options trong 1 call. (2) **Activity-first** — tạo activity trước (Standard hoặc Legacy `POST /api/activities`), rồi gắn quiz qua `POST /api/minigames` với `CreateMiniGameRequest` (chứa `activityId`). | - Flow (1): gửi `quiz` object đầy đủ; KHÔNG cần gọi thêm `POST /api/minigames`.<br>- Flow (2): tạo activity (type `MINIGAME` hoặc khác), lấy `id`, rồi gọi `POST /api/minigames` với `activityId` + quiz config.<br>- Cả 2 flow đều hợp lệ; chọn theo UX (form 1 bước vs 2 bước). | **Trung bình** |
 
 ### 2.2 Các thay đổi về Endpoint API
@@ -639,6 +640,7 @@ export interface PresetRuleDescriptor {
   required: boolean;
   enabledByDefault: boolean;
   fieldDefinitions: FieldDefinition[];
+  suggestedCombinations?: ScoreRuleTrigger[];  // P5.2: các rule có thể kết hợp (chỉ có ý nghĩa với CUSTOM preset)
 }
 
 export interface ActivityPresetDefinitionResponse {

@@ -1,7 +1,7 @@
 # FE Backend Handoff v5 Delta
 
-> **Phiên bản:** 5.1 — Các thay đổi mới so với v4.0  
-> **Phạm vi:** Series auto-register flags + isDraft, Per-rule audience config, Auto-register service extraction, Minigame dual-creation modes, Known bug  
+> **Phiên bản:** 5.2 — Các thay đổi mới so với v4.0  
+> **Phạm vi:** Series auto-register flags + isDraft, Per-rule audience config, CUSTOM preset suggestedCombinations, Auto-register service extraction, Minigame dual-creation modes, Known bug  
 > **Người tích hợp FE:** Đọc tài liệu này TRƯỚC, sau đó tham chiếu `FE_BACKEND_HANDOFF_SPEC.md` (v5.0) để biết chi tiết DTO đầy đủ.
 
 ---
@@ -333,7 +333,47 @@ Kết quả preview:
 
 ---
 
-## 6. Tổng kết thay đổi API
+## 6. CUSTOM Preset: `suggestedCombinations`
+
+### 6.1 Mô tả
+
+Trước đây, `GET /api/activities/presets` với CUSTOM preset trả về `supportedRules: []` (rỗng). Giờ trả về **tất cả** rule descriptors với field mới `suggestedCombinations` — danh sách các `ScoreRuleTrigger` có thể kết hợp.
+
+### 6.2 `PresetRuleDescriptor` — Field mới
+
+```typescript
+export interface PresetRuleDescriptor {
+  ruleKey: string;
+  label: string;
+  description: string;
+  required: boolean;
+  enabledByDefault: boolean;
+  fieldDefinitions: FieldDefinition[];
+  suggestedCombinations?: ScoreRuleTrigger[];  // MỚI — chỉ có ý nghĩa với CUSTOM
+}
+```
+
+### 6.3 Bảng gợi ý
+
+| Rule (ruleKey) | suggestedCombinations |
+|----------------|----------------------|
+| `PARTICIPATION_COMPLETED` | `[NO_SHOW]` |
+| `SUBMISSION_GRADED` | `[TASK_OVERDUE, NO_SHOW]` |
+| `TASK_OVERDUE` | `[SUBMISSION_GRADED, NO_SHOW]` |
+| `NO_SHOW` | `[PARTICIPATION_COMPLETED, SUBMISSION_GRADED, TASK_OVERDUE, MINIGAME_PASSED]` |
+| `MINIGAME_PASSED` | `[MINIGAME_EXHAUSTED_ATTEMPTS, NO_SHOW]` |
+| `MINIGAME_EXHAUSTED_ATTEMPTS` | `[MINIGAME_PASSED]` |
+| `BONUS_POINTS` | `[PARTICIPATION_COMPLETED]` |
+
+### 6.4 Hướng dẫn FE
+
+- Khi render form CUSTOM mode, duyệt `supportedRules[]`.
+- Với mỗi rule user chọn, lấy `suggestedCombinations` để render chip gợi ý: "Có thể kết hợp với: Nộp trễ, Vắng mặt".
+- `suggestedCombinations` chỉ là gợi ý từ BE, không block user chọn rule khác ngoài danh sách.
+
+---
+
+## 7. Tổng kết thay đổi API
 
 | Endpoint | Thay đổi |
 |----------|----------|
