@@ -3,6 +3,7 @@ package vn.campuslife.model.activity.minigame;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vn.campuslife.enumeration.ActivityPresetCode;
 import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.model.score.ActivityScoreRuleResponse;
 
@@ -25,6 +26,7 @@ public class MinigameActivityResponse {
     private String shareLink;
     private Boolean isImportant;
     private String checkInCode;
+    private ActivityPresetCode presetCode;
     private List<ActivityScoreRuleResponse> scoreRules;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

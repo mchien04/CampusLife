@@ -7,6 +7,7 @@ import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.activity.StandardActivityCreateRequest;
 import vn.campuslife.model.activity.StandardActivityUpdateRequest;
+import vn.campuslife.model.activity.minigame.MinigameActivityCreateRequest;
 import vn.campuslife.model.activity.series.CreateSeriesRequest;
 import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
@@ -27,6 +28,8 @@ public interface ScorePresetService {
     void applyActivityPreset(StandardActivityUpdateRequest request);
 
     void applyActivityPreset(StandardActivityUpdateRequest request, ActivityType effectiveType);
+
+    void applyActivityPreset(MinigameActivityCreateRequest request);
 
     List<SeriesPresetDefinitionResponse> getSeriesPresetDefinitions();
 

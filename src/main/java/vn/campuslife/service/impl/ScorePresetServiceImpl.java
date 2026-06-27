@@ -16,6 +16,7 @@ import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.activity.StandardActivityCreateRequest;
 import vn.campuslife.model.activity.StandardActivityUpdateRequest;
+import vn.campuslife.model.activity.minigame.MinigameActivityCreateRequest;
 import vn.campuslife.model.activity.series.CreateSeriesRequest;
 import vn.campuslife.model.activity.series.SeriesPresetConfig;
 import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
@@ -171,6 +172,30 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         request.setType(preview.getActivityType());
         request.setRequiresSubmission(preview.isRequiresSubmission());
         // Mark rules as preset-generated
+        preview.getScoreRules().forEach(r -> r.setIsPresetGenerated(true));
+        request.setScoreRules(preview.getScoreRules());
+    }
+
+    @Override
+    public void applyActivityPreset(MinigameActivityCreateRequest request) {
+        if (request == null || request.getPresetCode() == null
+                || request.getPresetCode() == ActivityPresetCode.CUSTOM) {
+            return;
+        }
+
+        if (request.getScoreRules() != null && !request.getScoreRules().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Cannot send custom scoreRules with preset " + request.getPresetCode() +
+                    ". Use CUSTOM preset for manual rules.");
+        }
+
+        ActivityPresetPreviewRequest previewRequest = new ActivityPresetPreviewRequest();
+        previewRequest.setPresetCode(request.getPresetCode());
+        previewRequest.setType(ActivityType.MINIGAME);
+        previewRequest.setRequiresSubmission(false);
+        previewRequest.setPresetConfig(request.getPresetConfig());
+
+        ActivityPresetPreviewResponse preview = previewActivityPreset(previewRequest);
         preview.getScoreRules().forEach(r -> r.setIsPresetGenerated(true));
         request.setScoreRules(preview.getScoreRules());
     }

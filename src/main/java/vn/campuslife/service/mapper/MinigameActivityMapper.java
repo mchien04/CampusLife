@@ -42,7 +42,8 @@ public class MinigameActivityMapper {
         
         entity.setBannerUrl(req.getBannerUrl());
         entity.setShareLink(req.getShareLink());
-        
+        entity.setPresetCode(req.getPresetCode());
+
         // Fixed defaults for minigame shell
         entity.setRequiresSubmission(false);
         entity.setLocation(null);
@@ -110,6 +111,7 @@ public class MinigameActivityMapper {
         dto.setShareLink(shell.getShareLink());
         dto.setIsImportant(shell.isImportant());
         dto.setCheckInCode(shell.getCheckInCode());
+        dto.setPresetCode(shell.getPresetCode());
         dto.setCreatedAt(shell.getCreatedAt());
         dto.setUpdatedAt(shell.getUpdatedAt());
         

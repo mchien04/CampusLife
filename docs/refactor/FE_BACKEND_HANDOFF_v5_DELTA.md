@@ -336,7 +336,8 @@ export interface PresetRuleDescriptor {
 | `POST /api/series` | Request thêm `isImportant`, `mandatoryForFacultyStudents`, `isDraft` |
 | `PUT /api/series/{id}` | Request thêm `isImportant`, `mandatoryForFacultyStudents`, `isDraft` |
 | `GET /api/series/{id}` | Response thêm `isImportant`, `mandatoryForFacultyStudents`, `isDraft` |
-| `POST /api/activities/minigame` | `quiz` có thể null (tạo shell không quiz) |
+| `POST /api/activities/minigame` | `quiz` có thể null (tạo shell không quiz). Giờ hỗ trợ `presetCode` + `presetConfig`. |
+| `GET /api/activities/minigame/{id}` | Response thêm `presetCode`. |
 | `POST /api/minigames` | Mode 2: gắn quiz vào activity đã tồn tại |
 | Preset config | `ActivityPresetConfig` thêm per-rule audience/semesterPolicy/departmentIds. `MINIGAME_PASS_ONLY` giờ có `NO_SHOW` mặc định bật. |
 | *Không đổi* | `POST/PUT /api/activities/standard`, Legacy, Series child |
