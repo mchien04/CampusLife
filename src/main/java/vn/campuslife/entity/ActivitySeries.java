@@ -92,6 +92,14 @@ public class ActivitySeries {
     @Comment("Đối tượng áp dụng điểm (ALL_PARTICIPANTS, DEPARTMENT_ONLY, OUTSIDE_DEPARTMENTS_ONLY)")
     private ScoreRuleAudience audience = ScoreRuleAudience.ALL_PARTICIPANTS;
 
+    @Column(nullable = false)
+    @Comment("Bắt buộc đối với tất cả sinh viên — tự động đăng ký toàn bộ")
+    private boolean isImportant = false;
+
+    @Column(nullable = false)
+    @Comment("Bắt buộc đối với sinh viên thuộc khoa tổ chức — tự động đăng ký")
+    private boolean mandatoryForFacultyStudents = false;
+
     @ManyToMany
     @JoinTable(name = "activity_series_departments",
         joinColumns = @JoinColumn(name = "series_id"),

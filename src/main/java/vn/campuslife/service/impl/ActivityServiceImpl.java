@@ -26,7 +26,6 @@ import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
-import vn.campuslife.repository.ActivityParticipationRepository;
 import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.ScoreEntryRepository;
@@ -34,18 +33,13 @@ import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.Role;
-import vn.campuslife.entity.ActivityParticipation;
-import vn.campuslife.enumeration.ParticipationType;
-import java.math.BigDecimal;
+import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.ActivityScoreRuleService;
-import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
-import vn.campuslife.util.NotificationMessageTemplate;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.util.UrlUtils;
-import vn.campuslife.enumeration.NotificationType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -69,18 +63,16 @@ public class ActivityServiceImpl implements ActivityService {
 
     private final ActivityRepository activityRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
-    private final ActivityParticipationRepository activityParticipationRepository;
     private final ActivitySeriesRepository activitySeriesRepository;
     private final DepartmentRepository departmentRepository;
     private final StudentRepository studentRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
     private final ReminderScheduleService reminderScheduleService;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ScorePresetService scorePresetService;
     private final ScoreEntryRepository scoreEntryRepository;
+    private final ActivityRegistrationAutoService autoRegisterService;
     private final UploadProperties uploadProperties;
-    private final NotificationMessageTemplate notificationMessageTemplate;
 
     @Override
     @Transactional
@@ -120,7 +112,7 @@ public class ActivityServiceImpl implements ActivityService {
                     "Activity created (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})",
                     saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(),
                     saved.isMandatoryForFacultyStudents());
-            autoRegisterStudents(saved);
+            autoRegisterService.autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
             syncSeriesMinimumRequirementReminders(saved);
 
@@ -153,7 +145,7 @@ public class ActivityServiceImpl implements ActivityService {
         // thì tự động đăng ký cho sinh viên
         if (wasDraft && (saved.isImportant() || saved.isMandatoryForFacultyStudents())) {
             try {
-                autoRegisterStudents(saved);
+                autoRegisterService.autoRegisterStudents(saved);
                 reminderScheduleService.syncEventRemindersForActivity(saved);
                 logger.info("Auto-registered students after publishing activity: {}", saved.getName());
             } catch (Exception e) {
@@ -356,7 +348,7 @@ public class ActivityServiceImpl implements ActivityService {
                     "Activity updated (id={}, name={}, isDraft={}, isImportant={}, mandatoryForFacultyStudents={})",
                     saved.getId(), saved.getName(), saved.isDraft(), saved.isImportant(),
                     saved.isMandatoryForFacultyStudents());
-            autoRegisterStudents(saved);
+            autoRegisterService.autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
             syncSeriesMinimumRequirementReminders(saved);
 
@@ -620,157 +612,6 @@ public class ActivityServiceImpl implements ActivityService {
         dto.setActiveScoreEntryCount(activityScoreRuleService.countActiveEntries(a.getId()));
 
         return dto;
-    }
-
-    /**
-     * Tự động đăng ký sinh viên cho activity dựa trên các flag
-     */
-    private void autoRegisterStudents(Activity activity) {
-        try {
-            // Không tự động đăng ký nếu activity là draft (chưa công bố)
-            if (activity.isDraft()) {
-                logger.info("Skipping auto-registration for draft activity (id={}, name={}, isDraft={})",
-                        activity.getId(), activity.getName(), activity.isDraft());
-                return;
-            }
-
-            logger.debug(
-                    "Checking auto-registration for published activity (id={}, name={}, isImportant={}, mandatoryForFacultyStudents={})",
-                    activity.getId(), activity.getName(), activity.isImportant(),
-                    activity.isMandatoryForFacultyStudents());
-
-            List<Student> studentsToRegister = new ArrayList<>();
-
-            // Nếu isImportant = true: đăng ký cho tất cả sinh viên
-            if (activity.isImportant()) {
-                List<Student> allStudents = studentRepository.findByIsDeletedFalse();
-                studentsToRegister.addAll(allStudents);
-                logger.info("Auto-registering {} students for important activity: {}", allStudents.size(),
-                        activity.getName());
-            }
-
-            // Nếu mandatoryForFacultyStudents = true: đăng ký cho sinh viên thuộc khoa tổ
-            // chức
-            if (activity.isMandatoryForFacultyStudents()
-                    && activity.getOrganizers() != null
-                    && !activity.getOrganizers().isEmpty()) {
-                List<Long> departmentIds = activity.getOrganizers().stream()
-                        .map(Department::getId)
-                        .collect(Collectors.toList());
-
-                List<Student> facultyStudents = studentRepository.findByDepartmentIdInAndIsDeletedFalse(departmentIds);
-                studentsToRegister.addAll(facultyStudents);
-                logger.info("Auto-registering {} faculty students for mandatory activity: {}", facultyStudents.size(),
-                        activity.getName());
-            }
-
-            // Tạo registrations cho các sinh viên (chỉ những sinh viên chưa đăng ký)
-            if (!studentsToRegister.isEmpty()) {
-                // Batch existence check instead of N+1 per-student checks
-                Set<Long> existingStudentIds = activityRegistrationRepository
-                        .findStudentIdsByActivityId(activity.getId());
-
-                List<ActivityRegistration> registrations = studentsToRegister.stream()
-                        .distinct() // Remove duplicates
-                        .filter(student -> !existingStudentIds.contains(student.getId()))
-                        .map(student -> {
-                            ActivityRegistration registration = new ActivityRegistration();
-                            registration.setActivity(activity);
-                            registration.setStudent(student);
-                            registration.setStatus(vn.campuslife.enumeration.RegistrationStatus.APPROVED);
-                            registration.setRegisteredDate(java.time.LocalDateTime.now());
-                            // Nếu activity thuộc series, lưu seriesId để nhận diện đăng ký chuỗi
-                            if (activity.getSeriesId() != null) {
-                                registration.setSeriesId(activity.getSeriesId());
-                            }
-                            // Tạo ticketCode cho registration
-                            String code;
-                            int attempts = 0;
-                            do {
-                                code = TicketCodeUtils.newTicketCode();
-                                attempts++;
-                            } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 5);
-                            registration.setTicketCode(code);
-                            return registration;
-                        })
-                        .collect(Collectors.toList());
-
-                if (!registrations.isEmpty()) {
-                    // Lưu registrations trước
-                    activityRegistrationRepository.saveAll(registrations);
-                    logger.info("Successfully auto-registered {} students for activity: {}", registrations.size(),
-                            activity.getName());
-
-                    // Tạo ActivityParticipation ban đầu cho mỗi registration
-                    List<ActivityParticipation> participations = registrations.stream()
-                            .map(reg -> {
-                                ActivityParticipation participation = new ActivityParticipation();
-                                participation.setRegistration(reg);
-                                participation.setParticipationType(ParticipationType.REGISTERED);
-                                participation.setPointsEarned(BigDecimal.ZERO);
-                                participation.setDate(LocalDateTime.now());
-                                return participation;
-                            })
-                            .collect(Collectors.toList());
-
-                    activityParticipationRepository.saveAll(participations);
-                    logger.info("Created {} initial participations for activity: {}", participations.size(),
-                            activity.getName());
-
-                    // Send notifications to each auto-registered student
-                    // Wrap in try-catch to not fail auto-registration if notification fails
-                    try {
-                        String title;
-                        String content;
-                        if (activity.isImportant()) {
-                            title = notificationMessageTemplate.autoRegisterImportantTitle();
-                            content = notificationMessageTemplate.autoRegisterImportantContent(activity.getName());
-                        } else if (activity.isMandatoryForFacultyStudents()) {
-                            title = notificationMessageTemplate.autoRegisterMandatoryTitle();
-                            content = notificationMessageTemplate.autoRegisterMandatoryContent(activity.getName());
-                        } else {
-                            title = notificationMessageTemplate.autoRegisterDefaultTitle();
-                            content = notificationMessageTemplate.autoRegisterDefaultContent(activity.getName());
-                        }
-
-                        for (ActivityRegistration registration : registrations) {
-                            try {
-                                Long userId = registration.getStudent().getUser().getId();
-                                Map<String, Object> metadata = new HashMap<>();
-                                metadata.put("activityId", activity.getId());
-                                metadata.put("activityName", activity.getName());
-                                metadata.put("registrationId", registration.getId());
-                                metadata.put("ticketCode", registration.getTicketCode());
-                                metadata.put("isAutoRegistered", true);
-
-                                notificationService.sendNotification(
-                                        userId,
-                                        title,
-                                        content,
-                                        NotificationType.ACTIVITY_REGISTRATION,
-                                        null, // Không set actionUrl, để frontend tự route dựa trên metadata.activityId
-                                        metadata);
-                            } catch (Exception e) {
-                                logger.error(
-                                        "Failed to send auto-registration notification to user {} for activity {}: {}",
-                                        registration.getStudent().getUser().getId(), activity.getId(), e.getMessage());
-                                // Continue with next registration
-                            }
-                        }
-                        logger.info("Sent auto-registration notifications to {} students for activity: {}",
-                                registrations.size(), activity.getName());
-                    } catch (Exception e) {
-                        logger.error("Failed to send auto-registration notifications for activity {}: {}",
-                                activity.getId(), e.getMessage(), e);
-                        // Don't fail auto-registration if notification fails
-                    }
-                } else {
-                    logger.info("All students already registered for activity: {}", activity.getName());
-                }
-            }
-        } catch (Exception e) {
-            logger.error("Failed to auto-register students for activity {}: {}", activity.getId(), e.getMessage(), e);
-        }
     }
 
     @Override

@@ -19,6 +19,7 @@ public interface ActivitySeriesService {
                         Boolean requiresApproval, Integer ticketQuantity,
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
                         ScoreRuleAudience audience, List<Long> departmentIds,
+                        Boolean isImportant, Boolean mandatoryForFacultyStudents,
                         SeriesPresetCode presetCode);
 
         /**
@@ -106,6 +107,7 @@ public interface ActivitySeriesService {
                         Boolean requiresApproval, Integer ticketQuantity,
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
                         ScoreRuleAudience audience, List<Long> departmentIds,
+                        Boolean isImportant, Boolean mandatoryForFacultyStudents,
                         SeriesPresetCode presetCode);
 
         /**

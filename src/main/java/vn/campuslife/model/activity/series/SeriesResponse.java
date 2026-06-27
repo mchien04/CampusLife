@@ -28,6 +28,8 @@ public class SeriesResponse {
     private Integer minimumPenaltyPoints;
     private ScoreRuleAudience audience;
     private List<Long> targetDepartmentIds;
+    private boolean isImportant;
+    private boolean mandatoryForFacultyStudents;
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
     private LocalDateTime createdAt;

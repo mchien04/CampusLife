@@ -28,6 +28,8 @@ public class UpdateSeriesRequest {
     private Integer minimumPenaltyPoints;
     private ScoreRuleAudience audience;
     private List<Long> departmentIds;
+    private Boolean isImportant;
+    private Boolean mandatoryForFacultyStudents;
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
 }

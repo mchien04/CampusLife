@@ -1,7 +1,7 @@
 # FE Backend Handoff Spec
 
-> **Version:** 4.0 (ScoreRule Preset mở rộng + Series Audience + Edit Flow fixes)  
-> **Baseline:** Post v3.1 → Current HEAD (preset audience, series audience, merge-by-key, rules-lock, type-lock)  
+> **Version:** 5.0 (Series auto-register flags + Auto-register service extraction + Minigame dual-creation modes)  
+> **Baseline:** Post v4.0 → Current HEAD (series `isImportant`/`mandatoryForFacultyStudents`, shared `ActivityRegistrationAutoService`, minigame 2 creation modes)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
 ## 1. Mục Đích
@@ -42,6 +42,9 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Type-lock + Standard update có type (P4)** | `StandardActivityUpdateRequest` giờ có field `type` (cho phép đổi type khi update). BE từ chối đổi type nếu activity có ACTIVE score entries và non-draft. | - Form edit Standard Activity: bỏ disable dropdown type.<br>- Hiển thị lỗi "Cannot change type..." nếu activity đã có entries. | **Cao** |
 | **ActivityResponse/SeriesResponse có presetCode (P4)** | Response trả về `presetCode` (enum). `presetConfig` hiện để `null` (chưa lưu full config vào DB). | - Màn hình edit: dùng `presetCode` để pre-select preset.<br>- Dùng `scoreRules` hiện tại để reconstruct `presetConfig` nếu cần. | **Trung bình** |
 | **Series update fixes (P4)** | `targetSemesterId` không còn bị kẹt trong `minimumPenaltyPoints`. `scoreType` không còn bắt buộc khi update series. | - FE không cần thay đổi logic. Partial update Series hoạt động đúng. | **Thấp** |
+| **Series auto-register flags (P5)** | `ActivitySeries` có thêm `isImportant` (boolean, default `false`) và `mandatoryForFacultyStudents` (boolean, default `false`). Khi tạo/sửa Series non-draft, BE auto-register toàn bộ sinh viên active (nếu `isImportant=true`) và/或 sinh viên thuộc các khoa tổ chức (nếu `mandatoryForFacultyStudents=true`). Cờ này nằm **ở mức Series**, áp dụng cho main activity VÀ mỗi child activity mới được thêm vào chuỗi (khi non-draft). | - Form tạo/sửa Series: thêm 2 toggle "Sự kiện quan trọng" (`isImportant`) và "Bắt buộc với sinh viên khoa tổ chức" (`mandatoryForFacultyStudents`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có 2 field bool này.<br>- Child activity tạo qua `POST /api/series/{seriesId}/activities` **không** gửi 2 flag này (luôn `false` ở mức activity); auto-register cho child dùng flag của Series. | **Cao** |
+| **Auto-register service extraction (P5)** | Auto-register logic được trích thành service chung `ActivityRegistrationAutoService`, dùng chung cho Standard, Minigame, Legacy activity create/update, và Series create/update. Auto-register **không bao giờ throw** — lỗi bị swallow nội bộ, không làm fail create/update. | - FE không có thay đổi API contract. Behavior auto-register nhất quán trên mọi type (Standard/Minigame/Legacy/Series).<br>- Nếu sinh viên đã có registration thì skip (idempotent). | **Thấp** |
+| **Minigame dual-creation modes (P5)** | Có 2 cách tạo Minigame: (1) **All-at-once** qua `POST /api/activities/minigame` với `MinigameActivityCreateRequest` (shell + `quiz`) — backend tạo trọn Activity→MiniGame→Quiz→Questions→Options trong 1 call. (2) **Activity-first** — tạo activity trước (Standard hoặc Legacy `POST /api/activities`), rồi gắn quiz qua `POST /api/minigames` với `CreateMiniGameRequest` (chứa `activityId`). | - Flow (1): gửi `quiz` object đầy đủ; KHÔNG cần gọi thêm `POST /api/minigames`.<br>- Flow (2): tạo activity (type `MINIGAME` hoặc khác), lấy `id`, rồi gọi `POST /api/minigames` với `activityId` + quiz config.<br>- Cả 2 flow đều hợp lệ; chọn theo UX (form 1 bước vs 2 bước). | **Trung bình** |
 
 ### 2.2 Các thay đổi về Endpoint API
 
@@ -71,9 +74,9 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
   - `ActivityPresetConfig`: Thêm `audience`, `semesterPolicy`, `explicitSemesterId`, `departmentIds`.
   - `SeriesPresetConfig`: Thêm `audience`, `departmentIds`.
   - `ActivityResponse`, `StandardActivityResponse`: Thêm `presetCode`, `presetConfig`.
-  - `SeriesResponse`: Thêm `audience`, `targetDepartmentIds`, `presetCode`, `presetConfig`.
+  - `SeriesResponse`: Thêm `audience`, `targetDepartmentIds`, `presetCode`, `presetConfig`, `isImportant`, `mandatoryForFacultyStudents`.
   - `StandardActivityUpdateRequest`: Thêm `type` (cho phép đổi type khi update).
-  - `CreateSeriesRequest`, `UpdateSeriesRequest`: Thêm `audience`, `departmentIds`.
+  - `CreateSeriesRequest`, `UpdateSeriesRequest`: Thêm `audience`, `departmentIds`, `isImportant`, `mandatoryForFacultyStudents`.
   - `ScoreSemesterPolicy`: Không thay đổi (chỉ có `ACTIVITY_SEMESTER`, `EXPLICIT_SEMESTER`).
   - `FieldDefinition.inputType`: Thêm `MULTI_SELECT`.
   - `FieldDefinition.visibility`: Thêm `audience_department_scoped`, `semester_policy_explicit`.
@@ -664,6 +667,8 @@ export interface CreateSeriesRequest {
   minimumPenaltyPoints?: number | null;
   audience?: ScoreRuleAudience | null;
   departmentIds?: number[] | null;
+  isImportant?: boolean | null;           // P5: auto-register toàn bộ SV active
+  mandatoryForFacultyStudents?: boolean | null;  // P5: auto-register SV các khoa tổ chức
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
 }
@@ -684,6 +689,8 @@ export interface UpdateSeriesRequest {
   minimumPenaltyPoints?: number | null;
   audience?: ScoreRuleAudience | null;
   departmentIds?: number[] | null;
+  isImportant?: boolean | null;
+  mandatoryForFacultyStudents?: boolean | null;
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
 }
@@ -705,6 +712,8 @@ export interface SeriesResponse {
   targetSemesterId?: number | null;
   audience?: ScoreRuleAudience | null;
   targetDepartmentIds?: number[] | null;
+  isImportant: boolean;                 // P5
+  mandatoryForFacultyStudents: boolean; // P5
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
   createdAt?: string | null;
@@ -1530,6 +1539,11 @@ Hệ thống hiện có 3 nhánh Activity riêng biệt:
   - `minimumRequirementEnabled`: bật/tắt kiểm tra số buổi tối thiểu.
   - `minimumRequiredEvents`: số buổi tối thiểu.
   - `minimumPenaltyPoints`: số điểm bị trừ nếu không đạt (frontend gửi số dương, backend tự negate).
+- **Auto-register flags (P5):** Series có `isImportant` và `mandatoryForFacultyStudents`:
+  - `isImportant=true`: BE auto-register **mọi sinh viên active** vào main activity VÀ mỗi child activity mới khi Series ở trạng thái non-draft.
+  - `mandatoryForFacultyStudents=true`: BE auto-register sinh viên thuộc các khoa tổ chức của các activity trong Series.
+  - Hai flag có thể kết hợp. Auto-register là idempotent (SV đã đăng ký thì skip) và không bao giờ throw (lỗi bị swallow).
+  - Child activity tạo qua `POST /api/series/{seriesId}/activities` luôn có flag `false` ở mức activity; BE dùng flag của Series để auto-register.
 
 ### 7.5 Async Recalculation Flow
 
@@ -1587,25 +1601,48 @@ Luồng tích hợp tính lại điểm async cho Admin/Manager:
 
 ### 8.3 MiniGame Integration
 
-1. **Tạo minigame qua Activity shell (Unified flow):**
-   - Dùng `POST /api/activities/minigame` với `MinigameActivityCreateRequest`.
-   - `quiz` là `QuizConfigRequest`, **bắt buộc** có `questions[]` với đầy đủ `options[]`.
-   - Backend tự động tạo: Activity (MINIGAME) → MiniGame → MiniGameQuiz → MiniGameQuizQuestion[] → MiniGameQuizOption[].
-   - **Không cần gọi thêm** `POST /api/minigames` nữa.
+Có **2 luồng tạo Minigame** (cả 2 đều hợp lệ, chọn theo UX):
 
-2. **Tạo standalone minigame (Legacy/Alternative):**
-   - Dùng `POST /api/minigames` với `CreateMiniGameRequest`.
-   - Dùng khi cần gắn quiz vào activity MINIGAME đã tồn tại (cung cấp `activityId`).
+**Mode 1 — All-at-once (Unified flow, khuyến nghị cho form 1 bước):**
+1. Gọi `POST /api/activities/minigame` với `MinigameActivityCreateRequest`.
+   - Body gồm: shell fields (`name`, `startDate`, `endDate`, `organizerIds`, `scoreRules`,...) + `quiz: QuizConfigRequest`.
+   - `quiz.questions[]` phải có đầy đủ `options[]` (kể cả `isCorrect`).
+   - Backend tự tạo: Activity (MINIGAME) → MiniGame → MiniGameQuiz → MiniGameQuizQuestion[] → MiniGameQuizOption[] trong 1 transaction.
+2. **Không cần** gọi thêm `POST /api/minigames`.
+3. `quiz` Có THỂ để `null` nếu muốn chỉ tạo activity shell trước (khi đó flow trở thành Mode 2 partial).
 
-3. **Cập nhật minigame:**
-   - Dùng `PATCH /api/activities/minigame/{id}` với `MinigameActivityUpdateRequest`.
-   - Nếu gửi `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (cả answers của student).
-   - FE phải gửi **đầy đủ** danh sách questions, không chỉ gửi questions cần sửa.
+**Mode 2 — Activity-first (2 bước, linh hoạt hơn):**
+1. Tạo activity MINIGAME trước:
+   - Hoặc `POST /api/activities/minigame` với `quiz = null` (chỉ shell); hoặc
+   - `POST /api/activities/standard` (sau khi tạo có thể đổi type) hoặc Legacy `POST /api/activities` với `type=MINIGAME`.
+2. Lấy `activity.id` trả về.
+3. Gọi `POST /api/minigames` với `CreateMiniGameRequest` (chứa `activityId` + `title`, `questions[]`, `options[]`,...).
+   - Backend tạo MiniGame → Quiz → Questions → Options và gắn vào activity đã có.
 
-4. **Xem lịch sử attempt:**
-   - Dùng `GET /api/minigames/attempts/{attemptId}`.
-   - Kiểm tra `showAnswers` trước khi render đáp án đúng.
-   - `QuizOptionDetailResponse.isCorrect` sẽ là `null` nếu `showAnswers = false`.
+**Cập nhật minigame:**
+- Dùng `PATCH /api/activities/minigame/{id}` với `MinigameActivityUpdateRequest`.
+- Nếu gửi `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (cả answers của student).
+- FE phải gửi **đầy đủ** danh sách questions, không chỉ gửi questions cần sửa.
+
+**Xem lịch sử attempt:**
+- Dùng `GET /api/minigames/attempts/{attemptId}`.
+- Kiểm tra `showAnswers` trước khi render đáp án đúng.
+- `QuizOptionDetailResponse.isCorrect` sẽ là `null` nếu `showAnswers = false`.
+
+**`CreateMiniGameRequest` reference (Mode 2):**
+```typescript
+export interface CreateMiniGameRequest {
+  activityId: number;       // Bắt buộc — activity đã tồn tại
+  title: string;
+  description?: string;
+  questionCount: number;
+  timeLimit: number;
+  requiredCorrectAnswers: number;
+  maxAttempts: number;
+  showAnswers?: boolean;
+  questions: QuestionRequest[];
+}
+```
 
 ---
 
@@ -1626,7 +1663,11 @@ Luồng tích hợp tính lại điểm async cho Admin/Manager:
 13. **`isPresetGenerated` flag**: `ActivityScoreRuleResponse` có thêm trường `isPresetGenerated` (boolean). FE có thể dùng để hiển thị badge/tag phân biệt rule preset vs thủ công.
 14. **Score history filter params**: `GET /api/scores/history/student/{studentId}` hỗ trợ thêm `startDate`, `endDate` (ISO datetime string), `keyword` (tìm kiếm theo tên hoạt động).
 15. **Minigame Quiz delete-recreate**: Khi update minigame (`PATCH /api/activities/minigame/{id}`) với `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (gồm cả answers của student). FE phải gửi đầy đủ danh sách questions, không chỉ questions cần sửa.
-16. **Unified minigame creation**: `POST /api/activities/minigame` giờ tạo đầy đủ quiz hierarchy (Activity → MiniGame → MiniGameQuiz → Questions → Options). Không cần gọi thêm `POST /api/minigames`.
+16. **Unified minigame creation**: `POST /api/activities/minigame` giờ tạo đầy đủ quiz hierarchy (Activity → MiniGame → MiniGameQuiz → Questions → Options). Không cần gọi thêm `POST /api/minigames`. Nếu `quiz = null`, chỉ tạo activity shell (Mode 2 partial) — FE cần gọi `POST /api/minigames` sau để gắn quiz.
+17. **⚠️ KNOWN BUG — `PARTICIPATION_COMPLETED` failPoints negate (P5)**: Khi trigger `PARTICIPATION_COMPLETED` và `isCompleted = false`, `ScoreRuleEngineImpl.applyActivityCompleted` dùng `failPoints` **raw (không negate)**, khác với `applyNoShowPenalty` / `applySubmissionGraded` / `applyMinigameExhausted` đều gọi `applySignForFailure()` (negate khi `calculation = PASS_FAIL_POINTS` hoặc `PENALTY_POINTS`). Hệ quả:
+    - `calculation = FIXED_POINTS`: **OK** — `failPoints` là "điểm khi không hoàn thành" (VD 0 hoặc điểm giảm), giữ dương là đúng.
+    - `calculation = PASS_FAIL_POINTS`: **BUG** — `failPoints` được lưu **dương** trong `score_entries` thay vì âm (penalty). Mọi method khác đều negate cho `PASS_FAIL_POINTS`.
+    - **Tạm thời**: FE nếu muốn `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS` phạt khi `isCompleted=false`, cân nhắc truyền `failPoints` **âm sẵn** (VD `-5`) cho preset/rule thủ công, vì BE chưa negate. Plan fix BE: gọi `applySignForFailure` ở line applied.
 
 ---
 

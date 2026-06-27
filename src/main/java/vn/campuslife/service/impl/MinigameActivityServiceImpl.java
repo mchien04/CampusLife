@@ -23,8 +23,10 @@ import vn.campuslife.repository.MiniGameQuizOptionRepository;
 import vn.campuslife.repository.MiniGameQuizQuestionRepository;
 import vn.campuslife.repository.MiniGameQuizRepository;
 import vn.campuslife.repository.MiniGameRepository;
+import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.MinigameActivityService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.mapper.MinigameActivityMapper;
 import vn.campuslife.service.validator.MinigameActivityValidator;
 import vn.campuslife.util.UrlUtils;
@@ -50,6 +52,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     private final MiniGameQuizOptionRepository optionRepository;
     private final MiniGameAnswerRepository answerRepository;
     private final ActivityScoreRuleService activityScoreRuleService;
+    private final ActivityRegistrationAutoService autoRegisterService;
+    private final ReminderScheduleService reminderScheduleService;
     private final MinigameActivityValidator validator;
     private final MinigameActivityMapper mapper;
     private final UploadProperties uploadProperties;
@@ -78,6 +82,9 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             if (request.getScoreRules() != null && !request.getScoreRules().isEmpty()) {
                 activityScoreRuleService.replaceRules(savedShell.getId(), request.getScoreRules());
             }
+
+            autoRegisterService.autoRegisterStudents(savedShell);
+            reminderScheduleService.syncEventRemindersForActivity(savedShell);
 
             MiniGame miniGame = mapper.toMiniGameEntity(request.getQuiz(), savedShell);
             miniGame = miniGameRepository.save(miniGame);
@@ -116,6 +123,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             if (request.getScoreRules() != null) {
                 activityScoreRuleService.replaceRules(savedShell.getId(), request.getScoreRules());
             }
+
+            autoRegisterService.autoRegisterStudents(savedShell);
 
             MiniGame miniGame = null;
             if (request.getQuiz() != null) {

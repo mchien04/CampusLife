@@ -15,6 +15,7 @@ import vn.campuslife.model.activity.StandardActivityUpdateRequest;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.ScoreEntryRepository;
+import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
@@ -41,16 +42,8 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     private final ScorePresetService scorePresetService;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ReminderScheduleService reminderScheduleService;
-    
-    // We reuse the auto-register from ActivityServiceImpl via dependency or just by not duplicating it here.
-    // Wait, autoRegisterStudents is a private method in ActivityServiceImpl.
-    // Since StandardActivityServiceImpl handles create/update, it might need autoRegister.
-    // In ActivityServiceImpl it's autoRegisterStudents(Activity).
-    // It's probably better to inject ActivityServiceImpl or extract auto-registration logic.
-    // For now, I will extract auto-registration from ActivityServiceImpl if needed, or we can use it if we extract it.
-    // Let's inject ActivityServiceImpl to call autoRegisterStudents... but wait, it's private.
-    // I should extract autoRegisterStudents into a shared component or just leave a comment and implement it correctly.
-    
+    private final ActivityRegistrationAutoService autoRegisterService;
+
     private final StandardActivityValidator validator;
     private final StandardActivityMapper mapper;
 
@@ -80,9 +73,8 @@ public class StandardActivityServiceImpl implements StandardActivityService {
                 activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
             }
 
-            // Note: auto-registration logic needs to be run if the activity is not draft.
-            // Ideally we should extract autoRegisterStudents to a separate service (e.g., ActivityRegistrationService)
-            // or we could trigger an event. For now, we will add a TODO or duplicate it simply if needed.
+            autoRegisterService.autoRegisterStudents(saved);
+            reminderScheduleService.syncEventRemindersForActivity(saved);
 
             return Response.success("Activity created successfully", mapper.toResponse(saved));
         } catch (IllegalArgumentException e) {
@@ -129,6 +121,8 @@ public class StandardActivityServiceImpl implements StandardActivityService {
             if (request.getScoreRules() != null) {
                 activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
             }
+
+            autoRegisterService.autoRegisterStudents(saved);
 
             return Response.success("Activity updated successfully", mapper.toResponse(saved));
         } catch (IllegalArgumentException e) {
