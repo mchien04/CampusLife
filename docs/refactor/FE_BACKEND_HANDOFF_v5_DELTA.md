@@ -151,59 +151,6 @@ export interface CreateMiniGameRequest {
 
 ---
 
-## 3. Known Bug: `PARTICIPATION_COMPLETED` failPoints negate
-
-### 3.1 Vấn đề
-
-Trong `ScoreRuleEngineImpl.applyActivityCompleted()`, khi `isCompleted = false`, `failPoints` được dùng **raw (không negate)**:
-
-```java
-// Bug: không gọi applySignForFailure()
-BigDecimal points = Boolean.TRUE.equals(participation.getIsCompleted())
-    ? rule.getPoints()
-    : rule.getFailPoints();
-```
-
-Tất cả các trigger khác (`NO_SHOW`, `SUBMISSION_GRADED`, `TASK_OVERDUE`, `MINIGAME_EXHAUSTED_ATTEMPTS`) đều gọi `applySignForFailure()` để negate khi `calculation = PASS_FAIL_POINTS` hoặc `PENALTY_POINTS`.
-
-### 3.2 Chỉ trigger `PARTICIPATION_COMPLETED` mới bị
-
-Bug nằm cục bộ trong `applyActivityCompleted()`. Các trigger khác đều gọi `applySignForFailure()` và negate đúng:
-
-| Method | Gọi `applySignForFailure`? |
-|--------|---------------------------|
-| `applyActivityCompleted` (`PARTICIPATION_COMPLETED`) | **KHÔNG** ← bug |
-| `applyNoShowPenalty` (`NO_SHOW`) | Có ✅ |
-| `applySubmissionGraded` (`SUBMISSION_GRADED`) | Có ✅ |
-| `applyTaskOverdue` (`TASK_OVERDUE`) | Có ✅ |
-| `applyMinigameExhausted` (`MINIGAME_EXHAUSTED_ATTEMPTS`) | Có ✅ |
-
-Vì vậy bảng ảnh hưởng không phải theo `calculation` mà theo **trigger**:
-
-| Trigger có bug? | Ảnh hưởng |
-|----------------|-----------|
-| `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS`/`PENALTY_POINTS` | **Có bug** — `failPoints` không được negate |
-| Mọi trigger khác (`NO_SHOW`, `SUBMISSION_GRADED`, `TASK_OVERDUE`, `MINIGAME_EXHAUSTED_ATTEMPTS`) | **Không bug** — đã negate đúng |
-
-### 3.3 Preset không bị ảnh hưởng
-
-| Preset | Trigger | Calculation | Bị bug? |
-|--------|---------|-------------|---------|
-| `EVENT_BASIC` | `PARTICIPATION_COMPLETED` | `FIXED_POINTS` | **Không** (`FIXED_POINTS` không cần negate) |
-| `ENTERPRISE_SEMINAR_BASIC` | `PARTICIPATION_COMPLETED` | `COUNT_COMPLETION` | **Không** (không phải `PASS_FAIL_POINTS`) |
-| `ENTERPRISE_SEMINAR_WITH_BONUS` | `PARTICIPATION_COMPLETED` | `COUNT_COMPLETION` | **Không** |
-| `EVENT_WITH_SUBMISSION` | `SUBMISSION_GRADED` | `PASS_FAIL_POINTS` | **Không** (dùng `applySubmissionGraded`, đã negate) |
-
-⇒ **Không preset nào bị.** Bug chỉ xảy ra nếu FE tạo custom rule `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS`/`PENALTY_POINTS` + `failPoints > 0`.
-
-### 3.4 Hướng dẫn FE
-
-- Trường hợp này cực kỳ hiếm (không preset nào dùng). Có thể bỏ qua.
-- Nếu muốn xử lý: khi user chọn `trigger = PARTICIPATION_COMPLETED` + `calculation = PASS_FAIL_POINTS`/`PENALTY_POINTS`, hiển thị cảnh báo nhẹ.
-- **Plan sửa BE**: thêm `applySignForFailure()` trong `applyActivityCompleted()` ở phiên bản sau.
-
----
-
 ## 4. Auto-register Service Extraction
 
 ### 4.1 Mô tả

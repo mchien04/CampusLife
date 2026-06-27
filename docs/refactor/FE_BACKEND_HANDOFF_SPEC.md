@@ -1710,11 +1710,6 @@ export interface CreateMiniGameRequest {
 14. **Score history filter params**: `GET /api/scores/history/student/{studentId}` hỗ trợ thêm `startDate`, `endDate` (ISO datetime string), `keyword` (tìm kiếm theo tên hoạt động).
 15. **Minigame Quiz delete-recreate**: Khi update minigame (`PATCH /api/activities/minigame/{id}`) với `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (gồm cả answers của student). FE phải gửi đầy đủ danh sách questions, không chỉ questions cần sửa.
 16. **Unified minigame creation**: `POST /api/activities/minigame` giờ tạo đầy đủ quiz hierarchy (Activity → MiniGame → MiniGameQuiz → Questions → Options). Không cần gọi thêm `POST /api/minigames`. Nếu `quiz = null`, chỉ tạo activity shell (Mode 2 partial) — FE cần gọi `POST /api/minigames` sau để gắn quiz.
-17. **⚠️ KNOWN BUG — `PARTICIPATION_COMPLETED` failPoints negate (P5)**: Khi trigger `PARTICIPATION_COMPLETED` và `isCompleted = false`, `ScoreRuleEngineImpl.applyActivityCompleted` dùng `failPoints` **raw (không negate)**, khác với `applyNoShowPenalty` / `applySubmissionGraded` / `applyMinigameExhausted` đều gọi `applySignForFailure()` (negate khi `calculation = PASS_FAIL_POINTS` hoặc `PENALTY_POINTS`). Hệ quả:
-    - `calculation = FIXED_POINTS`: **OK** — `failPoints` là "điểm khi không hoàn thành" (VD 0 hoặc điểm giảm), giữ dương là đúng.
-    - `calculation = PASS_FAIL_POINTS`: **BUG** — `failPoints` được lưu **dương** trong `score_entries` thay vì âm (penalty). Mọi method khác đều negate cho `PASS_FAIL_POINTS`.
-    - **Tạm thời**: FE nếu muốn `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS` phạt khi `isCompleted=false`, cân nhắc truyền `failPoints` **âm sẵn** (VD `-5`) cho preset/rule thủ công, vì BE chưa negate. Plan fix BE: gọi `applySignForFailure` ở line applied.
-
 ---
 
 *End of FE_BACKEND_HANDOFF_SPEC.md*
