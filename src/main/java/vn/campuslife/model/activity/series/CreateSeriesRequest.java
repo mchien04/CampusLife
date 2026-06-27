@@ -30,6 +30,7 @@ public class CreateSeriesRequest {
     private List<Long> departmentIds;
     private Boolean isImportant;
     private Boolean mandatoryForFacultyStudents;
+    private Boolean isDraft;
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
 }

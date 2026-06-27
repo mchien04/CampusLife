@@ -1,7 +1,7 @@
 # FE Backend Handoff Spec
 
-> **Version:** 5.0 (Series auto-register flags + Auto-register service extraction + Minigame dual-creation modes)  
-> **Baseline:** Post v4.0 → Current HEAD (series `isImportant`/`mandatoryForFacultyStudents`, shared `ActivityRegistrationAutoService`, minigame 2 creation modes)  
+> **Version:** 5.1 (Series isDraft + Per-rule audience config)  
+> **Baseline:** Post v5.0 → Current HEAD (series `isDraft`, per-rule audience/semesterPolicy/departmentIds on `ActivityPresetConfig`)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
 ## 1. Mục Đích
@@ -44,6 +44,8 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Series update fixes (P4)** | `targetSemesterId` không còn bị kẹt trong `minimumPenaltyPoints`. `scoreType` không còn bắt buộc khi update series. | - FE không cần thay đổi logic. Partial update Series hoạt động đúng. | **Thấp** |
 | **Series auto-register flags (P5)** | `ActivitySeries` có thêm `isImportant` (boolean, default `false`) và `mandatoryForFacultyStudents` (boolean, default `false`). Khi tạo/sửa Series non-draft, BE auto-register toàn bộ sinh viên active (nếu `isImportant=true`) và/或 sinh viên thuộc các khoa tổ chức (nếu `mandatoryForFacultyStudents=true`). Cờ này nằm **ở mức Series**, áp dụng cho main activity VÀ mỗi child activity mới được thêm vào chuỗi (khi non-draft). | - Form tạo/sửa Series: thêm 2 toggle "Sự kiện quan trọng" (`isImportant`) và "Bắt buộc với sinh viên khoa tổ chức" (`mandatoryForFacultyStudents`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có 2 field bool này.<br>- Child activity tạo qua `POST /api/series/{seriesId}/activities` **không** gửi 2 flag này (luôn `false` ở mức activity); auto-register cho child dùng flag của Series. | **Cao** |
 | **Auto-register service extraction (P5)** | Auto-register logic được trích thành service chung `ActivityRegistrationAutoService`, dùng chung cho Standard, Minigame, Legacy activity create/update, và Series create/update. Auto-register **không bao giờ throw** — lỗi bị swallow nội bộ, không làm fail create/update. | - FE không có thay đổi API contract. Behavior auto-register nhất quán trên mọi type (Standard/Minigame/Legacy/Series).<br>- Nếu sinh viên đã có registration thì skip (idempotent). | **Thấp** |
+| **Series isDraft (P5)** | `ActivitySeries` có thêm `isDraft` (boolean, default `true`). Auto-register chỉ chạy khi Series **non-draft** (`isDraft=false`). | - Form tạo/sửa Series: thêm toggle "Bản nháp" (`isDraft`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có field `isDraft`. | **Cao** |
+| **Per-rule audience config (P5)** | `ActivityPresetConfig` thêm per-trigger override fields: `submissionAudience`, `noShowAudience`, `participationAudience`, `taskOverdueAudience`, `bonusAudience`, `minigamePassedAudience`, `minigameExhaustedAudience` (kèm `*SemesterPolicy`, `*ExplicitSemesterId`, `*DepartmentIds`). `buildRule()` ưu tiên per-rule override, fallback về top-level `audience`. | - Form preset config: thêm section cho phép cấu hình audience riêng theo từng trigger.<br>- Nếu không set per-rule, BE dùng `audience` top-level như cũ (backward compatible). | **Cao** |
 | **Minigame dual-creation modes (P5)** | Có 2 cách tạo Minigame: (1) **All-at-once** qua `POST /api/activities/minigame` với `MinigameActivityCreateRequest` (shell + `quiz`) — backend tạo trọn Activity→MiniGame→Quiz→Questions→Options trong 1 call. (2) **Activity-first** — tạo activity trước (Standard hoặc Legacy `POST /api/activities`), rồi gắn quiz qua `POST /api/minigames` với `CreateMiniGameRequest` (chứa `activityId`). | - Flow (1): gửi `quiz` object đầy đủ; KHÔNG cần gọi thêm `POST /api/minigames`.<br>- Flow (2): tạo activity (type `MINIGAME` hoặc khác), lấy `id`, rồi gọi `POST /api/minigames` với `activityId` + quiz config.<br>- Cả 2 flow đều hợp lệ; chọn theo UX (form 1 bước vs 2 bước). | **Trung bình** |
 
 ### 2.2 Các thay đổi về Endpoint API
@@ -74,9 +76,10 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
   - `ActivityPresetConfig`: Thêm `audience`, `semesterPolicy`, `explicitSemesterId`, `departmentIds`.
   - `SeriesPresetConfig`: Thêm `audience`, `departmentIds`.
   - `ActivityResponse`, `StandardActivityResponse`: Thêm `presetCode`, `presetConfig`.
-  - `SeriesResponse`: Thêm `audience`, `targetDepartmentIds`, `presetCode`, `presetConfig`, `isImportant`, `mandatoryForFacultyStudents`.
+  - `SeriesResponse`: Thêm `audience`, `targetDepartmentIds`, `presetCode`, `presetConfig`, `isImportant`, `mandatoryForFacultyStudents`, `isDraft`.
   - `StandardActivityUpdateRequest`: Thêm `type` (cho phép đổi type khi update).
-  - `CreateSeriesRequest`, `UpdateSeriesRequest`: Thêm `audience`, `departmentIds`, `isImportant`, `mandatoryForFacultyStudents`.
+  - `CreateSeriesRequest`, `UpdateSeriesRequest`: Thêm `audience`, `departmentIds`, `isImportant`, `mandatoryForFacultyStudents`, `isDraft`.
+  - `ActivityPresetConfig`: Thêm per-rule override fields (`submissionAudience`, `submissionSemesterPolicy`, `submissionExplicitSemesterId`, `submissionDepartmentIds`, `participationAudience`, `noShowAudience`, `taskOverdueAudience`, `bonusAudience`, `minigamePassedAudience`, `minigameExhaustedAudience` + các field semester/department tương ứng).
   - `ScoreSemesterPolicy`: Không thay đổi (chỉ có `ACTIVITY_SEMESTER`, `EXPLICIT_SEMESTER`).
   - `FieldDefinition.inputType`: Thêm `MULTI_SELECT`.
   - `FieldDefinition.visibility`: Thêm `audience_department_scoped`, `semester_policy_explicit`.
@@ -237,10 +240,48 @@ export interface ActivityPresetConfig {
   minigameExhaustedPenaltyPoints?: number | string | null;
   bonusScoreType?: ScoreType | null;
   bonusPoints?: number | string | null;
+
+  // Top-level (fallback cho tất cả rules)
   audience?: ScoreRuleAudience | null;
   semesterPolicy?: ScoreSemesterPolicy | null;
   explicitSemesterId?: number | null;
   departmentIds?: number[] | null;
+
+  // Per-rule overrides (P5.1) — ưu tiên hơn top-level fields
+  submissionAudience?: ScoreRuleAudience | null;
+  submissionSemesterPolicy?: ScoreSemesterPolicy | null;
+  submissionExplicitSemesterId?: number | null;
+  submissionDepartmentIds?: number[] | null;
+
+  participationAudience?: ScoreRuleAudience | null;
+  participationSemesterPolicy?: ScoreSemesterPolicy | null;
+  participationExplicitSemesterId?: number | null;
+  participationDepartmentIds?: number[] | null;
+
+  noShowAudience?: ScoreRuleAudience | null;
+  noShowSemesterPolicy?: ScoreSemesterPolicy | null;
+  noShowExplicitSemesterId?: number | null;
+  noShowDepartmentIds?: number[] | null;
+
+  taskOverdueAudience?: ScoreRuleAudience | null;
+  taskOverdueSemesterPolicy?: ScoreSemesterPolicy | null;
+  taskOverdueExplicitSemesterId?: number | null;
+  taskOverdueDepartmentIds?: number[] | null;
+
+  bonusAudience?: ScoreRuleAudience | null;
+  bonusSemesterPolicy?: ScoreSemesterPolicy | null;
+  bonusExplicitSemesterId?: number | null;
+  bonusDepartmentIds?: number[] | null;
+
+  minigamePassedAudience?: ScoreRuleAudience | null;
+  minigamePassedSemesterPolicy?: ScoreSemesterPolicy | null;
+  minigamePassedExplicitSemesterId?: number | null;
+  minigamePassedDepartmentIds?: number[] | null;
+
+  minigameExhaustedAudience?: ScoreRuleAudience | null;
+  minigameExhaustedSemesterPolicy?: ScoreSemesterPolicy | null;
+  minigameExhaustedExplicitSemesterId?: number | null;
+  minigameExhaustedDepartmentIds?: number[] | null;
 }
 
 export interface CreateActivityRequest {
@@ -667,8 +708,9 @@ export interface CreateSeriesRequest {
   minimumPenaltyPoints?: number | null;
   audience?: ScoreRuleAudience | null;
   departmentIds?: number[] | null;
-  isImportant?: boolean | null;           // P5: auto-register toàn bộ SV active
-  mandatoryForFacultyStudents?: boolean | null;  // P5: auto-register SV các khoa tổ chức
+  isImportant?: boolean | null;                    // P5: auto-register toàn bộ SV active
+  mandatoryForFacultyStudents?: boolean | null;    // P5: auto-register SV các khoa tổ chức
+  isDraft?: boolean | null;                        // P5.1: bản nháp
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
 }
@@ -691,6 +733,7 @@ export interface UpdateSeriesRequest {
   departmentIds?: number[] | null;
   isImportant?: boolean | null;
   mandatoryForFacultyStudents?: boolean | null;
+  isDraft?: boolean | null;                        // P5.1
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
 }
@@ -714,6 +757,7 @@ export interface SeriesResponse {
   targetDepartmentIds?: number[] | null;
   isImportant: boolean;                 // P5
   mandatoryForFacultyStudents: boolean; // P5
+  isDraft: boolean;                     // P5.1 — mặc định true
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
   createdAt?: string | null;

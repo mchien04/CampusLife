@@ -524,12 +524,82 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         request.setCalculation(calculation);
         request.setPoints(points);
         request.setFailPoints(failPoints);
-        request.setAudience(config.getAudience() != null ? config.getAudience() : ScoreRuleAudience.ALL_PARTICIPANTS);
-        request.setSemesterPolicy(config.getSemesterPolicy() != null ? config.getSemesterPolicy() : ScoreSemesterPolicy.ACTIVITY_SEMESTER);
-        request.setExplicitSemesterId(config.getExplicitSemesterId());
-        request.setDepartmentIds(config.getDepartmentIds());
+        request.setAudience(resolveAudience(trigger, config));
+        request.setSemesterPolicy(resolveSemesterPolicy(trigger, config));
+        request.setExplicitSemesterId(resolveExplicitSemesterId(trigger, config));
+        request.setDepartmentIds(resolveDepartmentIds(trigger, config));
         request.setEnabled(true);
         return request;
+    }
+
+    private ScoreRuleAudience resolveAudience(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        ScoreRuleAudience override = getTriggerAudienceOverride(trigger, config);
+        return override != null ? override
+                : (config.getAudience() != null ? config.getAudience() : ScoreRuleAudience.ALL_PARTICIPANTS);
+    }
+
+    private ScoreSemesterPolicy resolveSemesterPolicy(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        ScoreSemesterPolicy override = getTriggerSemesterPolicyOverride(trigger, config);
+        return override != null ? override
+                : (config.getSemesterPolicy() != null ? config.getSemesterPolicy() : ScoreSemesterPolicy.ACTIVITY_SEMESTER);
+    }
+
+    private Long resolveExplicitSemesterId(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        Long override = getTriggerExplicitSemesterId(trigger, config);
+        return override != null ? override : config.getExplicitSemesterId();
+    }
+
+    private List<Long> resolveDepartmentIds(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        List<Long> override = getTriggerDepartmentIds(trigger, config);
+        return override != null ? override : config.getDepartmentIds();
+    }
+
+    private ScoreRuleAudience getTriggerAudienceOverride(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        return switch (trigger) {
+            case SUBMISSION_GRADED -> config.getSubmissionAudience();
+            case PARTICIPATION_COMPLETED -> config.getParticipationAudience();
+            case NO_SHOW -> config.getNoShowAudience();
+            case TASK_OVERDUE -> config.getTaskOverdueAudience();
+            case MINIGAME_PASSED -> config.getMinigamePassedAudience();
+            case MINIGAME_EXHAUSTED_ATTEMPTS -> config.getMinigameExhaustedAudience();
+            default -> null;
+        };
+    }
+
+    private ScoreSemesterPolicy getTriggerSemesterPolicyOverride(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        return switch (trigger) {
+            case SUBMISSION_GRADED -> config.getSubmissionSemesterPolicy();
+            case PARTICIPATION_COMPLETED -> config.getParticipationSemesterPolicy();
+            case NO_SHOW -> config.getNoShowSemesterPolicy();
+            case TASK_OVERDUE -> config.getTaskOverdueSemesterPolicy();
+            case MINIGAME_PASSED -> config.getMinigamePassedSemesterPolicy();
+            case MINIGAME_EXHAUSTED_ATTEMPTS -> config.getMinigameExhaustedSemesterPolicy();
+            default -> null;
+        };
+    }
+
+    private Long getTriggerExplicitSemesterId(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        return switch (trigger) {
+            case SUBMISSION_GRADED -> config.getSubmissionExplicitSemesterId();
+            case PARTICIPATION_COMPLETED -> config.getParticipationExplicitSemesterId();
+            case NO_SHOW -> config.getNoShowExplicitSemesterId();
+            case TASK_OVERDUE -> config.getTaskOverdueExplicitSemesterId();
+            case MINIGAME_PASSED -> config.getMinigamePassedExplicitSemesterId();
+            case MINIGAME_EXHAUSTED_ATTEMPTS -> config.getMinigameExhaustedExplicitSemesterId();
+            default -> null;
+        };
+    }
+
+    private List<Long> getTriggerDepartmentIds(ScoreRuleTrigger trigger, ActivityPresetConfig config) {
+        return switch (trigger) {
+            case SUBMISSION_GRADED -> config.getSubmissionDepartmentIds();
+            case PARTICIPATION_COMPLETED -> config.getParticipationDepartmentIds();
+            case NO_SHOW -> config.getNoShowDepartmentIds();
+            case TASK_OVERDUE -> config.getTaskOverdueDepartmentIds();
+            case MINIGAME_PASSED -> config.getMinigamePassedDepartmentIds();
+            case MINIGAME_EXHAUSTED_ATTEMPTS -> config.getMinigameExhaustedDepartmentIds();
+            default -> null;
+        };
     }
 
     private List<String> buildSeriesPresetNotes(SeriesPresetCode presetCode) {
@@ -578,6 +648,43 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         merged.setSemesterPolicy(incoming.getSemesterPolicy() != null ? incoming.getSemesterPolicy() : defaults.getSemesterPolicy());
         merged.setExplicitSemesterId(incoming.getExplicitSemesterId() != null ? incoming.getExplicitSemesterId() : defaults.getExplicitSemesterId());
         merged.setDepartmentIds(incoming.getDepartmentIds() != null ? incoming.getDepartmentIds() : defaults.getDepartmentIds());
+
+        // Per-rule audience overrides
+        merged.setSubmissionAudience(incoming.getSubmissionAudience() != null ? incoming.getSubmissionAudience() : defaults.getSubmissionAudience());
+        merged.setSubmissionSemesterPolicy(incoming.getSubmissionSemesterPolicy() != null ? incoming.getSubmissionSemesterPolicy() : defaults.getSubmissionSemesterPolicy());
+        merged.setSubmissionExplicitSemesterId(incoming.getSubmissionExplicitSemesterId() != null ? incoming.getSubmissionExplicitSemesterId() : defaults.getSubmissionExplicitSemesterId());
+        merged.setSubmissionDepartmentIds(incoming.getSubmissionDepartmentIds() != null ? incoming.getSubmissionDepartmentIds() : defaults.getSubmissionDepartmentIds());
+
+        merged.setParticipationAudience(incoming.getParticipationAudience() != null ? incoming.getParticipationAudience() : defaults.getParticipationAudience());
+        merged.setParticipationSemesterPolicy(incoming.getParticipationSemesterPolicy() != null ? incoming.getParticipationSemesterPolicy() : defaults.getParticipationSemesterPolicy());
+        merged.setParticipationExplicitSemesterId(incoming.getParticipationExplicitSemesterId() != null ? incoming.getParticipationExplicitSemesterId() : defaults.getParticipationExplicitSemesterId());
+        merged.setParticipationDepartmentIds(incoming.getParticipationDepartmentIds() != null ? incoming.getParticipationDepartmentIds() : defaults.getParticipationDepartmentIds());
+
+        merged.setNoShowAudience(incoming.getNoShowAudience() != null ? incoming.getNoShowAudience() : defaults.getNoShowAudience());
+        merged.setNoShowSemesterPolicy(incoming.getNoShowSemesterPolicy() != null ? incoming.getNoShowSemesterPolicy() : defaults.getNoShowSemesterPolicy());
+        merged.setNoShowExplicitSemesterId(incoming.getNoShowExplicitSemesterId() != null ? incoming.getNoShowExplicitSemesterId() : defaults.getNoShowExplicitSemesterId());
+        merged.setNoShowDepartmentIds(incoming.getNoShowDepartmentIds() != null ? incoming.getNoShowDepartmentIds() : defaults.getNoShowDepartmentIds());
+
+        merged.setTaskOverdueAudience(incoming.getTaskOverdueAudience() != null ? incoming.getTaskOverdueAudience() : defaults.getTaskOverdueAudience());
+        merged.setTaskOverdueSemesterPolicy(incoming.getTaskOverdueSemesterPolicy() != null ? incoming.getTaskOverdueSemesterPolicy() : defaults.getTaskOverdueSemesterPolicy());
+        merged.setTaskOverdueExplicitSemesterId(incoming.getTaskOverdueExplicitSemesterId() != null ? incoming.getTaskOverdueExplicitSemesterId() : defaults.getTaskOverdueExplicitSemesterId());
+        merged.setTaskOverdueDepartmentIds(incoming.getTaskOverdueDepartmentIds() != null ? incoming.getTaskOverdueDepartmentIds() : defaults.getTaskOverdueDepartmentIds());
+
+        merged.setBonusAudience(incoming.getBonusAudience() != null ? incoming.getBonusAudience() : defaults.getBonusAudience());
+        merged.setBonusSemesterPolicy(incoming.getBonusSemesterPolicy() != null ? incoming.getBonusSemesterPolicy() : defaults.getBonusSemesterPolicy());
+        merged.setBonusExplicitSemesterId(incoming.getBonusExplicitSemesterId() != null ? incoming.getBonusExplicitSemesterId() : defaults.getBonusExplicitSemesterId());
+        merged.setBonusDepartmentIds(incoming.getBonusDepartmentIds() != null ? incoming.getBonusDepartmentIds() : defaults.getBonusDepartmentIds());
+
+        merged.setMinigamePassedAudience(incoming.getMinigamePassedAudience() != null ? incoming.getMinigamePassedAudience() : defaults.getMinigamePassedAudience());
+        merged.setMinigamePassedSemesterPolicy(incoming.getMinigamePassedSemesterPolicy() != null ? incoming.getMinigamePassedSemesterPolicy() : defaults.getMinigamePassedSemesterPolicy());
+        merged.setMinigamePassedExplicitSemesterId(incoming.getMinigamePassedExplicitSemesterId() != null ? incoming.getMinigamePassedExplicitSemesterId() : defaults.getMinigamePassedExplicitSemesterId());
+        merged.setMinigamePassedDepartmentIds(incoming.getMinigamePassedDepartmentIds() != null ? incoming.getMinigamePassedDepartmentIds() : defaults.getMinigamePassedDepartmentIds());
+
+        merged.setMinigameExhaustedAudience(incoming.getMinigameExhaustedAudience() != null ? incoming.getMinigameExhaustedAudience() : defaults.getMinigameExhaustedAudience());
+        merged.setMinigameExhaustedSemesterPolicy(incoming.getMinigameExhaustedSemesterPolicy() != null ? incoming.getMinigameExhaustedSemesterPolicy() : defaults.getMinigameExhaustedSemesterPolicy());
+        merged.setMinigameExhaustedExplicitSemesterId(incoming.getMinigameExhaustedExplicitSemesterId() != null ? incoming.getMinigameExhaustedExplicitSemesterId() : defaults.getMinigameExhaustedExplicitSemesterId());
+        merged.setMinigameExhaustedDepartmentIds(incoming.getMinigameExhaustedDepartmentIds() != null ? incoming.getMinigameExhaustedDepartmentIds() : defaults.getMinigameExhaustedDepartmentIds());
+
         return merged;
     }
 
@@ -599,6 +706,42 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         target.setSemesterPolicy(source.getSemesterPolicy());
         target.setExplicitSemesterId(source.getExplicitSemesterId());
         target.setDepartmentIds(source.getDepartmentIds() != null ? new ArrayList<>(source.getDepartmentIds()) : new ArrayList<>());
+
+        // Per-rule audience overrides
+        target.setSubmissionAudience(source.getSubmissionAudience());
+        target.setSubmissionSemesterPolicy(source.getSubmissionSemesterPolicy());
+        target.setSubmissionExplicitSemesterId(source.getSubmissionExplicitSemesterId());
+        target.setSubmissionDepartmentIds(source.getSubmissionDepartmentIds() != null ? new ArrayList<>(source.getSubmissionDepartmentIds()) : null);
+
+        target.setParticipationAudience(source.getParticipationAudience());
+        target.setParticipationSemesterPolicy(source.getParticipationSemesterPolicy());
+        target.setParticipationExplicitSemesterId(source.getParticipationExplicitSemesterId());
+        target.setParticipationDepartmentIds(source.getParticipationDepartmentIds() != null ? new ArrayList<>(source.getParticipationDepartmentIds()) : null);
+
+        target.setNoShowAudience(source.getNoShowAudience());
+        target.setNoShowSemesterPolicy(source.getNoShowSemesterPolicy());
+        target.setNoShowExplicitSemesterId(source.getNoShowExplicitSemesterId());
+        target.setNoShowDepartmentIds(source.getNoShowDepartmentIds() != null ? new ArrayList<>(source.getNoShowDepartmentIds()) : null);
+
+        target.setTaskOverdueAudience(source.getTaskOverdueAudience());
+        target.setTaskOverdueSemesterPolicy(source.getTaskOverdueSemesterPolicy());
+        target.setTaskOverdueExplicitSemesterId(source.getTaskOverdueExplicitSemesterId());
+        target.setTaskOverdueDepartmentIds(source.getTaskOverdueDepartmentIds() != null ? new ArrayList<>(source.getTaskOverdueDepartmentIds()) : null);
+
+        target.setBonusAudience(source.getBonusAudience());
+        target.setBonusSemesterPolicy(source.getBonusSemesterPolicy());
+        target.setBonusExplicitSemesterId(source.getBonusExplicitSemesterId());
+        target.setBonusDepartmentIds(source.getBonusDepartmentIds() != null ? new ArrayList<>(source.getBonusDepartmentIds()) : null);
+
+        target.setMinigamePassedAudience(source.getMinigamePassedAudience());
+        target.setMinigamePassedSemesterPolicy(source.getMinigamePassedSemesterPolicy());
+        target.setMinigamePassedExplicitSemesterId(source.getMinigamePassedExplicitSemesterId());
+        target.setMinigamePassedDepartmentIds(source.getMinigamePassedDepartmentIds() != null ? new ArrayList<>(source.getMinigamePassedDepartmentIds()) : null);
+
+        target.setMinigameExhaustedAudience(source.getMinigameExhaustedAudience());
+        target.setMinigameExhaustedSemesterPolicy(source.getMinigameExhaustedSemesterPolicy());
+        target.setMinigameExhaustedExplicitSemesterId(source.getMinigameExhaustedExplicitSemesterId());
+        target.setMinigameExhaustedDepartmentIds(source.getMinigameExhaustedDepartmentIds() != null ? new ArrayList<>(source.getMinigameExhaustedDepartmentIds()) : null);
     }
 
     private ActivityPresetConfig getDefaultActivityConfig(ActivityPresetCode presetCode, ActivityType activityType) {

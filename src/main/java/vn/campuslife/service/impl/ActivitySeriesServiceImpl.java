@@ -82,6 +82,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents,
+            Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
@@ -117,6 +118,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 series.setPresetCode(presetCode);
         series.setImportant(Boolean.TRUE.equals(isImportant));
         series.setMandatoryForFacultyStudents(Boolean.TRUE.equals(mandatoryForFacultyStudents));
+        series.setDraft(Boolean.TRUE.equals(isDraft));
 
         if (mainActivityId != null) {
             Optional<Activity> mainActivityOpt = activityRepository.findById(mainActivityId);
@@ -130,8 +132,8 @@ series.setPresetCode(presetCode);
         ActivitySeries saved = seriesRepository.save(series);
         logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
 
-        // Auto-register students to main activity if series flags require it
-        if (saved.getMainActivity() != null) {
+        // Auto-register students to main activity if series flags require it (only when non-draft)
+        if (!saved.isDraft() && saved.getMainActivity() != null) {
             autoRegisterService.autoRegisterStudents(
                     saved.getMainActivity(),
                     saved.isImportant(),
@@ -1264,6 +1266,7 @@ series.setPresetCode(presetCode);
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents,
+            Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         try {
             // Find series
@@ -1359,13 +1362,16 @@ if (presetCode != null) {
             if (mandatoryForFacultyStudents != null) {
                 series.setMandatoryForFacultyStudents(mandatoryForFacultyStudents);
             }
+            if (isDraft != null) {
+                series.setDraft(isDraft);
+            }
 
             ActivitySeries saved = seriesRepository.save(series);
             reminderScheduleService.syncSeriesMinimumRequirementReminders(saved);
             logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
 
-            // Auto-register students to main activity if series flags require it
-            if (saved.getMainActivity() != null) {
+            // Auto-register students to main activity if series flags require it (only when non-draft)
+            if (!saved.isDraft() && saved.getMainActivity() != null) {
                 autoRegisterService.autoRegisterStudents(
                         saved.getMainActivity(),
                         saved.isImportant(),
@@ -1446,6 +1452,7 @@ if (presetCode != null) {
                 .collect(Collectors.toList()));
         response.setImportant(series.isImportant());
         response.setMandatoryForFacultyStudents(series.isMandatoryForFacultyStudents());
+        response.setDraft(series.isDraft());
         response.setPresetCode(series.getPresetCode());
         response.setPresetConfig(null);
         response.setCreatedAt(series.getCreatedAt());

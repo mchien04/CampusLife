@@ -88,6 +88,7 @@ public class ActivitySeriesController {
                     minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
                     request.getAudience(), request.getDepartmentIds(),
                     request.getIsImportant(), request.getMandatoryForFacultyStudents(),
+                    request.getIsDraft(),
                     request.getPresetCode());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -412,6 +413,7 @@ public class ActivitySeriesController {
                     minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
                     request.getAudience(), request.getDepartmentIds(),
                     request.getIsImportant(), request.getMandatoryForFacultyStudents(),
+                    request.getIsDraft(),
                     request.getPresetCode());
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);

@@ -20,6 +20,7 @@ public interface ActivitySeriesService {
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
                         ScoreRuleAudience audience, List<Long> departmentIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
                         SeriesPresetCode presetCode);
 
         /**
@@ -108,6 +109,7 @@ public interface ActivitySeriesService {
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
                         ScoreRuleAudience audience, List<Long> departmentIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
                         SeriesPresetCode presetCode);
 
         /**
