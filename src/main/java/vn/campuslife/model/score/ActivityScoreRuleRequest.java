@@ -22,4 +22,5 @@ public class ActivityScoreRuleRequest {
     private Long explicitSemesterId;
     private List<Long> departmentIds;
     private Boolean enabled;
+    private Boolean isPresetGenerated;
 }

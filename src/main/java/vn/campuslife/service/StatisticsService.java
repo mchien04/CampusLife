@@ -36,5 +36,10 @@ public interface StatisticsService {
      */
     Response getMiniGameStatistics(Long miniGameId, java.time.LocalDateTime startDate, 
                                     java.time.LocalDateTime endDate);
+
+    /**
+     * Score source-type breakdown
+     */
+    Response getScoreBreakdown(Long semesterId, Long studentId, Long departmentId);
 }
 

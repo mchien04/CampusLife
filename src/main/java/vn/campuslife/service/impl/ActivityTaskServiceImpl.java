@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -199,6 +200,23 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             ActivityTask task = taskOpt.get();
+
+            // Validate owning activity is valid
+            Activity owningActivity = task.getActivity();
+            if (owningActivity == null || owningActivity.isDeleted()) {
+                return new Response(false, "Task's owning activity is invalid", null);
+            }
+
+            // Validate students are registered for this activity
+            Set<Long> registeredStudentIds = activityRegistrationRepository
+                    .findStudentIdsByActivityId(owningActivity.getId());
+            List<Long> unregisteredIds = request.getStudentIds().stream()
+                    .filter(sid -> !registeredStudentIds.contains(sid))
+                    .toList();
+            if (!unregisteredIds.isEmpty()) {
+                return new Response(false,
+                        "Students not registered for activity: " + unregisteredIds, null);
+            }
 
             // Validate students exist
             List<Student> students = studentRepository.findAllById(request.getStudentIds());

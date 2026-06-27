@@ -15,4 +15,5 @@ public class ActivityPresetDefinitionResponse {
     private List<ActivityType> recommendedActivityTypes = new ArrayList<>();
     private Boolean defaultRequiresSubmission;
     private List<String> notes = new ArrayList<>();
+    private List<PresetRuleDescriptor> supportedRules = new ArrayList<>();
 }

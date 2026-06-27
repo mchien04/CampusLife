@@ -43,10 +43,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -431,7 +433,8 @@ public class ScoreServiceImpl implements ScoreService {
 
     @Override
     @Transactional(readOnly = true)
-    public Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId) {
+    public Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId,
+                                    LocalDateTime startDate, LocalDateTime endDate, String keyword) {
         try {
             // Validate student
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
@@ -467,15 +470,57 @@ public class ScoreServiceImpl implements ScoreService {
                 }
             }
 
-            List<ScoreEntry> scoreEntries = scoreType != null
-                    ? scoreEntryRepository.findByStudentIdAndSemesterIdAndScoreTypeAndStatusOrderByCreatedAtAsc(
-                            studentId, semesterId, scoreType, ScoreEntryStatus.ACTIVE)
-                    : scoreEntryRepository.findByStudentIdAndSemesterIdAndStatusOrderByCreatedAtAsc(
-                            studentId, semesterId, ScoreEntryStatus.ACTIVE);
+            // DB-level pagination (Option A: aggregate-offset + DB page)
+            Page<ScoreEntry> scoreEntryPage;
+            if (scoreType != null) {
+                scoreEntryPage = scoreEntryRepository.findWithActivityByStudentAndSemesterAndScoreType(
+                        studentId, semesterId, scoreType, ScoreEntryStatus.ACTIVE, pageable);
+            } else {
+                scoreEntryPage = scoreEntryRepository.findWithActivityByStudentAndSemester(
+                        studentId, semesterId, ScoreEntryStatus.ACTIVE, pageable);
+            }
 
-            List<ScoreHistoryDetailResponse> allScoreHistoryResponses = new ArrayList<>();
-            BigDecimal runningScore = BigDecimal.ZERO;
-            for (ScoreEntry entry : scoreEntries) {
+            List<ScoreEntry> pageEntries = scoreEntryPage.getContent();
+
+            // Compute prior total (sum of all entries OLDER than this page's oldest entry)
+            BigDecimal priorTotal = BigDecimal.ZERO;
+            if (!pageEntries.isEmpty()) {
+                ScoreEntry lastEntry = pageEntries.get(pageEntries.size() - 1);
+                LocalDateTime cutoffTime = lastEntry.getCreatedAt();
+                Long cutoffId = lastEntry.getId();
+                if (scoreType != null) {
+                    priorTotal = scoreEntryRepository.sumPointsBeforeCutoffWithScoreType(
+                            studentId, semesterId, scoreType, ScoreEntryStatus.ACTIVE, cutoffTime, cutoffId);
+                } else {
+                    priorTotal = scoreEntryRepository.sumPointsBeforeCutoff(
+                            studentId, semesterId, ScoreEntryStatus.ACTIVE, cutoffTime, cutoffId);
+                }
+            }
+
+            // Batch-load series and progress to fix N+1
+            Set<Long> seriesIds = new HashSet<>();
+            Set<Long> progressIds = new HashSet<>();
+            for (ScoreEntry entry : pageEntries) {
+                if (entry.getActivity() != null && entry.getActivity().getSeriesId() != null) {
+                    seriesIds.add(entry.getActivity().getSeriesId());
+                }
+                if (entry.getSourceType() == ScoreEntrySourceType.SERIES_PROGRESS && entry.getSourceId() != null) {
+                    progressIds.add(entry.getSourceId());
+                }
+            }
+            Map<Long, ActivitySeries> seriesMap = new HashMap<>();
+            if (!seriesIds.isEmpty()) {
+                seriesRepository.findAllById(seriesIds).forEach(s -> seriesMap.put(s.getId(), s));
+            }
+            Map<Long, vn.campuslife.entity.StudentSeriesProgress> progressMap = new HashMap<>();
+            if (!progressIds.isEmpty()) {
+                progressRepository.findAllById(progressIds).forEach(p -> progressMap.put(p.getId(), p));
+            }
+
+            // Build score history responses with running total
+            List<ScoreHistoryDetailResponse> scoreHistoryResponses = new ArrayList<>();
+            BigDecimal runningScore = priorTotal;
+            for (ScoreEntry entry : pageEntries) {
                 ScoreHistoryDetailResponse response = new ScoreHistoryDetailResponse();
                 response.setId(entry.getId());
                 response.setOldScore(runningScore);
@@ -493,16 +538,19 @@ public class ScoreServiceImpl implements ScoreService {
                     response.setActivityName(entry.getActivity().getName());
                     if (entry.getActivity().getSeriesId() != null) {
                         response.setSeriesId(entry.getActivity().getSeriesId());
-                        seriesRepository.findById(entry.getActivity().getSeriesId())
-                                .ifPresent(series -> response.setSeriesName(series.getName()));
+                        ActivitySeries series = seriesMap.get(entry.getActivity().getSeriesId());
+                        if (series != null) {
+                            response.setSeriesName(series.getName());
+                        }
                     }
                 }
 
                 if (entry.getSourceType() == ScoreEntrySourceType.SERIES_PROGRESS) {
-                    progressRepository.findById(entry.getSourceId()).ifPresent(progress -> {
+                    vn.campuslife.entity.StudentSeriesProgress progress = progressMap.get(entry.getSourceId());
+                    if (progress != null) {
                         response.setSeriesId(progress.getSeries().getId());
                         response.setSeriesName(progress.getSeries().getName());
-                    });
+                    }
                 }
 
                 if (entry.getCreatedBy() != null) {
@@ -510,15 +558,10 @@ public class ScoreServiceImpl implements ScoreService {
                     response.setChangedByFullName(null);
                 }
 
-                allScoreHistoryResponses.add(response);
+                scoreHistoryResponses.add(response);
             }
 
-            Collections.reverse(allScoreHistoryResponses);
-            int historyFromIndex = Math.min(pageNum * pageSize, allScoreHistoryResponses.size());
-            int historyToIndex = Math.min(historyFromIndex + pageSize, allScoreHistoryResponses.size());
-            List<ScoreHistoryDetailResponse> scoreHistoryResponses = allScoreHistoryResponses.subList(historyFromIndex, historyToIndex);
-            int historyTotalPages = allScoreHistoryResponses.isEmpty() ? 0
-                    : (int) Math.ceil((double) allScoreHistoryResponses.size() / pageSize);
+            int historyTotalPages = scoreEntryPage.getTotalPages();
 
             // Get ActivityParticipation COMPLETED
             Page<ActivityParticipation> participationPage;
@@ -530,7 +573,18 @@ public class ScoreServiceImpl implements ScoreService {
                         .findByRegistration_StudentId_Completed(studentId, pageable);
             }
 
-            // Convert ActivityParticipation to DTO
+            // Convert ActivityParticipation to DTO (batch-load series)
+            Set<Long> participationSeriesIds = new HashSet<>();
+            for (ActivityParticipation ap : participationPage.getContent()) {
+                Activity act = ap.getRegistration().getActivity();
+                if (act.getSeriesId() != null) {
+                    participationSeriesIds.add(act.getSeriesId());
+                }
+            }
+            if (!participationSeriesIds.isEmpty()) {
+                seriesRepository.findAllById(participationSeriesIds).forEach(s -> seriesMap.put(s.getId(), s));
+            }
+
             List<ActivityParticipationDetailResponse> participationResponses = participationPage.getContent().stream()
                     .map(ap -> {
                         ActivityParticipationDetailResponse response = new ActivityParticipationDetailResponse();
@@ -554,9 +608,9 @@ public class ScoreServiceImpl implements ScoreService {
                         // Get series info if activity belongs to series
                         if (activity.getSeriesId() != null) {
                             response.setSeriesId(activity.getSeriesId());
-                            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(activity.getSeriesId());
-                            if (seriesOpt.isPresent()) {
-                                response.setSeriesName(seriesOpt.get().getName());
+                            ActivitySeries series = seriesMap.get(activity.getSeriesId());
+                            if (series != null) {
+                                response.setSeriesName(series.getName());
                             }
                         }
 
@@ -577,7 +631,7 @@ public class ScoreServiceImpl implements ScoreService {
             viewResponse.setActivityParticipations(participationResponses);
             
             // Calculate total records (combine both)
-            long totalRecords = allScoreHistoryResponses.size() + participationPage.getTotalElements();
+            long totalRecords = scoreEntryPage.getTotalElements() + participationPage.getTotalElements();
             viewResponse.setTotalRecords(totalRecords);
             viewResponse.setPage(pageNum);
             viewResponse.setSize(pageSize);
@@ -591,5 +645,4 @@ public class ScoreServiceImpl implements ScoreService {
         }
     }
 }
-
 

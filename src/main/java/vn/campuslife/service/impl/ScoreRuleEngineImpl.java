@@ -35,9 +35,13 @@ import vn.campuslife.service.SemesterHelperService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import vn.campuslife.entity.ScoreEntry;
+import vn.campuslife.model.score.AppliedScoreAward;
 
 @Slf4j
 @Service
@@ -55,18 +59,20 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
 
     @Override
     @Transactional
-    public void applyActivityCompleted(ActivityParticipation participation, User actor) {
+    public List<AppliedScoreAward> applyActivityCompleted(ActivityParticipation participation, User actor) {
         Activity activity = participation.getRegistration().getActivity();
         if (activity.getSeriesId() != null) {
             log.info("Skipping individual completion points for activity {} belonging to series {}", activity.getId(),
                     activity.getSeriesId());
-            return;
+            return Collections.emptyList();
         }
 
         Student student = participation.getRegistration().getStudent();
 
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(),
                 ScoreRuleTrigger.PARTICIPATION_COMPLETED);
+
+        List<AppliedScoreAward> awards = new ArrayList<>();
 
         for (ActivityScoreRule rule : rules) {
             if (!isEligible(rule, student))
@@ -78,7 +84,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
 
             Semester semester = semesterResolver.resolveSemester(activity, rule, participation.getDate());
 
-            scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
+            ScoreEntry entry = scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
                     .studentId(student.getId())
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
@@ -90,7 +96,12 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                     .reason("Completed activity: " + activity.getName())
                     .actor(actor)
                     .build());
+
+            if (entry != null) {
+                awards.add(AppliedScoreAward.fromEntry(entry));
+            }
         }
+        return awards;
     }
 
     @Override
@@ -233,18 +244,20 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
 
     @Override
     @Transactional
-    public void applySubmissionGraded(TaskSubmission submission, User actor) {
+    public List<AppliedScoreAward> applySubmissionGraded(TaskSubmission submission, User actor) {
         Activity activity = submission.getTask().getActivity();
         if (activity != null && activity.getSeriesId() != null) {
             log.info("Skipping individual submission points for activity {} belonging to series {}", activity.getId(),
                     activity.getSeriesId());
-            return;
+            return Collections.emptyList();
         }
 
         Student student = submission.getStudent();
 
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(),
                 ScoreRuleTrigger.SUBMISSION_GRADED);
+
+        List<AppliedScoreAward> awards = new ArrayList<>();
 
         for (ActivityScoreRule rule : rules) {
             if (!isEligible(rule, student))
@@ -260,7 +273,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
 
             Semester semester = semesterResolver.resolveSemester(activity, rule, submission.getSubmittedAt());
 
-            scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
+            ScoreEntry entry = scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
                     .studentId(student.getId())
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
@@ -272,7 +285,12 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                     .reason("Graded submission for activity: " + activity.getName())
                     .actor(actor)
                     .build());
+
+            if (entry != null) {
+                awards.add(AppliedScoreAward.fromEntry(entry));
+            }
         }
+        return awards;
     }
 
     @Override

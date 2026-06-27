@@ -17,6 +17,7 @@ import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.model.activity.ActivityParticipationResponse;
 import vn.campuslife.model.activity.ActivityRegistrationRequest;
 import vn.campuslife.model.activity.ActivityRegistrationResponse;
+import vn.campuslife.model.score.AppliedScoreAward;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.NotificationService;
@@ -457,10 +458,12 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         // CHECK-OUT (lần 2) - từ CHECKED_IN sang ATTENDED/COMPLETED
         else if (currentType == ParticipationType.CHECKED_IN) {
             markParticipationAsAttended(registration, participation, now, true);
-            boolean completed = finalizeAttendanceOutcome(registration, participation,
+            List<AppliedScoreAward> awards = finalizeAttendanceOutcome(registration, participation,
                     participation.getRegistration().getStudent().getUser());
+            boolean completed = participation.getParticipationType() == ParticipationType.COMPLETED;
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
+            resp.setScoreAwards(awards);
 
             String message = completed
                     ? (activity.getSeriesId() != null
@@ -525,10 +528,12 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             markParticipationAsAttended(registration, participation, now, false);
-            boolean completed = finalizeAttendanceOutcome(registration, participation,
+            List<AppliedScoreAward> awards = finalizeAttendanceOutcome(registration, participation,
                     participation.getRegistration().getStudent().getUser());
+            boolean completed = participation.getParticipationType() == ParticipationType.COMPLETED;
 
             ActivityParticipationResponse resp = toParticipationResponse(participation);
+            resp.setScoreAwards(awards);
             String message = completed
                     ? (activity.getSeriesId() != null
                             ? "Điểm danh thành công bằng QR code. Đã ghi nhận hoàn thành mốc trong chuỗi."
@@ -1043,30 +1048,28 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
-    private boolean finalizeAttendanceOutcome(ActivityRegistration registration,
+    private List<AppliedScoreAward> finalizeAttendanceOutcome(ActivityRegistration registration,
             ActivityParticipation participation,
             User actor) {
         Activity activity = registration.getActivity();
         if (activity == null || participation.getParticipationType() == ParticipationType.COMPLETED) {
-            return participation.getParticipationType() == ParticipationType.COMPLETED;
+            return Collections.emptyList();
         }
 
         if (!activity.isRequiresSubmission()) {
             markParticipationCompleted(participation, true);
-            applyStandaloneOrSeriesAttendanceResult(registration, participation, actor);
-            return true;
+            return applyStandaloneOrSeriesAttendanceResult(registration, participation, actor);
         }
 
         Optional<TaskSubmission> gradedSubmissionOpt = findLatestGradedSubmission(
                 registration.getStudent().getId(),
                 activity.getId());
         if (gradedSubmissionOpt.isEmpty()) {
-            return false;
+            return Collections.emptyList();
         }
 
         markParticipationCompleted(participation, gradedSubmissionOpt.get().getIsCompleted());
-        applyStandaloneOrSeriesSubmissionResult(activity, registration.getStudent(), gradedSubmissionOpt.get(), actor);
-        return true;
+        return applyStandaloneOrSeriesSubmissionResult(activity, registration.getStudent(), gradedSubmissionOpt.get(), actor);
     }
 
     private void markParticipationCompleted(ActivityParticipation participation, boolean isCompleted) {
@@ -1076,7 +1079,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         participationRepository.save(participation);
     }
 
-    private void applyStandaloneOrSeriesAttendanceResult(ActivityRegistration registration,
+    private List<AppliedScoreAward> applyStandaloneOrSeriesAttendanceResult(ActivityRegistration registration,
             ActivityParticipation participation,
             User actor) {
         Activity activity = registration.getActivity();
@@ -1088,17 +1091,26 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             } catch (Exception e) {
                 logger.warn("Failed to update series progress: {}", e.getMessage());
             }
-            return;
+            return Collections.emptyList();
         }
 
         try {
-            scoreRuleEngine.applyActivityCompleted(participation, actor);
+            List<AppliedScoreAward> awards = scoreRuleEngine.applyActivityCompleted(participation, actor);
+            if (awards != null && !awards.isEmpty()) {
+                BigDecimal totalPoints = awards.stream()
+                        .map(AppliedScoreAward::getPoints)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                participation.setPointsEarned(totalPoints);
+                participationRepository.save(participation);
+            }
+            return awards;
         } catch (Exception e) {
             logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
+            return Collections.emptyList();
         }
     }
 
-    private void applyStandaloneOrSeriesSubmissionResult(Activity activity,
+    private List<AppliedScoreAward> applyStandaloneOrSeriesSubmissionResult(Activity activity,
             Student student,
             TaskSubmission submission,
             User actor) {
@@ -1110,13 +1122,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     logger.warn("Failed to update series progress: {}", e.getMessage());
                 }
             }
-            return;
+            return Collections.emptyList();
         }
 
         try {
-            scoreRuleEngine.applySubmissionGraded(submission, actor);
+            return scoreRuleEngine.applySubmissionGraded(submission, actor);
         } catch (Exception e) {
             logger.error("Failed to apply submission rules: {}", e.getMessage(), e);
+            return Collections.emptyList();
         }
     }
 

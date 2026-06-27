@@ -40,6 +40,7 @@ import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
+import vn.campuslife.util.NotificationMessageTemplate;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.util.UrlUtils;
 import vn.campuslife.enumeration.NotificationType;
@@ -76,6 +77,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ScorePresetService scorePresetService;
     private final UploadProperties uploadProperties;
+    private final NotificationMessageTemplate notificationMessageTemplate;
 
     @Override
     @Transactional
@@ -617,9 +619,7 @@ public class ActivityServiceImpl implements ActivityService {
 
             // Nếu isImportant = true: đăng ký cho tất cả sinh viên
             if (activity.isImportant()) {
-                List<Student> allStudents = studentRepository.findAll().stream()
-                        .filter(student -> !student.isDeleted())
-                        .collect(Collectors.toList());
+                List<Student> allStudents = studentRepository.findByIsDeletedFalse();
                 studentsToRegister.addAll(allStudents);
                 logger.info("Auto-registering {} students for important activity: {}", allStudents.size(),
                         activity.getName());
@@ -627,7 +627,9 @@ public class ActivityServiceImpl implements ActivityService {
 
             // Nếu mandatoryForFacultyStudents = true: đăng ký cho sinh viên thuộc khoa tổ
             // chức
-            if (activity.isMandatoryForFacultyStudents() && !activity.getOrganizers().isEmpty()) {
+            if (activity.isMandatoryForFacultyStudents()
+                    && activity.getOrganizers() != null
+                    && !activity.getOrganizers().isEmpty()) {
                 List<Long> departmentIds = activity.getOrganizers().stream()
                         .map(Department::getId)
                         .collect(Collectors.toList());
@@ -640,10 +642,13 @@ public class ActivityServiceImpl implements ActivityService {
 
             // Tạo registrations cho các sinh viên (chỉ những sinh viên chưa đăng ký)
             if (!studentsToRegister.isEmpty()) {
+                // Batch existence check instead of N+1 per-student checks
+                Set<Long> existingStudentIds = activityRegistrationRepository
+                        .findStudentIdsByActivityId(activity.getId());
+
                 List<ActivityRegistration> registrations = studentsToRegister.stream()
                         .distinct() // Remove duplicates
-                        .filter(student -> !activityRegistrationRepository
-                                .existsByActivityIdAndStudentId(activity.getId(), student.getId()))
+                        .filter(student -> !existingStudentIds.contains(student.getId()))
                         .map(student -> {
                             ActivityRegistration registration = new ActivityRegistration();
                             registration.setActivity(activity);
@@ -660,7 +665,7 @@ public class ActivityServiceImpl implements ActivityService {
                             do {
                                 code = TicketCodeUtils.newTicketCode();
                                 attempts++;
-                            } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 3);
+                            } while (activityRegistrationRepository.existsByTicketCode(code) && attempts < 5);
                             registration.setTicketCode(code);
                             return registration;
                         })
@@ -694,16 +699,14 @@ public class ActivityServiceImpl implements ActivityService {
                         String title;
                         String content;
                         if (activity.isImportant()) {
-                            title = "Đăng ký tự động - Sự kiện quan trọng";
-                            content = String.format("Bạn đã được tự động đăng ký sự kiện quan trọng: %s",
-                                    activity.getName());
+                            title = notificationMessageTemplate.autoRegisterImportantTitle();
+                            content = notificationMessageTemplate.autoRegisterImportantContent(activity.getName());
                         } else if (activity.isMandatoryForFacultyStudents()) {
-                            title = "Đăng ký tự động - Sự kiện bắt buộc";
-                            content = String.format("Bạn đã được tự động đăng ký sự kiện bắt buộc: %s",
-                                    activity.getName());
+                            title = notificationMessageTemplate.autoRegisterMandatoryTitle();
+                            content = notificationMessageTemplate.autoRegisterMandatoryContent(activity.getName());
                         } else {
-                            title = "Đăng ký tự động";
-                            content = String.format("Bạn đã được tự động đăng ký sự kiện: %s", activity.getName());
+                            title = notificationMessageTemplate.autoRegisterDefaultTitle();
+                            content = notificationMessageTemplate.autoRegisterDefaultContent(activity.getName());
                         }
 
                         for (ActivityRegistration registration : registrations) {

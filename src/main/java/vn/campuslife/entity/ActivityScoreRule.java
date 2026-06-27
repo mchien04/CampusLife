@@ -68,6 +68,9 @@ public class ActivityScoreRule {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    @Column(name = "is_preset_generated", nullable = false)
+    private boolean isPresetGenerated = false;
+
     @ManyToMany
     @JoinTable(name = "activity_score_rule_departments", 
         joinColumns = @JoinColumn(name = "rule_id"), 

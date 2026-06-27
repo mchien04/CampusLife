@@ -6,8 +6,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
+import vn.campuslife.service.RecalculationJobService;
 import vn.campuslife.service.ScoreService;
 import vn.campuslife.service.StudentService;
+
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/scores")
@@ -16,6 +19,7 @@ public class ScoreController {
 
     private final ScoreService scoreService;
     private final StudentService studentService;
+    private final RecalculationJobService recalculationJobService;
 
     // Deprecated: training score by criteria removed
 
@@ -124,6 +128,9 @@ public class ScoreController {
             @RequestParam(required = false) String scoreType,
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String keyword,
             Authentication authentication) {
         try {
             // Get requesting student ID if user is a student
@@ -147,11 +154,80 @@ public class ScoreController {
                 }
             }
 
-            Response resp = scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId);
+            LocalDateTime startDateTime = null;
+            LocalDateTime endDateTime = null;
+            if (startDate != null && !startDate.isBlank()) {
+                startDateTime = LocalDateTime.parse(startDate);
+            }
+            if (endDate != null && !endDate.isBlank()) {
+                endDateTime = LocalDateTime.parse(endDate);
+            }
+
+            Response resp = scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId,
+                    startDateTime, endDateTime, keyword);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to get score history: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Start async recalculation for all students in a semester
+     * Returns a job ID for tracking progress
+     *
+     * @param semesterId ID học kỳ (optional - null = học kỳ hiện tại)
+     * @return Job info with jobId for status polling
+     */
+    @PostMapping("/recalculate/async")
+    public ResponseEntity<Response> startAsyncRecalculation(
+            @RequestParam(required = false) Long semesterId,
+            Authentication authentication) {
+        try {
+            Long createdBy = null;
+            if (authentication != null) {
+                // Try to resolve user ID if available
+                createdBy = null; // createdBy is optional tracking field
+            }
+            Response resp = recalculationJobService.startAsyncRecalculation(semesterId, createdBy);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to start async recalculation: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Get status of an async recalculation job
+     *
+     * @param jobId ID of the recalculation job
+     * @return Job status with progress info
+     */
+    @GetMapping("/recalculate/status/{jobId}")
+    public ResponseEntity<Response> getRecalculationJobStatus(@PathVariable Long jobId) {
+        try {
+            Response resp = recalculationJobService.getJobStatus(jobId);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to get job status: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Retry a failed or timed-out recalculation job
+     *
+     * @param jobId ID of the failed recalculation job
+     * @return New job info
+     */
+    @PostMapping("/recalculate/retry/{jobId}")
+    public ResponseEntity<Response> retryRecalculationJob(@PathVariable Long jobId) {
+        try {
+            Response resp = recalculationJobService.retryFailedJob(jobId);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to retry job: " + e.getMessage(), null));
         }
     }
 }
