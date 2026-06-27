@@ -10,4 +10,5 @@ public interface ActivityScoreRuleService {
     List<ActivityScoreRule> getEnabledRules(Long activityId, ScoreRuleTrigger trigger);
     void replaceRules(Long activityId, List<ActivityScoreRuleRequest> requests);
     List<ActivityScoreRuleResponse> getRuleResponses(Long activityId);
+    long countActiveEntries(Long activityId);
 }

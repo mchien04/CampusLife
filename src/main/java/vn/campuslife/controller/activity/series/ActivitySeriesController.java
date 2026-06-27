@@ -54,15 +54,14 @@ public class ActivitySeriesController {
                         .body(new Response(false, "Series name is required", null));
             }
 
+            scorePresetService.applySeriesPreset(request);
+
             String description = request.getDescription();
-            SeriesPresetPreviewResponse presetPreview = resolveSeriesPreset(request);
-            String milestonePoints = resolveMilestonePointsJson(request, presetPreview);
+            String milestonePoints = resolveMilestonePointsJson(request.getMilestonePoints());
             
             String scoreTypeStr = request.getScoreType() != null
                     ? request.getScoreType().name()
-                    : (presetPreview != null && presetPreview.getScoreType() != null
-                            ? presetPreview.getScoreType().name()
-                            : "REN_LUYEN");
+                    : "REN_LUYEN";
             vn.campuslife.enumeration.ScoreType scoreType;
             try {
                 scoreType = vn.campuslife.enumeration.ScoreType.valueOf(scoreTypeStr);
@@ -72,28 +71,23 @@ public class ActivitySeriesController {
                         .body(new Response(false, "Invalid ScoreType: " + scoreTypeStr, null));
             }
 
-            Long mainActivityId = null;
-            mainActivityId = request.getMainActivityId();
+            Long mainActivityId = request.getMainActivityId();
             java.time.LocalDateTime registrationStartDate = request.getRegistrationStartDate();
             java.time.LocalDateTime registrationDeadline = request.getRegistrationDeadline();
             Boolean requiresApproval = request.getRequiresApproval() != null
                     ? request.getRequiresApproval()
                     : true;
             Integer ticketQuantity = request.getTicketQuantity();
-            Boolean minimumRequirementEnabled = request.getMinimumRequirementEnabled() != null
-                    ? request.getMinimumRequirementEnabled()
-                    : (presetPreview != null ? presetPreview.getMinimumRequirementEnabled() : null);
-            Integer minimumRequiredEvents = request.getMinimumRequiredEvents() != null
-                    ? request.getMinimumRequiredEvents()
-                    : (presetPreview != null ? presetPreview.getMinimumRequiredEvents() : null);
-            Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints() != null
-                    ? request.getMinimumPenaltyPoints()
-                    : (presetPreview != null ? presetPreview.getMinimumPenaltyPoints() : null);
+            Boolean minimumRequirementEnabled = request.getMinimumRequirementEnabled();
+            Integer minimumRequiredEvents = request.getMinimumRequiredEvents();
+            Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints();
 
             Response response = seriesService.createSeries(name, description, milestonePoints, scoreType,
                     mainActivityId,
                     registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
-                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId());
+                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
+                    request.getAudience(), request.getDepartmentIds(),
+                    request.getPresetCode());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating series: {}", e.getMessage(), e);
@@ -383,16 +377,15 @@ public class ActivitySeriesController {
             @PathVariable Long seriesId,
             @RequestBody UpdateSeriesRequest request) {
         try {
+            scorePresetService.applySeriesPreset(request);
+
             String name = request.getName();
             String description = request.getDescription();
-            SeriesPresetPreviewResponse presetPreview = resolveSeriesPreset(request);
-            String milestonePoints = resolveMilestonePointsJson(request, presetPreview);
+            String milestonePoints = resolveMilestonePointsJson(request.getMilestonePoints());
             
             String scoreTypeStr = request.getScoreType() != null
                     ? request.getScoreType().name()
-                    : (presetPreview != null && presetPreview.getScoreType() != null
-                            ? presetPreview.getScoreType().name()
-                            : null);
+                    : null;
             vn.campuslife.enumeration.ScoreType scoreType = null;
             if (scoreTypeStr != null) {
                 try {
@@ -409,19 +402,15 @@ public class ActivitySeriesController {
             java.time.LocalDateTime registrationDeadline = request.getRegistrationDeadline();
             Boolean requiresApproval = request.getRequiresApproval();
             Integer ticketQuantity = request.getTicketQuantity();
-            Boolean minimumRequirementEnabled = request.getMinimumRequirementEnabled() != null
-                    ? request.getMinimumRequirementEnabled()
-                    : (presetPreview != null ? presetPreview.getMinimumRequirementEnabled() : null);
-            Integer minimumRequiredEvents = request.getMinimumRequiredEvents() != null
-                    ? request.getMinimumRequiredEvents()
-                    : (presetPreview != null ? presetPreview.getMinimumRequiredEvents() : null);
-            Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints() != null
-                    ? request.getMinimumPenaltyPoints()
-                    : (presetPreview != null ? presetPreview.getMinimumPenaltyPoints() : null);
+            Boolean minimumRequirementEnabled = request.getMinimumRequirementEnabled();
+            Integer minimumRequiredEvents = request.getMinimumRequiredEvents();
+            Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints();
 
             Response response = seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
                     mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
-                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId());
+                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
+                    request.getAudience(), request.getDepartmentIds(),
+                    request.getPresetCode());
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -438,69 +427,10 @@ public class ActivitySeriesController {
         }
     }
 
-    private SeriesPresetPreviewResponse resolveSeriesPreset(CreateSeriesRequest request) {
-        if (request == null || request.getPresetCode() == null) {
-            return null;
-        }
-        try {
-            SeriesPresetPreviewRequest previewRequest = new SeriesPresetPreviewRequest();
-            previewRequest.setPresetCode(request.getPresetCode());
-            previewRequest.setPresetConfig(request.getPresetConfig());
-            return scorePresetService.previewSeriesPreset(previewRequest);
-        } catch (IllegalArgumentException ex) {
-            logger.warn("Invalid series presetCode: {}", request.getPresetCode());
-            return null;
-        }
-    }
-
-    private SeriesPresetPreviewResponse resolveSeriesPreset(UpdateSeriesRequest request) {
-        if (request == null || request.getPresetCode() == null) {
-            return null;
-        }
-        try {
-            SeriesPresetPreviewRequest previewRequest = new SeriesPresetPreviewRequest();
-            previewRequest.setPresetCode(request.getPresetCode());
-            previewRequest.setPresetConfig(request.getPresetConfig());
-            return scorePresetService.previewSeriesPreset(previewRequest);
-        } catch (IllegalArgumentException ex) {
-            logger.warn("Invalid series presetCode: {}", request.getPresetCode());
-            return null;
-        }
-    }
-
-    private String resolveMilestonePointsJson(CreateSeriesRequest request, SeriesPresetPreviewResponse presetPreview) {
-        if (presetPreview != null
-                && presetPreview.getMilestonePoints() != null
-                && !presetPreview.getMilestonePoints().isEmpty()) {
+    private String resolveMilestonePointsJson(Map<Integer, Integer> milestonePointsMap) {
+        if (milestonePointsMap != null && !milestonePointsMap.isEmpty()) {
             try {
-                return objectMapper.writeValueAsString(presetPreview.getMilestonePoints());
-            } catch (Exception e) {
-                logger.warn("Failed to serialize milestone preset preview", e);
-            }
-        }
-        if (request != null && request.getMilestonePoints() != null && !request.getMilestonePoints().isEmpty()) {
-            try {
-                return objectMapper.writeValueAsString(request.getMilestonePoints());
-            } catch (Exception e) {
-                logger.warn("Failed to serialize milestone points", e);
-            }
-        }
-        return null;
-    }
-
-    private String resolveMilestonePointsJson(UpdateSeriesRequest request, SeriesPresetPreviewResponse presetPreview) {
-        if (presetPreview != null
-                && presetPreview.getMilestonePoints() != null
-                && !presetPreview.getMilestonePoints().isEmpty()) {
-            try {
-                return objectMapper.writeValueAsString(presetPreview.getMilestonePoints());
-            } catch (Exception e) {
-                logger.warn("Failed to serialize milestone preset preview", e);
-            }
-        }
-        if (request != null && request.getMilestonePoints() != null && !request.getMilestonePoints().isEmpty()) {
-            try {
-                return objectMapper.writeValueAsString(request.getMilestonePoints());
+                return objectMapper.writeValueAsString(milestonePointsMap);
             } catch (Exception e) {
                 logger.warn("Failed to serialize milestone points", e);
             }

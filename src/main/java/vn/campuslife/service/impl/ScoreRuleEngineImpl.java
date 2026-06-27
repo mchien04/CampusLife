@@ -345,6 +345,10 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             return;
         }
 
+        if (!isEligibleBySeriesAudience(series, progress.getStudent())) {
+            return;
+        }
+
         Map<String, Integer> milestonePoints;
         try {
             milestonePoints = objectMapper.readValue(series.getMilestonePoints(),
@@ -416,6 +420,10 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             return;
         }
 
+        if (!isEligibleBySeriesAudience(series, student)) {
+            return;
+        }
+
         Semester semester = resolveSeriesSemester(series);
         if (semester == null) {
             log.warn("No semester resolved for series minimum requirement {}", series.getId());
@@ -476,6 +484,23 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             return inDepartment;
         if (rule.getAudience() == ScoreRuleAudience.OUTSIDE_DEPARTMENTS_ONLY)
             return !inDepartment;
+
+        return false;
+    }
+
+    private boolean isEligibleBySeriesAudience(ActivitySeries series, Student student) {
+        if (series.getAudience() == null || series.getAudience() == ScoreRuleAudience.ALL_PARTICIPANTS) {
+            return true;
+        }
+
+        boolean inDepartment = series.getTargetDepartments().contains(student.getDepartment());
+
+        if (series.getAudience() == ScoreRuleAudience.DEPARTMENT_ONLY) {
+            return inDepartment;
+        }
+        if (series.getAudience() == ScoreRuleAudience.OUTSIDE_DEPARTMENTS_ONLY) {
+            return !inDepartment;
+        }
 
         return false;
     }

@@ -17,6 +17,7 @@ import java.util.Set;
 
 import org.hibernate.annotations.Comment;
 import vn.campuslife.enumeration.ActivityType;
+import vn.campuslife.enumeration.ActivityPresetCode;
 
 @Entity
 @Table(name = "activities")
@@ -131,6 +132,12 @@ public class Activity {
     @Column(name = "check_in_code", length = 50, unique = true)
     @Comment("Mã QR code unique để check-in nhanh")
     private String checkInCode;
+
+    /** Preset code used to configure score rules for this activity. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preset_code", length = 50)
+    @Comment("Preset code used to generate score rules")
+    private ActivityPresetCode presetCode;
 
     /** Đăng ký có cần duyệt hay không. */
     @Column(nullable = false)

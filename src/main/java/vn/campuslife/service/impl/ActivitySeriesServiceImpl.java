@@ -77,7 +77,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
             Boolean requiresApproval, Integer ticketQuantity,
-            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId) {
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+            vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
+            vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Series name is required");
@@ -102,8 +104,14 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         if (targetSemesterId != null) {
             semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
         }
+        series.setAudience(audience != null ? audience : vn.campuslife.enumeration.ScoreRuleAudience.ALL_PARTICIPANTS);
+        if (departmentIds != null && !departmentIds.isEmpty()) {
+            java.util.List<Department> depts = departmentRepository.findAllById(departmentIds);
+            series.setTargetDepartments(new LinkedHashSet<>(depts));
+        }
         series.setCreatedAt(LocalDateTime.now());
         series.setDeleted(false); // Set default value for isDeleted
+        series.setPresetCode(presetCode);
 
         if (mainActivityId != null) {
             Optional<Activity> mainActivityOpt = activityRepository.findById(mainActivityId);
@@ -1224,7 +1232,9 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
             Boolean requiresApproval, Integer ticketQuantity,
-            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId) {
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+            vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
+            vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         try {
             // Find series
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
@@ -1242,9 +1252,6 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             // Validate required fields
             if (name != null && name.trim().isEmpty()) {
                 return Response.error("Series name cannot be empty");
-            }
-            if (scoreType == null) {
-                return Response.error("ScoreType is required");
             }
             validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
 
@@ -1299,9 +1306,22 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             }
             if (minimumPenaltyPoints != null) {
                 series.setMinimumPenaltyPoints(minimumPenaltyPoints);
-        if (targetSemesterId != null) {
-            semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
-        }
+            }
+            if (targetSemesterId != null) {
+                semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
+            }
+            if (audience != null) {
+                series.setAudience(audience);
+                if (departmentIds != null) {
+                    java.util.List<Department> depts = departmentRepository.findAllById(departmentIds);
+                    series.getTargetDepartments().clear();
+                    series.getTargetDepartments().addAll(depts);
+                } else {
+                    series.getTargetDepartments().clear();
+                }
+            }
+            if (presetCode != null) {
+                series.setPresetCode(presetCode);
             }
 
             ActivitySeries saved = seriesRepository.save(series);
@@ -1374,6 +1394,12 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         response.setMinimumRequirementEnabled(series.isMinimumRequirementEnabled());
         response.setMinimumRequiredEvents(series.getMinimumRequiredEvents());
         response.setMinimumPenaltyPoints(series.getMinimumPenaltyPoints());
+        response.setAudience(series.getAudience());
+        response.setTargetDepartmentIds(series.getTargetDepartments().stream()
+                .map(Department::getId)
+                .collect(Collectors.toList()));
+        response.setPresetCode(series.getPresetCode());
+        response.setPresetConfig(null);
         response.setCreatedAt(series.getCreatedAt());
         if (series.getMilestonePoints() != null && !series.getMilestonePoints().isBlank()) {
             try {

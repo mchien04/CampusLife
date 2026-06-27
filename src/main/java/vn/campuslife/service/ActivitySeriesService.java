@@ -1,8 +1,12 @@
 package vn.campuslife.service;
 
+import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.SeriesPresetCode;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest;
 import vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest;
+
+import java.util.List;
 
 public interface ActivitySeriesService {
         /**
@@ -13,7 +17,9 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
-                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId);
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        SeriesPresetCode presetCode);
 
         /**
          * Tạo activity trong series với các thuộc tính tối giản
@@ -98,11 +104,12 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
-                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId);
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        SeriesPresetCode presetCode);
 
         /**
          * Xóa chuỗi sự kiện (soft delete)
          */
         Response deleteSeries(Long seriesId);
 }
-

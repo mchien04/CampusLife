@@ -7,11 +7,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.Department;
+import vn.campuslife.enumeration.ActivityType;
+import vn.campuslife.enumeration.ScoreEntryStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.StandardActivityCreateRequest;
 import vn.campuslife.model.activity.StandardActivityUpdateRequest;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.ScoreEntryRepository;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
@@ -34,6 +37,7 @@ public class StandardActivityServiceImpl implements StandardActivityService {
 
     private final ActivityRepository activityRepository;
     private final DepartmentRepository departmentRepository;
+    private final ScoreEntryRepository scoreEntryRepository;
     private final ScorePresetService scorePresetService;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ReminderScheduleService reminderScheduleService;
@@ -94,16 +98,25 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     @Transactional
     public Response updateActivity(Long id, StandardActivityUpdateRequest request) {
         try {
-            scorePresetService.applyActivityPreset(request);
-            // Validation: optional fields. We might need a slightly different validate for update,
-            // or just use manual validation for update. StandardActivityValidator validates all required.
-            // But Update request has optional fields. We can skip validator or write an update validator.
-
             Optional<Activity> opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty()) {
                 return Response.error("Activity not found");
             }
             Activity existing = opt.get();
+
+            ActivityType effectiveType = request.getType() != null ? request.getType() : existing.getType();
+
+            if (request.getType() != null && request.getType() != existing.getType()) {
+                long activeEntries = scoreEntryRepository.countByActivityIdAndStatus(id, ScoreEntryStatus.ACTIVE);
+                if (activeEntries > 0 && !existing.isDraft()) {
+                    return Response.error(
+                            "Cannot change type when activity has " + activeEntries
+                            + " active score entries and is not draft. "
+                            + "Unpublish the activity first.");
+                }
+            }
+
+            scorePresetService.applyActivityPreset(request, effectiveType);
 
             mapper.applyUpdate(existing, request);
 
@@ -119,6 +132,9 @@ public class StandardActivityServiceImpl implements StandardActivityService {
 
             return Response.success("Activity updated successfully", mapper.toResponse(saved));
         } catch (IllegalArgumentException e) {
+            return Response.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            logger.warn("Cannot modify score rules for activity {}: {}", id, e.getMessage());
             return Response.error(e.getMessage());
         } catch (Exception e) {
             logger.error("Failed to update standard activity: {}", e.getMessage(), e);

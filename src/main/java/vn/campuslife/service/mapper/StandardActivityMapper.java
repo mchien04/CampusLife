@@ -48,6 +48,7 @@ public class StandardActivityMapper {
         
         // Organizers and ScoreRules are typically mapped and linked in the service layer
         // because they require database lookups (DepartmentRepository)
+        entity.setPresetCode(req.getPresetCode());
         return entity;
     }
 
@@ -55,6 +56,7 @@ public class StandardActivityMapper {
         if (req == null || entity == null) return;
         
         if (req.getName() != null) entity.setName(req.getName());
+        if (req.getType() != null) entity.setType(req.getType());
         if (req.getDescription() != null) entity.setDescription(req.getDescription());
         if (req.getStartDate() != null) entity.setStartDate(req.getStartDate());
         if (req.getEndDate() != null) entity.setEndDate(req.getEndDate());
@@ -72,6 +74,7 @@ public class StandardActivityMapper {
         if (req.getBenefits() != null) entity.setBenefits(req.getBenefits());
         if (req.getRequirements() != null) entity.setRequirements(req.getRequirements());
         if (req.getContactInfo() != null) entity.setContactInfo(req.getContactInfo());
+        if (req.getPresetCode() != null) entity.setPresetCode(req.getPresetCode());
     }
 
     public StandardActivityResponse toResponse(Activity a) {
@@ -116,7 +119,11 @@ public class StandardActivityMapper {
         dto.setUpdatedAt(a.getUpdatedAt());
         dto.setCreatedBy(a.getCreatedBy());
         dto.setLastModifiedBy(a.getLastModifiedBy());
-        
+
+        dto.setPresetCode(a.getPresetCode());
+        dto.setPresetConfig(null);
+        dto.setActiveScoreEntryCount(activityScoreRuleService.countActiveEntries(a.getId()));
+
         return dto;
     }
 }

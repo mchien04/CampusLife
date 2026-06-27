@@ -1,7 +1,7 @@
 # FE Backend Handoff Spec
 
-> **Version:** 3.1 (Fixed Minigame Quiz persistence — now creates questions/options)  
-> **Baseline:** Commit `c848ee6` → Current HEAD (post minigame quiz fix)  
+> **Version:** 4.0 (ScoreRule Preset mở rộng + Series Audience + Edit Flow fixes)  
+> **Baseline:** Post v3.1 → Current HEAD (preset audience, series audience, merge-by-key, rules-lock, type-lock)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
 ## 1. Mục Đích
@@ -35,6 +35,13 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Async Recalculation (P3)** | Thêm API async recalculation chạy nền với batch processing, timeout protection, progress tracking. Thay thế sync cho bulk recalculation. | - FE dùng `POST /api/scores/recalculate/async` thay vì `/recalculate/all` cho bulk.<br>- Poll `GET /api/scores/recalculate/status/{jobId}` để hiển thị progress bar.<br>- Nếu job FAILED/TIMEOUT, FE cho phép retry qua `POST /api/scores/recalculate/retry/{jobId}`. | **Cao** |
 | **Score Breakdown (P3)** | `GET /api/statistics/scores/breakdown` phân tích điểm theo `sourceType` (ACTIVITY_PARTICIPATION, MINIGAME_ATTEMPT, SERIES_PROGRESS, ...). | - FE thêm tab/section hiển thị breakdown biểu đồ tròn hoặc stacked bar.<br>- Student chỉ xem được của mình; Admin xem được tất cả hoặc filter theo `studentId`. | **Trung bình** |
 | **Async Notifications (P3)** | Gửi notification bulk chạy async qua `@Async("notificationExecutor")`. Không block request khi gửi FCM cho nhiều sinh viên. | - FE không cần thay đổi API contract. Response time cải thiện đáng kể cho bulk notification. | **Thấp** |
+| **ActivityPresetConfig mở rộng (P4)** | `ActivityPresetConfig` có thêm `audience`, `semesterPolicy`, `explicitSemesterId`, `departmentIds`. `buildRule()` đọc từ config thay vì hard-code `ALL_PARTICIPANTS`. | - Form preset: thêm section "Giới hạn đối tượng" với audience SELECT, departmentIds MULTI_SELECT, semesterPolicy SELECT, explicitSemesterId SELECT.<br>- Render từ `ACTIVITY_AUDIENCE` descriptor trong `supportedRules`.<br>- `visibility=audience_department_scoped` → chỉ hiện departmentIds khi audience != ALL_PARTICIPANTS.<br>- `visibility=semester_policy_explicit` → chỉ hiện explicitSemesterId khi semesterPolicy = EXPLICIT_SEMESTER. | **Cao** |
+| **SeriesPresetConfig mở rộng (P4)** | `SeriesPresetConfig` thêm `audience`, `departmentIds`. Series scoring kiểm tra `isEligibleBySeriesAudience()`: student không thuộc khoa đã chọn sẽ KHÔNG nhận milestone/penalty điểm. | - Form tạo/sửa Series: thêm section audience + MULTI_SELECT khoa.<br>- Render từ `SERIES_AUDIENCE` descriptor trong `supportedRules`. | **Cao** |
+| **supportedRules có thêm descriptors (P4)** | `GET /api/activities/presets` thêm `ACTIVITY_AUDIENCE`. `GET /api/series/presets` thêm `SERIES_AUDIENCE`. Mỗi descriptor có `FieldDefinition` với `inputType=MULTI_SELECT` và visibility mới. | - FE hỗ trợ `inputType=MULTI_SELECT` render thành multi-select dropdown (ví dụ: react-select multi).<br>- Xử lý visibility mới: `audience_department_scoped`, `semester_policy_explicit`. | **Cao** |
+| **Score edit merge-by-key + rules-lock (P4)** | Khi edit score rules, BE merge theo key `(triggerType, scoreType, calculation)` thay vì delete-all+recreate → giữ nguyên rule ID. Nếu activity có ACTIVE score entries và không phải draft, BE từ chối sửa. | - FE không cần thay đổi logic gửi scoreRules.<br>- Hiển thị lỗi "Cannot modify score rules..." khi edit activity đã có entries. | **Cao** |
+| **Type-lock + Standard update có type (P4)** | `StandardActivityUpdateRequest` giờ có field `type` (cho phép đổi type khi update). BE từ chối đổi type nếu activity có ACTIVE score entries và non-draft. | - Form edit Standard Activity: bỏ disable dropdown type.<br>- Hiển thị lỗi "Cannot change type..." nếu activity đã có entries. | **Cao** |
+| **ActivityResponse/SeriesResponse có presetCode (P4)** | Response trả về `presetCode` (enum). `presetConfig` hiện để `null` (chưa lưu full config vào DB). | - Màn hình edit: dùng `presetCode` để pre-select preset.<br>- Dùng `scoreRules` hiện tại để reconstruct `presetConfig` nếu cần. | **Trung bình** |
+| **Series update fixes (P4)** | `targetSemesterId` không còn bị kẹt trong `minimumPenaltyPoints`. `scoreType` không còn bắt buộc khi update series. | - FE không cần thay đổi logic. Partial update Series hoạt động đúng. | **Thấp** |
 
 ### 2.2 Các thay đổi về Endpoint API
 
@@ -61,6 +68,15 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
   - `POST /api/activities/minigame` & `PATCH /api/activities/minigame/{miniGameId}`: Endpoint mới cho Minigame Activity.
   - `GET /api/scores/history/student/{studentId}`: Thêm query params `startDate`, `endDate`, `keyword` (tùy chọn). Response structure giữ nguyên.
   - `ActivityScoreRuleRequest` & `ActivityScoreRuleResponse`: Thêm trường `isPresetGenerated` (Boolean, optional).
+  - `ActivityPresetConfig`: Thêm `audience`, `semesterPolicy`, `explicitSemesterId`, `departmentIds`.
+  - `SeriesPresetConfig`: Thêm `audience`, `departmentIds`.
+  - `ActivityResponse`, `StandardActivityResponse`: Thêm `presetCode`, `presetConfig`.
+  - `SeriesResponse`: Thêm `audience`, `targetDepartmentIds`, `presetCode`, `presetConfig`.
+  - `StandardActivityUpdateRequest`: Thêm `type` (cho phép đổi type khi update).
+  - `CreateSeriesRequest`, `UpdateSeriesRequest`: Thêm `audience`, `departmentIds`.
+  - `ScoreSemesterPolicy`: Không thay đổi (chỉ có `ACTIVITY_SEMESTER`, `EXPLICIT_SEMESTER`).
+  - `FieldDefinition.inputType`: Thêm `MULTI_SELECT`.
+  - `FieldDefinition.visibility`: Thêm `audience_department_scoped`, `semester_policy_explicit`.
 
 ---
 
@@ -218,6 +234,10 @@ export interface ActivityPresetConfig {
   minigameExhaustedPenaltyPoints?: number | string | null;
   bonusScoreType?: ScoreType | null;
   bonusPoints?: number | string | null;
+  audience?: ScoreRuleAudience | null;
+  semesterPolicy?: ScoreSemesterPolicy | null;
+  explicitSemesterId?: number | null;
+  departmentIds?: number[] | null;
 }
 
 export interface CreateActivityRequest {
@@ -273,6 +293,9 @@ export interface ActivityResponse {
   organizerIds: number[];
   seriesId?: number | null;
   seriesOrder?: number | null;
+  presetCode?: ActivityPresetCode | null;
+  presetConfig?: ActivityPresetConfig | null;
+  activeScoreEntryCount: number;
   createdAt?: string | null;
   updatedAt?: string | null;
   createdBy?: string | null;
@@ -310,9 +333,8 @@ export interface StandardActivityCreateRequest {
 }
 
 export interface StandardActivityUpdateRequest {
-  // Không extends StandardActivityCreateRequest trong Java. Là class standalone.
-  // type không thể thay đổi sau khi tạo.
   name?: string | null;
+  type?: ActivityType | null;
   description?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -361,6 +383,9 @@ export interface StandardActivityResponse {
   contactInfo?: string | null;
   checkInCode?: string | null;
   scoreRules: ActivityScoreRuleResponse[];
+  presetCode?: ActivityPresetCode | null;
+  presetConfig?: ActivityPresetConfig | null;
+  activeScoreEntryCount: number;
   createdAt?: string | null;
   updatedAt?: string | null;
   createdBy?: string | null;
@@ -556,10 +581,10 @@ export interface ActivitySummaryResponse {
 export interface FieldDefinition {
   fieldName: string;
   label: string;
-  inputType: 'NUMBER' | 'BOOLEAN' | 'SELECT' | 'MAP';
+  inputType: 'NUMBER' | 'BOOLEAN' | 'SELECT' | 'MAP' | 'MULTI_SELECT';
   required: boolean;
   defaultValue: any;
-  visibility: 'ALWAYS' | 'rule_enabled';
+  visibility: 'ALWAYS' | 'rule_enabled' | 'audience_department_scoped' | 'semester_policy_explicit';
   options?: string[] | null;
 }
 
@@ -619,6 +644,8 @@ export interface SeriesPresetConfig {
   minimumRequirementEnabled?: boolean | null;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
+  audience?: ScoreRuleAudience | null;
+  departmentIds?: number[] | null;
 }
 
 export interface CreateSeriesRequest {
@@ -635,12 +662,13 @@ export interface CreateSeriesRequest {
   minimumRequirementEnabled?: boolean | null;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
+  audience?: ScoreRuleAudience | null;
+  departmentIds?: number[] | null;
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
 }
 
 export interface UpdateSeriesRequest {
-  // Không extends CreateSeriesRequest trong Java. Là class standalone.
   name?: string | null;
   description?: string | null;
   milestonePoints?: Record<number, number>;
@@ -654,6 +682,8 @@ export interface UpdateSeriesRequest {
   minimumRequirementEnabled?: boolean | null;
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
+  audience?: ScoreRuleAudience | null;
+  departmentIds?: number[] | null;
   presetCode?: SeriesPresetCode | null;
   presetConfig?: SeriesPresetConfig | null;
 }
@@ -673,6 +703,10 @@ export interface SeriesResponse {
   minimumRequiredEvents?: number | null;
   minimumPenaltyPoints?: number | null;
   targetSemesterId?: number | null;
+  audience?: ScoreRuleAudience | null;
+  targetDepartmentIds?: number[] | null;
+  presetCode?: SeriesPresetCode | null;
+  presetConfig?: SeriesPresetConfig | null;
   createdAt?: string | null;
   // ✅ targetSemesterId đã có trong SeriesResponse (đã fix backend)
 }

@@ -16,6 +16,7 @@ import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.Department;
 import vn.campuslife.entity.Student;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.ScoreEntryStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
 import vn.campuslife.model.activity.ActivityPresetPreviewRequest;
@@ -28,6 +29,7 @@ import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityParticipationRepository;
 import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.ScoreEntryRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.entity.User;
@@ -76,6 +78,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final ReminderScheduleService reminderScheduleService;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ScorePresetService scorePresetService;
+    private final ScoreEntryRepository scoreEntryRepository;
     private final UploadProperties uploadProperties;
     private final NotificationMessageTemplate notificationMessageTemplate;
 
@@ -316,12 +319,22 @@ public class ActivityServiceImpl implements ActivityService {
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
 
+            Activity a = opt.get();
+
+            if (request.getType() != null && request.getType() != a.getType()) {
+                long activeEntries = scoreEntryRepository.countByActivityIdAndStatus(id, ScoreEntryStatus.ACTIVE);
+                if (activeEntries > 0 && !a.isDraft()) {
+                    return new Response(false,
+                            "Cannot change type when activity has " + activeEntries
+                            + " active score entries and is not draft. "
+                            + "Unpublish the activity first.", null);
+                }
+            }
+
             scorePresetService.applyActivityPreset(request);
             String err = validateRequest(request);
             if (err != null)
                 return new Response(false, err, null);
-
-            Activity a = opt.get();
 
             applyRequestToEntity(request, a);
 
@@ -332,8 +345,10 @@ public class ActivityServiceImpl implements ActivityService {
             Activity saved = activityRepository.save(a);
 
             // Replace score rules if provided
-            activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
-            logger.debug("Replaced score rules for activity {}", saved.getId());
+            if (request.getScoreRules() != null) {
+                activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
+                logger.debug("Replaced score rules for activity {}", saved.getId());
+            }
 
             // Auto-register students if flags changed
             // Note: autoRegisterStudents will skip if activity is draft
@@ -348,6 +363,9 @@ public class ActivityServiceImpl implements ActivityService {
             return new Response(true, "Activity updated successfully", toResponse(saved));
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid update activity request {}: {}", id, e.getMessage());
+            return new Response(false, e.getMessage(), null);
+        } catch (IllegalStateException e) {
+            logger.warn("Cannot modify score rules for activity {}: {}", id, e.getMessage());
             return new Response(false, e.getMessage(), null);
         } catch (Exception e) {
             logger.error("Failed to update activity {}: {}", id, e.getMessage(), e);
@@ -534,6 +552,7 @@ public class ActivityServiceImpl implements ActivityService {
         if (req.getRequiresApproval() != null)
             a.setRequiresApproval(req.getRequiresApproval());
         a.setMandatoryForFacultyStudents(Boolean.TRUE.equals(req.getMandatoryForFacultyStudents()));
+        a.setPresetCode(req.getPresetCode());
 
     }
 
@@ -594,6 +613,11 @@ public class ActivityServiceImpl implements ActivityService {
 
         // Map score rules from ActivityScoreRuleService
         dto.setScoreRules(activityScoreRuleService.getRuleResponses(a.getId()));
+
+        dto.setPresetCode(a.getPresetCode());
+        // presetConfig is not persisted on entity; set to null
+        dto.setPresetConfig(null);
+        dto.setActiveScoreEntryCount(activityScoreRuleService.countActiveEntries(a.getId()));
 
         return dto;
     }

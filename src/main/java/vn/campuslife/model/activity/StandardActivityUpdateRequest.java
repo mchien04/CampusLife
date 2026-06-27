@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vn.campuslife.enumeration.ActivityPresetCode;
+import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.model.activity.ActivityPresetConfig;
 
 import java.time.LocalDateTime;
@@ -16,7 +17,7 @@ import java.util.List;
 @AllArgsConstructor
 public class StandardActivityUpdateRequest {
     private String name;
-    // type cannot be changed
+    private ActivityType type;
     private String description;
     
     private LocalDateTime startDate;

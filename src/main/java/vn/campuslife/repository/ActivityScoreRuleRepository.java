@@ -10,6 +10,7 @@ import java.util.List;
 @Repository
 public interface ActivityScoreRuleRepository extends JpaRepository<ActivityScoreRule, Long> {
     List<ActivityScoreRule> findByActivityIdAndEnabledTrue(Long activityId);
+    List<ActivityScoreRule> findByActivityId(Long activityId);
     List<ActivityScoreRule> findByActivityIdAndTriggerTypeAndEnabledTrue(Long activityId, ScoreRuleTrigger triggerType);
     void deleteByActivityId(Long activityId);
 }

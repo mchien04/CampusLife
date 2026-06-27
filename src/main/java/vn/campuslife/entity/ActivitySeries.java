@@ -5,8 +5,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import org.hibernate.annotations.Comment;
+import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.SeriesPresetCode;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "activity_series")
@@ -82,5 +86,22 @@ public class ActivitySeries {
     @Column(nullable = false)
     @Comment("Cờ xóa mềm")
     private boolean isDeleted = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 50)
+    @Comment("Đối tượng áp dụng điểm (ALL_PARTICIPANTS, DEPARTMENT_ONLY, OUTSIDE_DEPARTMENTS_ONLY)")
+    private ScoreRuleAudience audience = ScoreRuleAudience.ALL_PARTICIPANTS;
+
+    @ManyToMany
+    @JoinTable(name = "activity_series_departments",
+        joinColumns = @JoinColumn(name = "series_id"),
+        inverseJoinColumns = @JoinColumn(name = "department_id"))
+    @Comment("Danh sách khoa áp dụng khi audience != ALL_PARTICIPANTS")
+    private Set<Department> targetDepartments = new LinkedHashSet<>();
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preset_code", length = 50)
+    @Comment("Preset code used to configure score rules for this series")
+    private SeriesPresetCode presetCode;
 }
 
