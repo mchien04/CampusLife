@@ -86,11 +86,14 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             autoRegisterService.autoRegisterStudents(savedShell);
             reminderScheduleService.syncEventRemindersForActivity(savedShell);
 
-            MiniGame miniGame = mapper.toMiniGameEntity(request.getQuiz(), savedShell);
-            miniGame = miniGameRepository.save(miniGame);
+            MiniGame miniGame = null;
+            if (request.getQuiz() != null) {
+                miniGame = mapper.toMiniGameEntity(request.getQuiz(), savedShell);
+                miniGame = miniGameRepository.save(miniGame);
 
-            // Persist quiz, questions, and options
-            persistQuizQuestionsAndOptions(miniGame, request.getQuiz());
+                // Persist quiz, questions, and options
+                persistQuizQuestionsAndOptions(miniGame, request.getQuiz());
+            }
 
             return Response.success("Minigame created successfully", mapper.toResponse(savedShell, miniGame));
         } catch (IllegalArgumentException e) {

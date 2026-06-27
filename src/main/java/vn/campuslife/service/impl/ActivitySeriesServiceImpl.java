@@ -228,7 +228,7 @@ series.setPresetCode(presetCode);
         autoRegisterStudentsForNewActivityInSeries(series, saved);
         reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
 
-        return Response.success("Activity created in series successfully", saved);
+        return Response.success("Activity created in series successfully", seriesChildMapper.toResponse(saved, series.getName()));
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
@@ -401,26 +401,21 @@ series.setPresetCode(presetCode);
      */
     private void autoRegisterStudentsForNewActivityInSeries(ActivitySeries series, Activity newActivity) {
         try {
+            if (series.isDraft()) {
+                logger.info("Skipping auto-registration for activity in draft series (seriesId={})", series.getId());
+                return;
+            }
+
             // First: propagate existing series registrations (students who registered
             // for any sibling activity) to the new activity.
             Long seriesId = series.getId();
 
-            // Lấy tất cả activities trong series (trừ activity mới nếu cần)
-            List<Activity> activitiesInSeries = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-
             // Thu thập tất cả student đã đăng ký ít nhất 1 activity trong series
-            Set<Long> studentIds = new HashSet<>();
-            for (Activity activity : activitiesInSeries) {
-                // Không cần bỏ qua newActivity vì tại thời điểm này activity mới chưa có đăng
-                // ký
-                List<ActivityRegistration> regs = registrationRepository
-                        .findByActivityIdAndActivityIsDeletedFalse(activity.getId());
-                for (ActivityRegistration reg : regs) {
-                    if (reg.getStudent() != null && reg.getStudent().getId() != null) {
-                        studentIds.add(reg.getStudent().getId());
-                    }
-                }
-            }
+            List<ActivityRegistration> allRegistrations = registrationRepository.findBySeriesId(seriesId);
+            Set<Long> studentIds = allRegistrations.stream()
+                    .filter(reg -> reg.getStudent() != null && reg.getStudent().getId() != null)
+                    .map(reg -> reg.getStudent().getId())
+                    .collect(Collectors.toSet());
 
             if (studentIds.isEmpty()) {
                 logger.info("No existing registrations in series {} to auto-register for new activity {}", seriesId,
@@ -682,6 +677,9 @@ series.setPresetCode(presetCode);
                         seriesMap.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
                         seriesMap.put("createdAt", series.getCreatedAt());
                         seriesMap.put("isDeleted", series.isDeleted());
+                        seriesMap.put("isImportant", series.isImportant());
+                        seriesMap.put("mandatoryForFacultyStudents", series.isMandatoryForFacultyStudents());
+                        seriesMap.put("isDraft", series.isDraft());
 
                         // Đếm số activities trong series
                         Long totalActivities = activityRepository.countBySeriesId(series.getId());

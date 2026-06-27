@@ -1,7 +1,7 @@
 # FE Backend Handoff v5 Delta
 
-> **Phiên bản:** 5.2 — Các thay đổi mới so với v4.0  
-> **Phạm vi:** Series auto-register flags + isDraft, Per-rule audience config, CUSTOM preset suggestedCombinations, Auto-register service extraction, Minigame dual-creation modes, Known bug  
+> **Phiên bản:** 5.2.1 — Các thay đổi mới so với v4.0 (Bao gồm các bản vá lỗi)  
+> **Phạm vi:** Series auto-register flags + isDraft, Per-rule audience config, CUSTOM preset suggestedCombinations, Auto-register service extraction, Minigame dual-creation modes, Bug fixes  
 > **Người tích hợp FE:** Đọc tài liệu này TRƯỚC, sau đó tham chiếu `FE_BACKEND_HANDOFF_SPEC.md` (v5.0) để biết chi tiết DTO đầy đủ.
 
 ---
@@ -343,4 +343,18 @@ export interface PresetRuleDescriptor {
 
 ---
 
-*End of v5.1 Delta Spec*
+## 8. Cập nhật Bug Fixes (v5.2.1)
+
+Sau quá trình kiểm thử, các lỗi sau đã được fix trên backend để đảm bảo đúng với spec v5.2:
+
+1. **Minigame Mode 1 (Chỉ tạo shell):**
+   - Đã fix lỗi `NullPointerException` khi gửi `quiz = null` trong `MinigameActivityCreateRequest`. Việc gửi `quiz = null` giờ đây hoạt động ổn định.
+2. **`createActivityInSeries` (Thêm child activity vào Series):**
+   - **Response Type:** Đã đổi kiểu trả về thành `SeriesChildActivityResponse` DTO thay vì Entity raw, nhất quán với spec hiện tại.
+   - **isDraft Guard:** Đã bổ sung logic kiểm tra. Nếu Series đang ở trạng thái nháp (`isDraft = true`), việc thêm một activity mới vào chuỗi sẽ **không** kích hoạt quá trình auto-register sinh viên.
+3. **`getAllSeries` (Danh sách Series):**
+   - Đã bổ sung 3 trường bị thiếu vào từng item trong danh sách trả về: `isImportant`, `mandatoryForFacultyStudents`, và `isDraft`.
+
+---
+
+*End of v5.2.1 Delta Spec*
