@@ -456,13 +456,26 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                         merged.getParticipationFailPoints(),
                         merged));
                 if (merged.getBonusPoints().compareTo(BigDecimal.ZERO) != 0) {
-                    rules.add(buildRule(
+                    ActivityScoreRuleRequest bonusRule = buildRule(
                             merged.getBonusScoreType(),
                             ScoreRuleTrigger.PARTICIPATION_COMPLETED,
                             ScoreRuleCalculation.FIXED_POINTS,
                             merged.getBonusPoints(),
                             BigDecimal.ZERO,
-                            merged));
+                            merged);
+                    if (merged.getBonusAudience() != null) {
+                        bonusRule.setAudience(merged.getBonusAudience());
+                    }
+                    if (merged.getBonusSemesterPolicy() != null) {
+                        bonusRule.setSemesterPolicy(merged.getBonusSemesterPolicy());
+                    }
+                    if (merged.getBonusExplicitSemesterId() != null) {
+                        bonusRule.setExplicitSemesterId(merged.getBonusExplicitSemesterId());
+                    }
+                    if (merged.getBonusDepartmentIds() != null) {
+                        bonusRule.setDepartmentIds(merged.getBonusDepartmentIds());
+                    }
+                    rules.add(bonusRule);
                 }
             }
             case MINIGAME_PASS_ONLY -> {
