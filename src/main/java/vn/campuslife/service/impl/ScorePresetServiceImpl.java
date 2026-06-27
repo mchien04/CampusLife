@@ -870,251 +870,245 @@ public class ScorePresetServiceImpl implements ScorePresetService {
     }
 
     private List<PresetRuleDescriptor> buildSupportedRulesForActivity(ActivityPresetCode code, ActivityPresetConfig defaults) {
-        List<PresetRuleDescriptor> rules = new ArrayList<>();
         if (code == ActivityPresetCode.CUSTOM) {
-            return rules;
+            return buildAllRuleDescriptors();
         }
+
+        List<PresetRuleDescriptor> rules = new ArrayList<>();
 
         switch (code) {
             case EVENT_BASIC -> {
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("PARTICIPATION_COMPLETED")
-                        .label("Cộng điểm hoàn thành")
-                        .description("Tự động cộng điểm cho sinh viên khi check-in/check-out thành công.")
-                        .required(true)
-                        .enabledByDefault(true)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("primaryScoreType")
-                                        .label("Loại điểm chính")
-                                        .inputType("SELECT")
-                                        .required(true)
-                                        .defaultValue(defaults.getPrimaryScoreType().name())
-                                        .visibility("ALWAYS")
-                                        .options(SCORE_TYPE_OPTIONS)
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationPoints")
-                                        .label("Điểm hoàn thành")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationPoints())
-                                        .visibility("ALWAYS")
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationFailPoints")
-                                        .label("Điểm trừ khi đánh giá không đạt (mặc định)")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationFailPoints())
-                                        .visibility("ALWAYS")
-                                        .build()
-                        ))
-                        .build());
+                rules.add(participationCompletedDescriptor(defaults).build());
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case EVENT_WITH_SUBMISSION -> {
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("SUBMISSION_GRADED")
-                        .label("Điểm chấm bài nộp")
-                        .description("Cộng điểm cho sinh viên khi bài nộp được đánh giá đạt (Pass).")
-                        .required(true)
-                        .enabledByDefault(true)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("primaryScoreType")
-                                        .label("Loại điểm chính")
-                                        .inputType("SELECT")
-                                        .required(true)
-                                        .defaultValue(defaults.getPrimaryScoreType().name())
-                                        .visibility("ALWAYS")
-                                        .options(SCORE_TYPE_OPTIONS)
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("submissionPassPoints")
-                                        .label("Điểm đạt (Pass)")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getSubmissionPassPoints())
-                                        .visibility("ALWAYS")
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("submissionFailPoints")
-                                        .label("Điểm không đạt (Fail)")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getSubmissionFailPoints())
-                                        .visibility("ALWAYS")
-                                        .build()
-                        ))
-                        .build());
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("TASK_OVERDUE")
-                        .label("Phạt nộp trễ")
-                        .description("Trừ điểm khi sinh viên nộp bài sau thời hạn quy định.")
-                        .required(false)
-                        .enabledByDefault(false)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("taskOverduePenaltyPoints")
-                                        .label("Điểm phạt nộp trễ")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getTaskOverduePenaltyPoints())
-                                        .visibility("rule_enabled")
-                                        .build()
-                        ))
-                        .build());
+                rules.add(submissionGradedDescriptor(defaults).build());
+                rules.add(taskOverdueDescriptor(defaults).build());
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case ENTERPRISE_SEMINAR_BASIC -> {
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("PARTICIPATION_COMPLETED")
-                        .label("Tích luỹ chuyên đề")
-                        .description("Tích luỹ số lần tham gia chuyên đề doanh nghiệp.")
-                        .required(true)
-                        .enabledByDefault(true)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("primaryScoreType")
-                                        .label("Loại điểm chính")
-                                        .inputType("SELECT")
-                                        .required(true)
-                                        .defaultValue(defaults.getPrimaryScoreType().name())
-                                        .visibility("ALWAYS")
-                                        .options(SCORE_TYPE_OPTIONS)
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationPoints")
-                                        .label("Điểm cộng tích luỹ")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationPoints())
-                                        .visibility("ALWAYS")
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationFailPoints")
-                                        .label("Điểm trừ khi đánh giá không đạt (mặc định)")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationFailPoints())
-                                        .visibility("ALWAYS")
-                                        .build()
-                        ))
-                        .build());
+                rules.add(participationCompletedDescriptor(defaults).build());
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case ENTERPRISE_SEMINAR_WITH_BONUS -> {
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("PARTICIPATION_COMPLETED")
-                        .label("Tích luỹ chuyên đề")
-                        .description("Tích luỹ số lần tham gia chuyên đề doanh nghiệp.")
-                        .required(true)
-                        .enabledByDefault(true)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("primaryScoreType")
-                                        .label("Loại điểm chính")
-                                        .inputType("SELECT")
-                                        .required(true)
-                                        .defaultValue(defaults.getPrimaryScoreType().name())
-                                        .visibility("ALWAYS")
-                                        .options(SCORE_TYPE_OPTIONS)
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationPoints")
-                                        .label("Điểm cộng tích luỹ")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationPoints())
-                                        .visibility("ALWAYS")
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationFailPoints")
-                                        .label("Điểm trừ khi đánh giá không đạt (mặc định)")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationFailPoints())
-                                        .visibility("ALWAYS")
-                                        .build()
-                        ))
-                        .build());
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("BONUS_POINTS")
-                        .label("Cộng điểm thưởng")
-                        .description("Cộng thêm điểm thưởng loại khác (ví dụ: Rèn luyện) khi tham gia chuyên đề.")
-                        .required(false)
-                        .enabledByDefault(true)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("bonusScoreType")
-                                        .label("Loại điểm thưởng")
-                                        .inputType("SELECT")
-                                        .required(true)
-                                        .defaultValue(defaults.getBonusScoreType().name())
-                                        .visibility("rule_enabled")
-                                        .options(SCORE_TYPE_OPTIONS)
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("bonusPoints")
-                                        .label("Điểm thưởng cộng thêm")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getBonusPoints())
-                                        .visibility("rule_enabled")
-                                        .build()
-                        ))
-                        .build());
+                rules.add(participationCompletedDescriptor(defaults).build());
+                rules.add(bonusPointsDescriptor(defaults).build());
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case MINIGAME_PASS_ONLY -> {
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("MINIGAME_PASSED")
-                        .label("Điểm hoàn thành Minigame")
-                        .description("Cộng điểm khi vượt qua Minigame đạt yêu cầu.")
-                        .required(true)
-                        .enabledByDefault(true)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("primaryScoreType")
-                                        .label("Loại điểm chính")
-                                        .inputType("SELECT")
-                                        .required(true)
-                                        .defaultValue(defaults.getPrimaryScoreType().name())
-                                        .visibility("ALWAYS")
-                                        .options(SCORE_TYPE_OPTIONS)
-                                        .build(),
-                                FieldDefinition.builder()
-                                        .fieldName("participationPoints")
-                                        .label("Điểm vượt qua")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getParticipationPoints())
-                                        .visibility("ALWAYS")
-                                        .build()
-                        ))
-                        .build());
-                rules.add(PresetRuleDescriptor.builder()
-                        .ruleKey("MINIGAME_EXHAUSTED_ATTEMPTS")
-                        .label("Phạt hết lượt chơi")
-                        .description("Trừ điểm khi dùng hết lượt chơi tối đa mà vẫn không vượt qua minigame.")
-                        .required(false)
-                        .enabledByDefault(false)
-                        .fieldDefinitions(List.of(
-                                FieldDefinition.builder()
-                                        .fieldName("minigameExhaustedPenaltyPoints")
-                                        .label("Điểm phạt hết lượt")
-                                        .inputType("NUMBER")
-                                        .required(true)
-                                        .defaultValue(defaults.getMinigameExhaustedPenaltyPoints())
-                                        .visibility("rule_enabled")
-                                        .build()
-                        ))
-                        .build());
+                rules.add(minigamePassedDescriptor(defaults).build());
+                rules.add(minigameExhaustedDescriptor(defaults).build());
             }
         }
 
-        rules.add(PresetRuleDescriptor.builder()
+        rules.add(buildActivityAudienceDescriptor(defaults));
+        return rules;
+    }
+
+    private List<PresetRuleDescriptor> buildAllRuleDescriptors() {
+        ActivityPresetConfig empty = new ActivityPresetConfig();
+        empty.setPrimaryScoreType(ScoreType.REN_LUYEN);
+        empty.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+        empty.setSemesterPolicy(ScoreSemesterPolicy.ACTIVITY_SEMESTER);
+        empty.setDepartmentIds(new ArrayList<>());
+        empty.setParticipationPoints(BigDecimal.ZERO);
+        empty.setParticipationFailPoints(BigDecimal.ZERO);
+        empty.setSubmissionPassPoints(BigDecimal.ZERO);
+        empty.setSubmissionFailPoints(BigDecimal.ZERO);
+        empty.setTaskOverduePenaltyPoints(BigDecimal.ZERO);
+        empty.setMinigameExhaustedPenaltyPoints(BigDecimal.ZERO);
+        empty.setBonusScoreType(ScoreType.REN_LUYEN);
+        empty.setBonusPoints(BigDecimal.ZERO);
+        empty.setNoShowPenaltyEnabled(false);
+        empty.setNoShowPenaltyPoints(BigDecimal.ZERO);
+
+        List<PresetRuleDescriptor> rules = new ArrayList<>();
+        rules.add(participationCompletedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.NO_SHOW)).build());
+        rules.add(submissionGradedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.TASK_OVERDUE, ScoreRuleTrigger.NO_SHOW)).build());
+        rules.add(taskOverdueDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.SUBMISSION_GRADED, ScoreRuleTrigger.NO_SHOW)).build());
+        rules.add(buildNoShowDescriptor(empty));
+        rules.get(rules.size() - 1).setSuggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED, ScoreRuleTrigger.SUBMISSION_GRADED, ScoreRuleTrigger.TASK_OVERDUE, ScoreRuleTrigger.MINIGAME_PASSED));
+        rules.add(minigamePassedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS, ScoreRuleTrigger.NO_SHOW)).build());
+        rules.add(minigameExhaustedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED)).build());
+        rules.add(bonusPointsDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED)).build());
+        rules.add(buildActivityAudienceDescriptor(empty));
+        return rules;
+    }
+
+    private PresetRuleDescriptor.PresetRuleDescriptorBuilder participationCompletedDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
+                .ruleKey("PARTICIPATION_COMPLETED")
+                .label("Cộng điểm hoàn thành")
+                .description("Tự động cộng điểm cho sinh viên khi check-in/check-out thành công.")
+                .required(true)
+                .enabledByDefault(true)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("primaryScoreType")
+                                .label("Loại điểm chính")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getPrimaryScoreType().name())
+                                .visibility("ALWAYS")
+                                .options(SCORE_TYPE_OPTIONS)
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("participationPoints")
+                                .label("Điểm hoàn thành")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getParticipationPoints())
+                                .visibility("ALWAYS")
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("participationFailPoints")
+                                .label("Điểm trừ khi đánh giá không đạt (mặc định)")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getParticipationFailPoints())
+                                .visibility("ALWAYS")
+                                .build()
+                ))
+                .suggestedCombinations(List.of(ScoreRuleTrigger.NO_SHOW));
+    }
+
+    private PresetRuleDescriptor.PresetRuleDescriptorBuilder submissionGradedDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
+                .ruleKey("SUBMISSION_GRADED")
+                .label("Điểm chấm bài nộp")
+                .description("Cộng điểm cho sinh viên khi bài nộp được đánh giá đạt (Pass).")
+                .required(true)
+                .enabledByDefault(true)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("primaryScoreType")
+                                .label("Loại điểm chính")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getPrimaryScoreType().name())
+                                .visibility("ALWAYS")
+                                .options(SCORE_TYPE_OPTIONS)
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("submissionPassPoints")
+                                .label("Điểm đạt (Pass)")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getSubmissionPassPoints())
+                                .visibility("ALWAYS")
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("submissionFailPoints")
+                                .label("Điểm không đạt (Fail)")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getSubmissionFailPoints())
+                                .visibility("ALWAYS")
+                                .build()
+                ))
+                .suggestedCombinations(List.of(ScoreRuleTrigger.TASK_OVERDUE, ScoreRuleTrigger.NO_SHOW));
+    }
+
+    private PresetRuleDescriptor.PresetRuleDescriptorBuilder taskOverdueDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
+                .ruleKey("TASK_OVERDUE")
+                .label("Phạt nộp trễ")
+                .description("Trừ điểm khi sinh viên nộp bài sau thời hạn quy định.")
+                .required(false)
+                .enabledByDefault(false)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("taskOverduePenaltyPoints")
+                                .label("Điểm phạt nộp trễ")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getTaskOverduePenaltyPoints())
+                                .visibility("rule_enabled")
+                                .build()
+                ))
+                .suggestedCombinations(List.of(ScoreRuleTrigger.SUBMISSION_GRADED, ScoreRuleTrigger.NO_SHOW));
+    }
+
+    private PresetRuleDescriptor.PresetRuleDescriptorBuilder bonusPointsDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
+                .ruleKey("BONUS_POINTS")
+                .label("Cộng điểm thưởng")
+                .description("Cộng thêm điểm thưởng loại khác (ví dụ: Rèn luyện) khi tham gia chuyên đề.")
+                .required(false)
+                .enabledByDefault(true)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("bonusScoreType")
+                                .label("Loại điểm thưởng")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getBonusScoreType().name())
+                                .visibility("rule_enabled")
+                                .options(SCORE_TYPE_OPTIONS)
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("bonusPoints")
+                                .label("Điểm thưởng cộng thêm")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getBonusPoints())
+                                .visibility("rule_enabled")
+                                .build()
+                ))
+                .suggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED));
+    }
+
+    private PresetRuleDescriptor.PresetRuleDescriptorBuilder minigamePassedDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
+                .ruleKey("MINIGAME_PASSED")
+                .label("Điểm hoàn thành Minigame")
+                .description("Cộng điểm khi vượt qua Minigame đạt yêu cầu.")
+                .required(true)
+                .enabledByDefault(true)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("primaryScoreType")
+                                .label("Loại điểm chính")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getPrimaryScoreType().name())
+                                .visibility("ALWAYS")
+                                .options(SCORE_TYPE_OPTIONS)
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("participationPoints")
+                                .label("Điểm vượt qua")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getParticipationPoints())
+                                .visibility("ALWAYS")
+                                .build()
+                ))
+                .suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS, ScoreRuleTrigger.NO_SHOW));
+    }
+
+    private PresetRuleDescriptor.PresetRuleDescriptorBuilder minigameExhaustedDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
+                .ruleKey("MINIGAME_EXHAUSTED_ATTEMPTS")
+                .label("Phạt hết lượt chơi")
+                .description("Trừ điểm khi dùng hết lượt chơi tối đa mà vẫn không vượt qua minigame.")
+                .required(false)
+                .enabledByDefault(false)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("minigameExhaustedPenaltyPoints")
+                                .label("Điểm phạt hết lượt")
+                                .inputType("NUMBER")
+                                .required(true)
+                                .defaultValue(defaults.getMinigameExhaustedPenaltyPoints())
+                                .visibility("rule_enabled")
+                                .build()
+                ))
+                .suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED));
+    }
+
+    private PresetRuleDescriptor buildActivityAudienceDescriptor(ActivityPresetConfig defaults) {
+        return PresetRuleDescriptor.builder()
                 .ruleKey("ACTIVITY_AUDIENCE")
                 .label("Giới hạn đối tượng nhận điểm")
                 .description("Kiểm soát việc student thuộc khoa nào sẽ được cộng/trừ điểm từ sự kiện này.")
@@ -1156,9 +1150,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                                 .visibility("semester_policy_explicit")
                                 .build()
                 ))
-                .build());
-
-        return rules;
+                .build();
     }
 
     private PresetRuleDescriptor buildNoShowDescriptor(ActivityPresetConfig defaults) {
