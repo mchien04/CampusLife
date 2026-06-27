@@ -338,12 +338,59 @@ export interface PresetRuleDescriptor {
 | `GET /api/series/{id}` | Response thêm `isImportant`, `mandatoryForFacultyStudents`, `isDraft` |
 | `POST /api/activities/minigame` | `quiz` có thể null (tạo shell không quiz) |
 | `POST /api/minigames` | Mode 2: gắn quiz vào activity đã tồn tại |
-| Preset config | `ActivityPresetConfig` thêm per-rule audience/semesterPolicy/departmentIds |
+| Preset config | `ActivityPresetConfig` thêm per-rule audience/semesterPolicy/departmentIds. `MINIGAME_PASS_ONLY` giờ có `NO_SHOW` mặc định bật. |
 | *Không đổi* | `POST/PUT /api/activities/standard`, Legacy, Series child |
 
 ---
 
-## 8. Cập nhật Bug Fixes (v5.2.1)
+## 8. MINIGAME_PASS_ONLY giờ có NO_SHOW (v5.3)
+
+### 8.1 Mô tả
+
+Preset `MINIGAME_PASS_ONLY` giờ **mặc định bật** rule `NO_SHOW` (phạt nếu đăng ký nhưng không hoàn thành minigame). Trước đây minigame không có NO_SHOW.
+
+| Thay đổi | Cũ | Mới |
+|-----------|-----|-----|
+| `hasDefaultNoShowEnabled` | `false` (cho mọi MINIGAME type) | `true` cho `MINIGAME_PASS_ONLY` |
+| `noShowPenaltyEnabled` (default) | `false` | `true` |
+| `noShowPenaltyPoints` (default) | 5 (nhưng k dùng vì disable) | = `participationPoints` (5) |
+| Fallback noShowPoints | `defaults.getNoShowPenaltyPoints()` | `merged.getParticipationPoints()` (giống EVENT_BASIC) |
+
+### 8.2 Luồng hoạt động
+
+1. **FE chọn preset `MINIGAME_PASS_ONLY`**: BE tự sinh 3 rule:
+   - `MINIGAME_PASSED` + `FIXED_POINTS` + `points = 5`
+   - `NO_SHOW` + `PENALTY_POINTS` + `failPoints = 5`
+   - `MINIGAME_EXHAUSTED_ATTEMPTS` + `PASS_FAIL_POINTS` + `failPoints = 0` (mặc định tắt)
+
+2. **NO_SHOW penalty**: Engine `applyNoShowPenalty()` dùng `rule.getFailPoints()` → `applySignForFailure` auto negate (5 → -5).
+
+3. **Có thể tắt**: FE gửi `presetConfig.noShowPenaltyEnabled = false` → NO_SHOW rule bị xóa khỏi preset.
+
+4. **Preview**: `POST /api/activities/presets/preview` với `MINIGAME_PASS_ONLY` giờ trả về 3 rule (có thêm NO_SHOW).
+
+### 8.3 Cấu hình FE
+
+```
+Chọn preset: MINIGAME_PASS_ONLY
+├── [ON] MINIGAME_PASSED: 5 điểm (bắt buộc)
+├── [ON] NO_SHOW: Phạt 5 điểm nếu không hoàn thành (có thể tắt)
+│   └── Input: Điểm phạt (dương, BE tự negate)
+└── [OFF] MINIGAME_EXHAUSTED_ATTEMPTS: Phạt hết lượt (mặc định tắt)
+    └── Input: Điểm phạt (dương, BE tự negate)
+```
+
+### 8.4 Code thay đổi
+
+| File | Hàm | Thay đổi |
+|------|-----|----------|
+| `ScorePresetServiceImpl.java` | `hasDefaultNoShowEnabled()` | `MINIGAME` type giờ check thêm `presetCode == MINIGAME_PASS_ONLY`, trả `true` |
+| `ScorePresetServiceImpl.java` | `getDefaultActivityConfig()` | Xóa override `setNoShowPenaltyEnabled(false)` cho MINIGAME_PASS_ONLY |
+| `ScorePresetServiceImpl.java` | `mergeActivityConfig()` | Thêm `MINIGAME_PASS_ONLY` vào fallback `noShowPoints = participationPoints` |
+
+---
+
+## 9. Cập nhật Bug Fixes (v5.2.1)
 
 Sau quá trình kiểm thử, các lỗi sau đã được fix trên backend để đảm bảo đúng với spec v5.2:
 

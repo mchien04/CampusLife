@@ -468,8 +468,8 @@ Hiển thị trong màn chi tiết / danh sách hoạt động:
 
 ### MINIGAME_PASS_ONLY
 - `MINIGAME_PASSED`: required=true, enabledByDefault=true.
+- `NO_SHOW`: required=false, enabledByDefault=true → mặc định bật. `noShowPenaltyPoints` mặc định = `participationPoints` (5). FE nhập dương, BE tự negate.
 - `MINIGAME_EXHAUSTED_ATTEMPTS`: required=false, enabledByDefault=false → mặc định tắt.
-- Không có `NO_SHOW`.
 
 ### CUSTOM
 - Không có `supportedRules`. Hiển thị form nhập `scoreRules` thủ công.

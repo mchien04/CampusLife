@@ -629,7 +629,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         
         BigDecimal noShowPoints = incoming.getNoShowPenaltyPoints();
         if (noShowPoints == null) {
-            if (presetCode == ActivityPresetCode.EVENT_BASIC) {
+            if (presetCode == ActivityPresetCode.EVENT_BASIC
+                    || presetCode == ActivityPresetCode.MINIGAME_PASS_ONLY) {
                 noShowPoints = merged.getParticipationPoints();
             } else if (presetCode == ActivityPresetCode.EVENT_WITH_SUBMISSION) {
                 noShowPoints = merged.getSubmissionPassPoints();
@@ -781,7 +782,6 @@ public class ScorePresetServiceImpl implements ScorePresetService {
             }
             case MINIGAME_PASS_ONLY -> {
                 defaults.setMinigameExhaustedPenaltyPoints(BigDecimal.ZERO);
-                defaults.setNoShowPenaltyEnabled(false);
             }
             case CUSTOM -> {
                 defaults.setParticipationPoints(null);
@@ -795,7 +795,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
 
     private boolean hasDefaultNoShowEnabled(ActivityPresetCode presetCode, ActivityType activityType) {
         if (activityType == ActivityType.MINIGAME) {
-            return false;
+            return presetCode == ActivityPresetCode.MINIGAME_PASS_ONLY;
         }
         return presetCode == ActivityPresetCode.EVENT_BASIC
                 || presetCode == ActivityPresetCode.EVENT_WITH_SUBMISSION;
