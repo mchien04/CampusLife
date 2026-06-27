@@ -147,7 +147,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
                     }
                 } else {
                     miniGame = mapper.toMiniGameEntity(new MinigameActivityCreateRequest.QuizConfigRequest(
-                            request.getQuiz().getTitle(), request.getQuiz().getQuestionCount(),
+                            request.getQuiz().getTitle(), request.getQuiz().getDescription(),
+                            request.getQuiz().getQuestionCount(),
                             request.getQuiz().getTimeLimit(), request.getQuiz().getRequiredCorrectAnswers(),
                             request.getQuiz().getMaxAttempts(), request.getQuiz().getShowAnswers(),
                             request.getQuiz().getQuestions()), savedShell);

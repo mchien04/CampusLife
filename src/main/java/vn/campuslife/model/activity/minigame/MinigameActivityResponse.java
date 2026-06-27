@@ -40,6 +40,7 @@ public class MinigameActivityResponse {
     public static class QuizConfigResponse {
         private Long id;
         private String title;
+        private String description;
         private Integer questionCount;
         private Integer timeLimit;
         private Integer requiredCorrectAnswers;

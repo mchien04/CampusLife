@@ -76,6 +76,7 @@ public class MinigameActivityMapper {
         MiniGame miniGame = new MiniGame();
         miniGame.setActivity(shell);
         miniGame.setTitle(quizReq.getTitle());
+        miniGame.setDescription(quizReq.getDescription());
         miniGame.setQuestionCount(quizReq.getQuestionCount());
         miniGame.setTimeLimit(quizReq.getTimeLimit());
         miniGame.setRequiredCorrectAnswers(quizReq.getRequiredCorrectAnswers());
@@ -89,6 +90,7 @@ public class MinigameActivityMapper {
     public void applyMiniGameUpdate(MiniGame miniGame, MinigameActivityUpdateRequest.QuizConfigRequest quizReq) {
         if (quizReq == null || miniGame == null) return;
         if (quizReq.getTitle() != null) miniGame.setTitle(quizReq.getTitle());
+        if (quizReq.getDescription() != null) miniGame.setDescription(quizReq.getDescription());
         if (quizReq.getQuestionCount() != null) miniGame.setQuestionCount(quizReq.getQuestionCount());
         if (quizReq.getTimeLimit() != null) miniGame.setTimeLimit(quizReq.getTimeLimit());
         if (quizReq.getRequiredCorrectAnswers() != null) miniGame.setRequiredCorrectAnswers(quizReq.getRequiredCorrectAnswers());
@@ -123,6 +125,7 @@ public class MinigameActivityMapper {
             MinigameActivityResponse.QuizConfigResponse quizResp = new MinigameActivityResponse.QuizConfigResponse();
             quizResp.setId(miniGame.getId());
             quizResp.setTitle(miniGame.getTitle());
+            quizResp.setDescription(miniGame.getDescription());
             quizResp.setQuestionCount(miniGame.getQuestionCount());
             quizResp.setTimeLimit(miniGame.getTimeLimit());
             quizResp.setRequiredCorrectAnswers(miniGame.getRequiredCorrectAnswers());
