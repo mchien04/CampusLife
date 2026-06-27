@@ -166,32 +166,41 @@ BigDecimal points = Boolean.TRUE.equals(participation.getIsCompleted())
 
 Tất cả các trigger khác (`NO_SHOW`, `SUBMISSION_GRADED`, `TASK_OVERDUE`, `MINIGAME_EXHAUSTED_ATTEMPTS`) đều gọi `applySignForFailure()` để negate khi `calculation = PASS_FAIL_POINTS` hoặc `PENALTY_POINTS`.
 
-### 3.2 Ảnh hưởng theo từng loại calculation
+### 3.2 Chỉ trigger `PARTICIPATION_COMPLETED` mới bị
 
-| Calculation | Ảnh hưởng | Xử lý |
-|-------------|-----------|-------|
-| `FIXED_POINTS` | **Không ảnh hưởng.** `failPoints` là "điểm khi không hoàn thành" (VD 0 hoặc điểm giảm), không cần negate. | OK, dùng bình thường. |
-| `PASS_FAIL_POINTS` | **BUG.** `failPoints` lưu dương trong `score_entries` thay vì âm (penalty). | **Workaround:** gửi `failPoints` âm sẵn (VD `-5`) nếu dùng custom rule. |
-| `PENALTY_POINTS` | **BUG.** Tương tự. | **Workaround:** gửi `failPoints` âm sẵn. |
+Bug nằm cục bộ trong `applyActivityCompleted()`. Các trigger khác đều gọi `applySignForFailure()` và negate đúng:
 
-### 3.3 Ảnh hưởng đến Preset
+| Method | Gọi `applySignForFailure`? |
+|--------|---------------------------|
+| `applyActivityCompleted` (`PARTICIPATION_COMPLETED`) | **KHÔNG** ← bug |
+| `applyNoShowPenalty` (`NO_SHOW`) | Có ✅ |
+| `applySubmissionGraded` (`SUBMISSION_GRADED`) | Có ✅ |
+| `applyTaskOverdue` (`TASK_OVERDUE`) | Có ✅ |
+| `applyMinigameExhausted` (`MINIGAME_EXHAUSTED_ATTEMPTS`) | Có ✅ |
 
-| Preset | Trigger | Calculation | Có failPoints? | Bị bug? |
-|--------|---------|-------------|----------------|---------|
-| `EVENT_BASIC` | `PARTICIPATION_COMPLETED` | `FIXED_POINTS` | Có (0) | **Không** |
-| `ENTERPRISE_SEMINAR_BASIC` | `PARTICIPATION_COMPLETED` | `COUNT_COMPLETION` | Có (0) | **Không** |
-| `ENTERPRISE_SEMINAR_WITH_BONUS` | `PARTICIPATION_COMPLETED` | `COUNT_COMPLETION` | Có (0, rules chính) | **Không** |
-| `EVENT_WITH_SUBMISSION` | `SUBMISSION_GRADED` | `PASS_FAIL_POINTS` | Có | **Không** (dùng `applySubmissionGraded`, đã negate đúng) |
+Vì vậy bảng ảnh hưởng không phải theo `calculation` mà theo **trigger**:
 
-⇒ **Preset mặc định không bị ảnh hưởng.** Bug chỉ xảy ra với custom rule `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS`/`PENALTY_POINTS`.
+| Trigger có bug? | Ảnh hưởng |
+|----------------|-----------|
+| `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS`/`PENALTY_POINTS` | **Có bug** — `failPoints` không được negate |
+| Mọi trigger khác (`NO_SHOW`, `SUBMISSION_GRADED`, `TASK_OVERDUE`, `MINIGAME_EXHAUSTED_ATTEMPTS`) | **Không bug** — đã negate đúng |
+
+### 3.3 Preset không bị ảnh hưởng
+
+| Preset | Trigger | Calculation | Bị bug? |
+|--------|---------|-------------|---------|
+| `EVENT_BASIC` | `PARTICIPATION_COMPLETED` | `FIXED_POINTS` | **Không** (`FIXED_POINTS` không cần negate) |
+| `ENTERPRISE_SEMINAR_BASIC` | `PARTICIPATION_COMPLETED` | `COUNT_COMPLETION` | **Không** (không phải `PASS_FAIL_POINTS`) |
+| `ENTERPRISE_SEMINAR_WITH_BONUS` | `PARTICIPATION_COMPLETED` | `COUNT_COMPLETION` | **Không** |
+| `EVENT_WITH_SUBMISSION` | `SUBMISSION_GRADED` | `PASS_FAIL_POINTS` | **Không** (dùng `applySubmissionGraded`, đã negate) |
+
+⇒ **Không preset nào bị.** Bug chỉ xảy ra nếu FE tạo custom rule `PARTICIPATION_COMPLETED` + `PASS_FAIL_POINTS`/`PENALTY_POINTS` + `failPoints > 0`.
 
 ### 3.4 Hướng dẫn FE
 
-- **Form tạo rule `PARTICIPATION_COMPLETED`**:
-  - Với `EVENT_BASIC`: ẩn `failPoints` input (vì `FIXED_POINTS` không cần negate, failPoints mặc định = 0).
-  - Với `EVENT_WITH_SUBMISSION`: hiện `failPoints` input (dùng trigger `SUBMISSION_GRADED`, đã negate đúng).
-  - Với custom rule: nếu chọn `calculation = PASS_FAIL_POINTS` hoặc `PENALTY_POINTS` + `trigger = PARTICIPATION_COMPLETED`, hiển thị cảnh báo: "failPoints sẽ không được tự động negate, vui lòng nhập số âm."
-- **Kế hoạch sửa BE**: sẽ gọi `applySignForFailure()` trong `applyActivityCompleted()` ở phiên bản sau.
+- Trường hợp này cực kỳ hiếm (không preset nào dùng). Có thể bỏ qua.
+- Nếu muốn xử lý: khi user chọn `trigger = PARTICIPATION_COMPLETED` + `calculation = PASS_FAIL_POINTS`/`PENALTY_POINTS`, hiển thị cảnh báo nhẹ.
+- **Plan sửa BE**: thêm `applySignForFailure()` trong `applyActivityCompleted()` ở phiên bản sau.
 
 ---
 
