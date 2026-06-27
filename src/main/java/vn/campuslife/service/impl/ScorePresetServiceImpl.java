@@ -16,12 +16,14 @@ import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.activity.StandardActivityCreateRequest;
 import vn.campuslife.model.activity.StandardActivityUpdateRequest;
+import vn.campuslife.model.activity.series.CreateSeriesRequest;
 import vn.campuslife.model.activity.series.SeriesPresetConfig;
 import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
+import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
+import vn.campuslife.model.activity.series.UpdateSeriesRequest;
 import vn.campuslife.model.activity.FieldDefinition;
 import vn.campuslife.model.activity.PresetRuleDescriptor;
-import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
 import vn.campuslife.service.ScorePresetService;
 
@@ -175,6 +177,11 @@ public class ScorePresetServiceImpl implements ScorePresetService {
 
     @Override
     public void applyActivityPreset(StandardActivityUpdateRequest request) {
+        applyActivityPreset(request, null);
+    }
+
+    @Override
+    public void applyActivityPreset(StandardActivityUpdateRequest request, ActivityType effectiveType) {
         if (request == null || request.getPresetCode() == null
                 || request.getPresetCode() == ActivityPresetCode.CUSTOM) {
             return;
@@ -189,9 +196,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
 
         ActivityPresetPreviewRequest previewRequest = new ActivityPresetPreviewRequest();
         previewRequest.setPresetCode(request.getPresetCode());
-        // Type cannot be changed in update, but preset preview might need it. We use null or existing if available.
-        // StandardActivityUpdateRequest doesn't have getType(), so we pass null and let preview resolve it.
-        previewRequest.setType(null); 
+        previewRequest.setType(effectiveType);
         previewRequest.setRequiresSubmission(request.getRequiresSubmission());
         previewRequest.setPresetConfig(request.getPresetConfig());
 
@@ -247,6 +252,68 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         response.setMinimumPenaltyPoints(merged.getMinimumPenaltyPoints());
         response.setNotes(buildSeriesPresetNotes(presetCode));
         return response;
+    }
+
+    @Override
+    public void applySeriesPreset(CreateSeriesRequest request) {
+        if (request == null || request.getPresetCode() == null
+                || request.getPresetCode() == SeriesPresetCode.CUSTOM) {
+            return;
+        }
+
+        SeriesPresetPreviewRequest previewRequest = new SeriesPresetPreviewRequest();
+        previewRequest.setPresetCode(request.getPresetCode());
+        previewRequest.setPresetConfig(request.getPresetConfig());
+
+        SeriesPresetPreviewResponse preview = previewSeriesPreset(previewRequest);
+
+        if (request.getScoreType() == null && preview.getScoreType() != null) {
+            request.setScoreType(preview.getScoreType());
+        }
+        if ((request.getMilestonePoints() == null || request.getMilestonePoints().isEmpty())
+                && preview.getMilestonePoints() != null) {
+            request.setMilestonePoints(new LinkedHashMap<>(preview.getMilestonePoints()));
+        }
+        if (request.getMinimumRequirementEnabled() == null && preview.getMinimumRequirementEnabled() != null) {
+            request.setMinimumRequirementEnabled(preview.getMinimumRequirementEnabled());
+        }
+        if (request.getMinimumRequiredEvents() == null && preview.getMinimumRequiredEvents() != null) {
+            request.setMinimumRequiredEvents(preview.getMinimumRequiredEvents());
+        }
+        if (request.getMinimumPenaltyPoints() == null && preview.getMinimumPenaltyPoints() != null) {
+            request.setMinimumPenaltyPoints(preview.getMinimumPenaltyPoints());
+        }
+    }
+
+    @Override
+    public void applySeriesPreset(UpdateSeriesRequest request) {
+        if (request == null || request.getPresetCode() == null
+                || request.getPresetCode() == SeriesPresetCode.CUSTOM) {
+            return;
+        }
+
+        SeriesPresetPreviewRequest previewRequest = new SeriesPresetPreviewRequest();
+        previewRequest.setPresetCode(request.getPresetCode());
+        previewRequest.setPresetConfig(request.getPresetConfig());
+
+        SeriesPresetPreviewResponse preview = previewSeriesPreset(previewRequest);
+
+        if (request.getScoreType() == null && preview.getScoreType() != null) {
+            request.setScoreType(preview.getScoreType());
+        }
+        if ((request.getMilestonePoints() == null || request.getMilestonePoints().isEmpty())
+                && preview.getMilestonePoints() != null) {
+            request.setMilestonePoints(new LinkedHashMap<>(preview.getMilestonePoints()));
+        }
+        if (request.getMinimumRequirementEnabled() == null && preview.getMinimumRequirementEnabled() != null) {
+            request.setMinimumRequirementEnabled(preview.getMinimumRequirementEnabled());
+        }
+        if (request.getMinimumRequiredEvents() == null && preview.getMinimumRequiredEvents() != null) {
+            request.setMinimumRequiredEvents(preview.getMinimumRequiredEvents());
+        }
+        if (request.getMinimumPenaltyPoints() == null && preview.getMinimumPenaltyPoints() != null) {
+            request.setMinimumPenaltyPoints(preview.getMinimumPenaltyPoints());
+        }
     }
 
     private ActivityPresetDefinitionResponse activityPreset(
@@ -326,7 +393,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                     ScoreRuleTrigger.PARTICIPATION_COMPLETED,
                     ScoreRuleCalculation.FIXED_POINTS,
                     merged.getParticipationPoints(),
-                    merged.getParticipationFailPoints()));
+                    merged.getParticipationFailPoints(),
+                    merged));
             case EVENT_WITH_SUBMISSION -> {
                 if (requiresSubmission) {
                     rules.add(buildRule(
@@ -334,14 +402,16 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                             ScoreRuleTrigger.SUBMISSION_GRADED,
                             ScoreRuleCalculation.PASS_FAIL_POINTS,
                             merged.getSubmissionPassPoints(),
-                            merged.getSubmissionFailPoints()));
+                            merged.getSubmissionFailPoints(),
+                            merged));
                     if (merged.getTaskOverduePenaltyPoints().compareTo(BigDecimal.ZERO) != 0) {
                         rules.add(buildRule(
                                 primaryScoreType,
                                 ScoreRuleTrigger.TASK_OVERDUE,
                                 ScoreRuleCalculation.PENALTY_POINTS,
                                 BigDecimal.ZERO,
-                                merged.getTaskOverduePenaltyPoints()));
+                                merged.getTaskOverduePenaltyPoints(),
+                                merged));
                     }
                 }
             }
@@ -350,21 +420,24 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                     ScoreRuleTrigger.PARTICIPATION_COMPLETED,
                     ScoreRuleCalculation.COUNT_COMPLETION,
                     merged.getParticipationPoints(),
-                    merged.getParticipationFailPoints()));
+                    merged.getParticipationFailPoints(),
+                    merged));
             case ENTERPRISE_SEMINAR_WITH_BONUS -> {
                 rules.add(buildRule(
                         primaryScoreType,
                         ScoreRuleTrigger.PARTICIPATION_COMPLETED,
                         ScoreRuleCalculation.COUNT_COMPLETION,
                         merged.getParticipationPoints(),
-                        merged.getParticipationFailPoints()));
+                        merged.getParticipationFailPoints(),
+                        merged));
                 if (merged.getBonusPoints().compareTo(BigDecimal.ZERO) != 0) {
                     rules.add(buildRule(
                             merged.getBonusScoreType(),
                             ScoreRuleTrigger.PARTICIPATION_COMPLETED,
                             ScoreRuleCalculation.FIXED_POINTS,
                             merged.getBonusPoints(),
-                            BigDecimal.ZERO));
+                            BigDecimal.ZERO,
+                            merged));
                 }
             }
             case MINIGAME_PASS_ONLY -> {
@@ -373,14 +446,16 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                         ScoreRuleTrigger.MINIGAME_PASSED,
                         ScoreRuleCalculation.FIXED_POINTS,
                         merged.getParticipationPoints(),
-                        BigDecimal.ZERO));
+                        BigDecimal.ZERO,
+                        merged));
                 if (merged.getMinigameExhaustedPenaltyPoints().compareTo(BigDecimal.ZERO) != 0) {
                     rules.add(buildRule(
                             primaryScoreType,
                             ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS,
                             ScoreRuleCalculation.PASS_FAIL_POINTS,
                             BigDecimal.ZERO,
-                            merged.getMinigameExhaustedPenaltyPoints()));
+                            merged.getMinigameExhaustedPenaltyPoints(),
+                            merged));
                 }
             }
             case CUSTOM -> {
@@ -397,7 +472,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                     ScoreRuleTrigger.NO_SHOW,
                     ScoreRuleCalculation.PENALTY_POINTS,
                     BigDecimal.ZERO,
-                    merged.getNoShowPenaltyPoints()));
+                    merged.getNoShowPenaltyPoints(),
+                    merged));
         }
         return rules;
     }
@@ -440,15 +516,18 @@ public class ScorePresetServiceImpl implements ScorePresetService {
             ScoreRuleTrigger trigger,
             ScoreRuleCalculation calculation,
             BigDecimal points,
-            BigDecimal failPoints) {
+            BigDecimal failPoints,
+            ActivityPresetConfig config) {
         ActivityScoreRuleRequest request = new ActivityScoreRuleRequest();
         request.setScoreType(scoreType);
         request.setTriggerType(trigger);
         request.setCalculation(calculation);
         request.setPoints(points);
         request.setFailPoints(failPoints);
-        request.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
-        request.setSemesterPolicy(ScoreSemesterPolicy.ACTIVITY_SEMESTER);
+        request.setAudience(config.getAudience() != null ? config.getAudience() : ScoreRuleAudience.ALL_PARTICIPANTS);
+        request.setSemesterPolicy(config.getSemesterPolicy() != null ? config.getSemesterPolicy() : ScoreSemesterPolicy.ACTIVITY_SEMESTER);
+        request.setExplicitSemesterId(config.getExplicitSemesterId());
+        request.setDepartmentIds(config.getDepartmentIds());
         request.setEnabled(true);
         return request;
     }
@@ -495,6 +574,10 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         merged.setMinigameExhaustedPenaltyPoints(incoming.getMinigameExhaustedPenaltyPoints() != null ? incoming.getMinigameExhaustedPenaltyPoints() : defaults.getMinigameExhaustedPenaltyPoints());
         merged.setBonusScoreType(incoming.getBonusScoreType() != null ? incoming.getBonusScoreType() : defaults.getBonusScoreType());
         merged.setBonusPoints(incoming.getBonusPoints() != null ? incoming.getBonusPoints() : defaults.getBonusPoints());
+        merged.setAudience(incoming.getAudience() != null ? incoming.getAudience() : defaults.getAudience());
+        merged.setSemesterPolicy(incoming.getSemesterPolicy() != null ? incoming.getSemesterPolicy() : defaults.getSemesterPolicy());
+        merged.setExplicitSemesterId(incoming.getExplicitSemesterId() != null ? incoming.getExplicitSemesterId() : defaults.getExplicitSemesterId());
+        merged.setDepartmentIds(incoming.getDepartmentIds() != null ? incoming.getDepartmentIds() : defaults.getDepartmentIds());
         return merged;
     }
 
@@ -512,6 +595,10 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         target.setMinigameExhaustedPenaltyPoints(source.getMinigameExhaustedPenaltyPoints());
         target.setBonusScoreType(source.getBonusScoreType());
         target.setBonusPoints(source.getBonusPoints());
+        target.setAudience(source.getAudience());
+        target.setSemesterPolicy(source.getSemesterPolicy());
+        target.setExplicitSemesterId(source.getExplicitSemesterId());
+        target.setDepartmentIds(source.getDepartmentIds() != null ? new ArrayList<>(source.getDepartmentIds()) : new ArrayList<>());
     }
 
     private ActivityPresetConfig getDefaultActivityConfig(ActivityPresetCode presetCode, ActivityType activityType) {
@@ -524,6 +611,10 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         defaults.setNoShowPenaltyEnabled(hasDefaultNoShowEnabled(presetCode, resolvedType));
         defaults.setNoShowPenaltyPoints(BigDecimal.valueOf(5));
         defaults.setNoShowPenaltyScoreType(null);
+        defaults.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+        defaults.setSemesterPolicy(ScoreSemesterPolicy.ACTIVITY_SEMESTER);
+        defaults.setExplicitSemesterId(null);
+        defaults.setDepartmentIds(new ArrayList<>());
 
         switch (presetCode) {
             case EVENT_BASIC -> {
@@ -580,6 +671,10 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         merged.setMinimumRequirementEnabled(incoming.getMinimumRequirementEnabled() != null ? incoming.getMinimumRequirementEnabled() : defaults.getMinimumRequirementEnabled());
         merged.setMinimumRequiredEvents(incoming.getMinimumRequiredEvents() != null ? incoming.getMinimumRequiredEvents() : defaults.getMinimumRequiredEvents());
         merged.setMinimumPenaltyPoints(incoming.getMinimumPenaltyPoints() != null ? incoming.getMinimumPenaltyPoints() : defaults.getMinimumPenaltyPoints());
+        merged.setAudience(incoming.getAudience() != null ? incoming.getAudience() : defaults.getAudience());
+        merged.setDepartmentIds(incoming.getDepartmentIds() != null && !incoming.getDepartmentIds().isEmpty()
+                ? incoming.getDepartmentIds()
+                : defaults.getDepartmentIds());
         return merged;
     }
 
@@ -590,11 +685,17 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         target.setMinimumRequirementEnabled(source.getMinimumRequirementEnabled());
         target.setMinimumRequiredEvents(source.getMinimumRequiredEvents());
         target.setMinimumPenaltyPoints(source.getMinimumPenaltyPoints());
+        target.setAudience(source.getAudience());
+        target.setDepartmentIds(source.getDepartmentIds() != null
+                ? new ArrayList<>(source.getDepartmentIds())
+                : new ArrayList<>());
     }
 
     private SeriesPresetConfig getDefaultSeriesConfig(SeriesPresetCode presetCode) {
         SeriesPresetConfig defaults = new SeriesPresetConfig();
         defaults.setPrimaryScoreType(ScoreType.REN_LUYEN);
+        defaults.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+        defaults.setDepartmentIds(new ArrayList<>());
 
         Map<Integer, Integer> milestones = new LinkedHashMap<>();
         switch (presetCode) {
@@ -869,6 +970,51 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                         .build());
             }
         }
+
+        rules.add(PresetRuleDescriptor.builder()
+                .ruleKey("ACTIVITY_AUDIENCE")
+                .label("Giới hạn đối tượng nhận điểm")
+                .description("Kiểm soát việc student thuộc khoa nào sẽ được cộng/trừ điểm từ sự kiện này.")
+                .required(false)
+                .enabledByDefault(false)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("audience")
+                                .label("Đối tượng áp dụng")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getAudience() != null ? defaults.getAudience().name() : "ALL_PARTICIPANTS")
+                                .visibility("ALWAYS")
+                                .options(List.of("ALL_PARTICIPANTS", "DEPARTMENT_ONLY", "OUTSIDE_DEPARTMENTS_ONLY"))
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("departmentIds")
+                                .label("Danh sách Khoa")
+                                .inputType("MULTI_SELECT")
+                                .required(false)
+                                .defaultValue(defaults.getDepartmentIds())
+                                .visibility("audience_department_scoped")
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("semesterPolicy")
+                                .label("Học kỳ cộng điểm")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getSemesterPolicy() != null ? defaults.getSemesterPolicy().name() : "ACTIVITY_SEMESTER")
+                                .visibility("ALWAYS")
+                                .options(List.of("ACTIVITY_SEMESTER", "EXPLICIT_SEMESTER"))
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("explicitSemesterId")
+                                .label("Học kỳ chỉ định")
+                                .inputType("SELECT")
+                                .required(false)
+                                .defaultValue(defaults.getExplicitSemesterId())
+                                .visibility("semester_policy_explicit")
+                                .build()
+                ))
+                .build());
+
         return rules;
     }
 
@@ -969,6 +1115,33 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                                 .required(true)
                                 .defaultValue(defaults.getMinimumPenaltyPoints())
                                 .visibility("rule_enabled")
+                                .build()
+                ))
+                .build());
+
+        rules.add(PresetRuleDescriptor.builder()
+                .ruleKey("SERIES_AUDIENCE")
+                .label("Giới hạn đối tượng nhận điểm")
+                .description("Kiểm soát việc student thuộc khoa nào sẽ được cộng/trừ điểm từ chuỗi này.")
+                .required(false)
+                .enabledByDefault(false)
+                .fieldDefinitions(List.of(
+                        FieldDefinition.builder()
+                                .fieldName("audience")
+                                .label("Đối tượng áp dụng")
+                                .inputType("SELECT")
+                                .required(true)
+                                .defaultValue(defaults.getAudience() != null ? defaults.getAudience().name() : "ALL_PARTICIPANTS")
+                                .visibility("ALWAYS")
+                                .options(List.of("ALL_PARTICIPANTS", "DEPARTMENT_ONLY", "OUTSIDE_DEPARTMENTS_ONLY"))
+                                .build(),
+                        FieldDefinition.builder()
+                                .fieldName("departmentIds")
+                                .label("Danh sách Khoa")
+                                .inputType("MULTI_SELECT")
+                                .required(false)
+                                .defaultValue(defaults.getDepartmentIds())
+                                .visibility("audience_department_scoped")
                                 .build()
                 ))
                 .build());

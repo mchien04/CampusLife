@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import vn.campuslife.enumeration.ActivityType;
+import vn.campuslife.enumeration.ActivityPresetCode;
 
 import java.time.LocalDateTime;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
@@ -44,6 +45,10 @@ public class StandardActivityResponse {
     
     private List<ActivityScoreRuleResponse> scoreRules;
     
+    private ActivityPresetCode presetCode;
+    private ActivityPresetConfig presetConfig;
+    private long activeScoreEntryCount;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String createdBy;

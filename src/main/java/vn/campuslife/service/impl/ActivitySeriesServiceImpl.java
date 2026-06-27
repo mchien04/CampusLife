@@ -32,6 +32,7 @@ import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
+import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
@@ -67,6 +68,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final SemesterHelperService semesterHelperService;
     private final ScoreRuleEngine scoreRuleEngine;
     private final ReminderScheduleService reminderScheduleService;
+    private final ActivityRegistrationAutoService autoRegisterService;
     private final vn.campuslife.repository.SemesterRepository semesterRepository;
     private final vn.campuslife.service.validator.SeriesChildActivityValidator seriesChildValidator;
     private final vn.campuslife.service.mapper.SeriesChildActivityMapper seriesChildMapper;
@@ -77,7 +79,10 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
             Boolean requiresApproval, Integer ticketQuantity,
-            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId) {
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+            vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
+            Boolean isImportant, Boolean mandatoryForFacultyStudents,
+            vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Series name is required");
@@ -102,8 +107,16 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         if (targetSemesterId != null) {
             semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
         }
+        series.setAudience(audience != null ? audience : vn.campuslife.enumeration.ScoreRuleAudience.ALL_PARTICIPANTS);
+        if (departmentIds != null && !departmentIds.isEmpty()) {
+            java.util.List<Department> depts = departmentRepository.findAllById(departmentIds);
+            series.setTargetDepartments(new LinkedHashSet<>(depts));
+        }
         series.setCreatedAt(LocalDateTime.now());
         series.setDeleted(false); // Set default value for isDeleted
+series.setPresetCode(presetCode);
+        series.setImportant(Boolean.TRUE.equals(isImportant));
+        series.setMandatoryForFacultyStudents(Boolean.TRUE.equals(mandatoryForFacultyStudents));
 
         if (mainActivityId != null) {
             Optional<Activity> mainActivityOpt = activityRepository.findById(mainActivityId);
@@ -116,6 +129,16 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 
         ActivitySeries saved = seriesRepository.save(series);
         logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
+
+        // Auto-register students to main activity if series flags require it
+        if (saved.getMainActivity() != null) {
+            autoRegisterService.autoRegisterStudents(
+                    saved.getMainActivity(),
+                    saved.isImportant(),
+                    saved.isMandatoryForFacultyStudents(),
+                    saved.getTargetDepartments());
+        }
+
         return Response.success("Activity series created successfully", toSeriesResponse(saved));
     }
 
@@ -376,6 +399,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
      */
     private void autoRegisterStudentsForNewActivityInSeries(ActivitySeries series, Activity newActivity) {
         try {
+            // First: propagate existing series registrations (students who registered
+            // for any sibling activity) to the new activity.
             Long seriesId = series.getId();
 
             // Lấy tất cả activities trong series (trừ activity mới nếu cần)
@@ -460,6 +485,18 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 logger.info("No students needed auto-registration for new activity {} in series {}",
                         newActivity.getId(),
                         seriesId);
+            }
+
+            // Second: if the series itself is marked isImportant or mandatoryForFacultyStudents,
+            // auto-register ALL/faculty students to the new activity (regardless of whether
+            // they already have a registration in the series — they may not if the series
+            // was created without a main activity or the main activity was added later).
+            if (series.isImportant() || series.isMandatoryForFacultyStudents()) {
+                autoRegisterService.autoRegisterStudents(
+                        newActivity,
+                        series.isImportant(),
+                        series.isMandatoryForFacultyStudents(),
+                        series.getTargetDepartments());
             }
         } catch (Exception e) {
             logger.error("Failed to auto-register students for new activity in series {}: {}", series.getId(),
@@ -1224,7 +1261,10 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
             LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
             Boolean requiresApproval, Integer ticketQuantity,
-            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId) {
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+            vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
+            Boolean isImportant, Boolean mandatoryForFacultyStudents,
+            vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         try {
             // Find series
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
@@ -1242,9 +1282,6 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             // Validate required fields
             if (name != null && name.trim().isEmpty()) {
                 return Response.error("Series name cannot be empty");
-            }
-            if (scoreType == null) {
-                return Response.error("ScoreType is required");
             }
             validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
 
@@ -1299,14 +1336,43 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             }
             if (minimumPenaltyPoints != null) {
                 series.setMinimumPenaltyPoints(minimumPenaltyPoints);
-        if (targetSemesterId != null) {
-            semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
-        }
+            }
+            if (targetSemesterId != null) {
+                semesterRepository.findById(targetSemesterId).ifPresent(series::setTargetSemester);
+            }
+            if (audience != null) {
+                series.setAudience(audience);
+                if (departmentIds != null) {
+                    java.util.List<Department> depts = departmentRepository.findAllById(departmentIds);
+                    series.getTargetDepartments().clear();
+                    series.getTargetDepartments().addAll(depts);
+                } else {
+                    series.getTargetDepartments().clear();
+                }
+            }
+if (presetCode != null) {
+                series.setPresetCode(presetCode);
+            }
+            if (isImportant != null) {
+                series.setImportant(isImportant);
+            }
+            if (mandatoryForFacultyStudents != null) {
+                series.setMandatoryForFacultyStudents(mandatoryForFacultyStudents);
             }
 
             ActivitySeries saved = seriesRepository.save(series);
             reminderScheduleService.syncSeriesMinimumRequirementReminders(saved);
             logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
+
+            // Auto-register students to main activity if series flags require it
+            if (saved.getMainActivity() != null) {
+                autoRegisterService.autoRegisterStudents(
+                        saved.getMainActivity(),
+                        saved.isImportant(),
+                        saved.isMandatoryForFacultyStudents(),
+                        saved.getTargetDepartments());
+            }
+
             return Response.success("Activity series updated successfully", toSeriesResponse(saved));
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when updating series: {}", e.getMessage(), e);
@@ -1374,6 +1440,14 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
         response.setMinimumRequirementEnabled(series.isMinimumRequirementEnabled());
         response.setMinimumRequiredEvents(series.getMinimumRequiredEvents());
         response.setMinimumPenaltyPoints(series.getMinimumPenaltyPoints());
+        response.setAudience(series.getAudience());
+        response.setTargetDepartmentIds(series.getTargetDepartments().stream()
+                .map(Department::getId)
+                .collect(Collectors.toList()));
+        response.setImportant(series.isImportant());
+        response.setMandatoryForFacultyStudents(series.isMandatoryForFacultyStudents());
+        response.setPresetCode(series.getPresetCode());
+        response.setPresetConfig(null);
         response.setCreatedAt(series.getCreatedAt());
         if (series.getMilestonePoints() != null && !series.getMilestonePoints().isBlank()) {
             try {

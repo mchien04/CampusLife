@@ -100,6 +100,9 @@ public interface ScoreEntryRepository extends JpaRepository<ScoreEntry, Long> {
             @Param("status") ScoreEntryStatus status,
             @Param("keyword") String keyword);
 
+    @Query("SELECT COUNT(se) FROM ScoreEntry se WHERE se.activity.id = :activityId AND se.status = :status")
+    long countByActivityIdAndStatus(@Param("activityId") Long activityId, @Param("status") ScoreEntryStatus status);
+
     // Statistics source-type breakdown queries
     @Query("SELECT se.sourceType, SUM(se.points) FROM ScoreEntry se " +
            "WHERE se.semester.id = :semesterId AND se.status = :status " +

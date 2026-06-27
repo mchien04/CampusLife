@@ -1,9 +1,12 @@
 package vn.campuslife.model.activity;
 
 import lombok.Data;
+import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.ScoreSemesterPolicy;
 import vn.campuslife.enumeration.ScoreType;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class ActivityPresetConfig {
@@ -19,4 +22,8 @@ public class ActivityPresetConfig {
     private BigDecimal minigameExhaustedPenaltyPoints;
     private ScoreType bonusScoreType;
     private BigDecimal bonusPoints;
+    private ScoreRuleAudience audience;
+    private ScoreSemesterPolicy semesterPolicy;
+    private Long explicitSemesterId;
+    private List<Long> departmentIds;
 }

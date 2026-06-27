@@ -155,7 +155,7 @@ class ScorePresetServiceImplTest {
 
         assertTrue(milestoneBasicOpt.isPresent());
         SeriesPresetDefinitionResponse milestoneBasic = milestoneBasicOpt.get();
-        assertEquals(2, milestoneBasic.getSupportedRules().size());
+        assertEquals(3, milestoneBasic.getSupportedRules().size());
 
         PresetRuleDescriptor milestoneRule = milestoneBasic.getSupportedRules().stream()
                 .filter(r -> "MILESTONE_POINTS".equals(r.getRuleKey()))
