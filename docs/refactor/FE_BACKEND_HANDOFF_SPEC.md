@@ -1,7 +1,7 @@
 # FE Backend Handoff Spec
 
-> **Version:** 6.0 (Score Preset Adjustments + Registration Cancel Policies)  
-> **Baseline:** Post v5.3 → Current HEAD (ACTIVITY_AUDIENCE removed, Enterprise SUBMISSION_GRADED, mutual exclusion, cancel 1-day-before policy, series cancel, waitlist auto-promote)  
+> **Version:** 6.1 (Score Preset Adjustments + Registration Cancel Policies + Double Penalty Prevention)  
+> **Baseline:** Post v5.3 → Current HEAD (ACTIVITY_AUDIENCE removed, Enterprise SUBMISSION_GRADED, mutual exclusion, cancel 1-day-before, series cancel, waitlist auto-promote, NO_SHOW/TASK_OVERDUE anti-overlap)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
 ## 1. Mục Đích
@@ -60,6 +60,7 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Waitlist series (P7)** | `POST /api/series/{seriesId}/waitlist`: đăng ký chờ khi series full (APPROVED count >= ticketQuantity). Tạo WAITLIST registrations cho tất cả activity con. | - Form series: hiển thị nút "Đăng ký chờ" khi series full. | **Cao** |
 | **Waitlist auto-promote (P7)** | Khi có slot trống (do huỷ), BE tự động promote WAITLIST đầu tiên (FIFO) lên APPROVED/PENDING. Có notification. | - FE không cần làm gì thêm. Student nhận notification khi được promote. | **Thấp** |
 | **Series quantity APPROVED-only (P7)** | Series `ticketQuantity` giờ chỉ đếm APPROVED distinct student (không đếm PENDING/REJECTED/CANCELLED). Đồng bộ với activity. | - Hiển thị slot còn lại dựa trên APPROVED count, giống activity. | **Trung bình** |
+| **Chống double penalty NO_SHOW + TASK_OVERDUE (P7.1)** | BE thêm attendance guard: `applyTaskOverdue` skip nếu SV không ATTENDED. No-show → chỉ NO_SHOW; attended-no-submit → chỉ TASK_OVERDUE. | - FE không cần thay đổi gì. | **Thấp** |
 
 ### 2.2 Các thay đổi về Endpoint API
 
@@ -1792,6 +1793,9 @@ export interface CreateMiniGameRequest {
 23. **Series waitlist (P7)**: `POST /api/series/{seriesId}/waitlist` khi series full.
 24. **Waitlist auto-promote (P7)**: BE tự promote WAITLIST→APPROVED/PENDING khi có slot trống. FE chỉ cần hiển thị notification.
 25. **Series quantity (P7)**: Giờ đếm APPROVED distinct student, giống activity. PENDING không còn chiếm slot series.
-26. **Registration exists check (P7)**: `existsByActivityIdAndStudentId` giờ exclude CANCELLED status — SV đã huỷ có thể thấy nút đăng ký nhưng sẽ bị chặn bởi re-register block.---
+26. **Registration exists check (P7)**: `existsByActivityIdAndStudentId` giờ exclude CANCELLED status — SV đã huỷ có thể thấy nút đăng ký nhưng sẽ bị chặn bởi re-register block.
+27. **Chống double penalty NO_SHOW + TASK_OVERDUE (P7.1)**: BE tự guard ở engine level — nếu SV không ATTENDED thì TASK_OVERDUE bị skip (3 điểm guard: `ScoreRuleEngineImpl.applyTaskOverdue`, `ReminderDispatchService.isTaskOverdueReminderCancelled`, `ActivityTaskServiceImpl.checkAndUpdateOverdueAssignments`). No-show → chỉ NO_SHOW; attended-no-submit → chỉ TASK_OVERDUE. FE không cần thay đổi.
+
+---
 
 *End of FE_BACKEND_HANDOFF_SPEC.md*
