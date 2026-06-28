@@ -19,4 +19,6 @@ public class FieldDefinition {
     private Object defaultValue;
     private String visibility;
     private List<String> options;
+    @Builder.Default
+    private boolean editable = true;
 }

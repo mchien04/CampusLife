@@ -1,6 +1,8 @@
 # Đánh Giá Plan + Phân Tích Chỉnh Sửa ScoreRule Sau Tạo Sự Kiện
 
 > **Tóm tắt:** Plan tốt cho flow CREATE nhưng thiếu hoàn toàn phần EDIT. Quan trọng hơn, backend **không persist `presetCode`/`presetConfig`** trên entity `Activity`, khiến FE không thể reconstruct form edit. Cần bổ sung backend contract và UX flow cho edit.
+>
+> **⚠️ Outdated (P6.1):** `participationFailPoints` đã bị xoá khỏi `PARTICIPATION_COMPLETED`. Xem `docs/refactor/FE_SPEC_v6_PRESET_AND_REGISTRATION.md` cho spec mới nhất.
 
 ---
 

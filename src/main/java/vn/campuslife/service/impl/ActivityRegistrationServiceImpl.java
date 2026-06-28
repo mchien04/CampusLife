@@ -198,6 +198,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 return new Response(false, "Registration already cancelled", null);
             }
 
+            if (registration.getStatus() == RegistrationStatus.ATTENDED) {
+                return new Response(false, "Không thể huỷ đăng ký đã điểm danh tham gia (ATTENDED).", null);
+            }
+
             if (registration.getStatus() == RegistrationStatus.APPROVED) {
                 if (activity.isRequiresApproval()) {
                     return new Response(false,

@@ -6,11 +6,13 @@
 
 ---
 
-## 1. PresetRuleDescriptor — Field mới
+## 1. PresetRuleDescriptor — Field `conflictsWith`
 
-### `conflictsWith: string[]`
+### `conflictsWith: string[]` (Enterprise Seminar)
 
 Mảng `ruleKey` của các rule **xung khắc** (mutual exclusion). Khi FE toggle 1 rule **ON**, phải **tự tắt** tất cả rule trong `conflictsWith`.
+
+> **P6.1:** `PARTICIPATION_COMPLETED` và `SUBMISSION_GRADED` **xung khắc** trong enterprise — chỉ chọn 1 trong 2 mode để tránh cộng điểm `CHUYEN_DE` 2 lần.
 
 ```ts
 export interface PresetRuleDescriptor {
@@ -21,11 +23,11 @@ export interface PresetRuleDescriptor {
   enabledByDefault: boolean;
   fieldDefinitions: FieldDefinition[];
   suggestedCombinations?: ScoreRuleTrigger[];
-  conflictsWith?: string[];  // <-- MỚI
+  conflictsWith?: string[];
 }
 ```
 
-### Response thực tế cho Enterprise Seminar
+### Response thực tế cho Enterprise Seminar (P6.1)
 
 ```json
 GET /api/activities/presets
@@ -36,13 +38,13 @@ GET /api/activities/presets
     "ruleKey": "PARTICIPATION_COMPLETED",
     "enabledByDefault": true,
     "suggestedCombinations": ["NO_SHOW"],
-    "conflictsWith": ["SUBMISSION_GRADED"]     // <-- khi bật rule này → tắt SUBMISSION_GRADED
+    "conflictsWith": ["SUBMISSION_GRADED"]
   },
   {
     "ruleKey": "SUBMISSION_GRADED",
     "enabledByDefault": false,
     "suggestedCombinations": ["TASK_OVERDUE", "NO_SHOW"],
-    "conflictsWith": ["PARTICIPATION_COMPLETED"] // <-- khi bật rule này → tắt PARTICIPATION_COMPLETED
+    "conflictsWith": ["PARTICIPATION_COMPLETED"]
   },
   {
     "ruleKey": "TASK_OVERDUE",
@@ -56,7 +58,7 @@ GET /api/activities/presets
 ]
 ```
 
-### FE Logic
+### FE Logic (giữ lại để dùng cho future conflicts)
 
 ```ts
 function toggleRule(ruleKey: string, enabled: boolean, supportedRules: PresetRuleDescriptor[]) {
@@ -80,9 +82,9 @@ function toggleRule(ruleKey: string, enabled: boolean, supportedRules: PresetRul
 
 ### `submissionEnabled: boolean`
 
-Dùng cho Enterprise Seminar để toggle mode:
-- `false` (default) → Participation mode: sinh `PARTICIPATION_COMPLETED`
-- `true` → Submission mode: sinh `SUBMISSION_GRADED`, **không** sinh `PARTICIPATION_COMPLETED`
+Dùng cho Enterprise Seminar để toggle mode (mutual exclusion):
+- `false` (default) → Participation mode: chỉ sinh `PARTICIPATION_COMPLETED`
+- `true` → Submission mode: sinh `SUBMISSION_GRADED` + `TASK_OVERDUE`, **tắt** `PARTICIPATION_COMPLETED`
 
 ```ts
 export interface ActivityPresetConfig {
@@ -97,9 +99,10 @@ export interface ActivityPresetConfig {
 // Khi admin bật SUBMISSION_GRADED cho Enterprise Seminar:
 const presetConfig: ActivityPresetConfig = {
   submissionEnabled: true,
-  submissionPassPoints: 5,
-  submissionFailPoints: 1,
-  taskOverduePenaltyPoints: 2,  // optional
+  submissionPassPoints: 1,        // pass = +1 buổi CHUYEN_DE
+  submissionFailPoints: 1,        // số dương; BE tự đổi dấu thành -1
+  submissionFailScoreType: "REN_LUYEN", // fail trừ REN_LUYEN, không trừ CHUYEN_DE
+  taskOverduePenaltyPoints: 2,    // optional
   noShowPenaltyEnabled: false
 };
 
@@ -112,8 +115,9 @@ POST /api/activities/presets/preview
 }
 
 // Response: scoreRules chỉ có SUBMISSION_GRADED (+ TASK_OVERDUE nếu penalty != 0)
-//           requiresSubmission = true
 //           KHÔNG có PARTICIPATION_COMPLETED
+//           requiresSubmission = true
+//           previewRows: dạng đã expand sẵn để render bảng
 ```
 
 ---
@@ -130,34 +134,62 @@ Audience giờ được cấu hình **per-rule** trong từng descriptor, qua c�
 
 ---
 
-## 4. participationFailPoints — Giờ là optional
+## 4. `participationFailPoints` — Đã xoá khỏi `PARTICIPATION_COMPLETED`
 
-Trong `PARTICIPATION_COMPLETED` descriptor:
-```json
-{
-  "fieldName": "participationFailPoints",
-  "required": false   // <-- trước là true, giờ false
-}
-```
+`PARTICIPATION_COMPLETED` chỉ là check-in/check-out, không có nhánh fail/grading. Do đó descriptor **không còn** field:
+- `participationFailPoints`
+- `participationFailScoreType`
 
 Áp dụng cho: `EVENT_BASIC`, `ENTERPRISE_SEMINAR_BASIC`, `ENTERPRISE_SEMINAR_WITH_BONUS`, `CUSTOM`.
 
 ### FE action
-Dynamic form dựa trên `FieldDefinition.required` — không bắt buộc input cho field này nữa.
+- Xoá UI field/render cho `participationFailPoints` và `participationFailScoreType` trong `PARTICIPATION_COMPLETED` form.
+- Nếu rule fail xảy ra (chưa check-out hoàn tất), BE sẽ tự xử lý với `failPoints = 0` và không sinh entry điểm phạt.
 
 ---
 
-## 5. `submissionFailPoints` vẫn required
+## 5. `submissionFailPoints` vẫn required; thêm `submissionFailScoreType` và `taskOverduePenaltyScoreType`
 
-Trong `SUBMISSION_GRADED` descriptor:
+Trong `SUBMISSION_GRADED` descriptor (enterprise only):
 ```json
 {
   "fieldName": "submissionFailPoints",
-  "required": true    // <-- vẫn required
+  "required": true
+},
+{
+  "fieldName": "submissionFailScoreType",
+  "required": false,
+  "inputType": "SELECT",
+  "options": ["REN_LUYEN", "CONG_TAC_XA_HOI", "CHUYEN_DE"],
+  "defaultValue": null
 }
 ```
 
-Khi admin bật `SUBMISSION_GRADED` (kể cả trong Enterprise), field này vẫn bắt buộc.
+Trong `TASK_OVERDUE` descriptor (enterprise only):
+```json
+{
+  "fieldName": "taskOverduePenaltyPoints",
+  "required": true
+},
+{
+  "fieldName": "taskOverduePenaltyScoreType",
+  "required": false,
+  "inputType": "SELECT",
+  "options": ["REN_LUYEN", "CONG_TAC_XA_HOI", "CHUYEN_DE"],
+  "defaultValue": null
+}
+```
+
+- `submissionFailPoints`: vẫn bắt buộc khi bật `SUBMISSION_GRADED`.
+- `submissionFailScoreType`: **optional**. Nếu để trống (`null`), BE tự fallback về `scoreType` của rule khi chấm fail.
+- `taskOverduePenaltyScoreType`: **optional**. Nếu để trống, BE fallback về `scoreType` chính. Với enterprise mặc định `REN_LUYEN`.
+- Cả 2 field **chỉ xuất hiện trong descriptor của enterprise preset**.
+
+### FE action
+- Hiển thị dropdown `submissionFailScoreType` bên cạnh `submissionFailPoints`.
+- Hiển thị dropdown `taskOverduePenaltyScoreType` bên cạnh `taskOverduePenaltyPoints`.
+- Label gợi ý: "Loại điểm phạt (để trống để mặc định theo Loại điểm chính)".
+- Với enterprise, ưu tiên default `REN_LUYEN` cho cả 2.
 
 ---
 
@@ -180,9 +212,9 @@ Khi admin bật `SUBMISSION_GRADED` (kể cả trong Enterprise), field này v�
 
 ---
 
-## 7. Enterprise Seminar — Thêm SUBMISSION_GRADED + TASK_OVERDUE
+## 7. Enterprise Seminar — Chọn 1 trong 2: PARTICIPATION_COMPLETED hoặc SUBMISSION_GRADED
 
-`ENTERPRISE_SEMINAR_BASIC` và `ENTERPRISE_SEMINAR_WITH_BONUS` giờ có **4 rule** (BASIC) hoặc **5 rule** (WITH_BONUS):
+`ENTERPRISE_SEMINAR_BASIC` và `ENTERPRISE_SEMINAR_WITH_BONUS` có **2 mode xung khắc** để tránh cộng điểm `CHUYEN_DE` 2 lần:
 
 | Rule | enabledByDefault | required |
 |---|---|---|
@@ -192,11 +224,25 @@ Khi admin bật `SUBMISSION_GRADED` (kể cả trong Enterprise), field này v�
 | NO_SHOW | false | false |
 | BONUS_POINTS (WITH_BONUS) | true | false |
 
+### Key behavior
+- **Participation mode** (`submissionEnabled = false`):
+  - `PARTICIPATION_COMPLETED` cộng điểm `CHUYEN_DE` tích lũy buổi (mặc định 1 buổi).
+- **Submission mode** (`submissionEnabled = true`):
+  - `PARTICIPATION_COMPLETED` **bị tắt**.
+  - `SUBMISSION_GRADED` chấm bài nộp:
+    - Pass → cộng `submissionPassPoints` vào `scoreType` chính (mặc định `1` buổi `CHUYEN_DE`).
+    - Fail → trừ `submissionFailPoints` vào `submissionFailScoreType` (mặc định `REN_LUYEN` cho enterprise).
+  - `TASK_OVERDUE` nếu bật: trừ `taskOverduePenaltyPoints` vào `taskOverduePenaltyScoreType` (mặc định `REN_LUYEN` cho enterprise).
+- `PARTICIPATION_COMPLETED` và `SUBMISSION_GRADED` có `conflictsWith` lẫn nhau.
+- `submissionFailScoreType` và `taskOverduePenaltyScoreType` **chỉ xuất hiện trong descriptor của enterprise preset**.
+
 ### FE action
-- Form enterprise seminar: hiển thị toggle cho `SUBMISSION_GRADED` và `TASK_OVERDUE`
-- Khi toggle `SUBMISSION_GRADED` ON → dùng `conflictsWith` để tắt `PARTICIPATION_COMPLETED`
-- Gửi `presetConfig.submissionEnabled = true` để BE biết đang ở submission mode
-- `submissionFailPoints` field vẫn `required: true` — bắt buộc nhập khi bật rule
+- Form enterprise seminar: hiển thị toggle cho `SUBMISSION_GRADED` và `TASK_OVERDUE`.
+- Khi toggle `SUBMISSION_GRADED` ON → dùng `conflictsWith` để **tắt** `PARTICIPATION_COMPLETED`.
+- Gửi `presetConfig.submissionEnabled = true` để BE sinh rule `SUBMISSION_GRADED` + `TASK_OVERDUE`.
+- `submissionFailPoints` vẫn `required: true` khi bật rule.
+- `submissionFailScoreType` và `taskOverduePenaltyScoreType` chỉ render cho enterprise; default `REN_LUYEN`.
+- Preview preset hiển thị từng rule với `scoreType`, `points`, `audience`, `semesterPolicy` để admin dễ kiểm tra: cộng `CHUYEN_DE`, trừ `REN_LUYEN`.
 
 ---
 
@@ -347,15 +393,16 @@ Mới: chỉ đếm `APPROVED` distinct student — **đồng bộ với activit
 
 ## 14. Tổng kết FE Checklist
 
-### Preset (P6)
+### Preset (P6 / P6.1)
 
 - [ ] Xoá UI section `ACTIVITY_AUDIENCE`
-- [ ] `participationFailPoints` render với `required: false`
+- [ ] Xoá UI field `participationFailPoints` và `participationFailScoreType` khỏi `PARTICIPATION_COMPLETED`
 - [ ] Enterprise Seminar: thêm toggle `SUBMISSION_GRADED` + `TASK_OVERDUE`
-- [ ] Dùng `conflictsWith` để tự tắt rule xung khắc khi toggle
+- [ ] Khi bật `SUBMISSION_GRADED` ở enterprise, dùng `conflictsWith` để **tắt** `PARTICIPATION_COMPLETED`
 - [ ] Gửi `presetConfig.submissionEnabled` khi toggle submission mode
 - [ ] Form edit: lock `presetCode` dropdown
 - [ ] Hiển thị `submissionFailPoints` required khi `SUBMISSION_GRADED` được bật
+- [ ] Hiển thị `submissionFailScoreType` dropdown; default `REN_LUYEN` cho enterprise
 
 ### Registration (P7)
 

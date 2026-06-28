@@ -546,4 +546,99 @@ public class ScoreRuleEngineImplTest {
 
         verify(ruleService, never()).getEnabledRules(activity.getId(), ScoreRuleTrigger.PARTICIPATION_COMPLETED);
     }
+
+    @Test
+    void applyActivityCompleted_FailedAndHasFailScoreType_AppliesFailScoreType() {
+        ActivityParticipation participation = new ActivityParticipation();
+        participation.setId(500L);
+        participation.setIsCompleted(false); // Fail!
+        participation.setRegistration(registration);
+        participation.setDate(LocalDateTime.now());
+
+        ActivityScoreRule rule = new ActivityScoreRule();
+        rule.setId(150L);
+        rule.setPoints(BigDecimal.valueOf(10));
+        rule.setFailPoints(BigDecimal.valueOf(-2));
+        rule.setScoreType(ScoreType.CHUYEN_DE);
+        rule.setFailScoreType(ScoreType.REN_LUYEN); // fail score type override!
+        rule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.PARTICIPATION_COMPLETED))
+                .thenReturn(Collections.singletonList(rule));
+        when(semesterResolver.resolveSemester(eq(activity), eq(rule), any())).thenReturn(semester);
+
+        scoreRuleEngine.applyActivityCompleted(participation, actor);
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService).upsertEntry(commandCaptor.capture());
+        assertEquals(BigDecimal.valueOf(-2), commandCaptor.getValue().getPoints());
+        assertEquals(ScoreType.REN_LUYEN, commandCaptor.getValue().getScoreType()); // Uses fail score type!
+    }
+
+    @Test
+    void applySubmissionGraded_FailedAndHasFailScoreType_AppliesFailScoreType() {
+        ActivityTask task = new ActivityTask();
+        task.setActivity(activity);
+
+        TaskSubmission submission = new TaskSubmission();
+        submission.setId(600L);
+        submission.setTask(task);
+        submission.setStudent(student);
+        submission.setStatus(SubmissionStatus.GRADED);
+        submission.setIsCompleted(false); // Fail!
+        submission.setSubmittedAt(LocalDateTime.now());
+
+        ActivityScoreRule rule = new ActivityScoreRule();
+        rule.setId(151L);
+        rule.setPoints(BigDecimal.valueOf(5));
+        rule.setFailPoints(BigDecimal.valueOf(-3));
+        rule.setScoreType(ScoreType.CHUYEN_DE);
+        rule.setFailScoreType(ScoreType.REN_LUYEN); // fail score type override!
+        rule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.SUBMISSION_GRADED))
+                .thenReturn(Collections.singletonList(rule));
+        when(semesterResolver.resolveSemester(eq(activity), eq(rule), any())).thenReturn(semester);
+
+        scoreRuleEngine.applySubmissionGraded(submission, actor);
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService).upsertEntry(commandCaptor.capture());
+        assertEquals(BigDecimal.valueOf(-3), commandCaptor.getValue().getPoints());
+        assertEquals(ScoreType.REN_LUYEN, commandCaptor.getValue().getScoreType()); // Uses fail score type!
+    }
+
+    @Test
+    void applySubmissionGraded_FailedAndNoFailScoreType_FallsBackToScoreType() {
+        ActivityTask task = new ActivityTask();
+        task.setActivity(activity);
+
+        TaskSubmission submission = new TaskSubmission();
+        submission.setId(600L);
+        submission.setTask(task);
+        submission.setStudent(student);
+        submission.setStatus(SubmissionStatus.GRADED);
+        submission.setIsCompleted(false); // Fail!
+        submission.setSubmittedAt(LocalDateTime.now());
+
+        ActivityScoreRule rule = new ActivityScoreRule();
+        rule.setId(151L);
+        rule.setPoints(BigDecimal.valueOf(5));
+        rule.setFailPoints(BigDecimal.valueOf(-3));
+        rule.setScoreType(ScoreType.REN_LUYEN);
+        rule.setFailScoreType(null); // no override -> fallback
+        rule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.SUBMISSION_GRADED))
+                .thenReturn(Collections.singletonList(rule));
+        when(semesterResolver.resolveSemester(eq(activity), eq(rule), any())).thenReturn(semester);
+
+        scoreRuleEngine.applySubmissionGraded(submission, actor);
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService).upsertEntry(commandCaptor.capture());
+        assertEquals(BigDecimal.valueOf(-3), commandCaptor.getValue().getPoints());
+        assertEquals(ScoreType.REN_LUYEN, commandCaptor.getValue().getScoreType(),
+                "When failScoreType is null, fail should fallback to scoreType");
+    }
 }

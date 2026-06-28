@@ -3,6 +3,8 @@
 > **Date:** 2026-06-28
 > **Baseline:** Post `FE_BACKEND_HANDOFF_SPEC.md` v3.1
 > **Source:** Java backend (controllers, DTOs, services, validators)
+>
+> **⚠️ Outdated (P6.1):** `participationFailPoints` đã bị xoá khỏi `PARTICIPATION_COMPLETED`; thay vào đó là `submissionFailScoreType` cho `SUBMISSION_GRADED`. Xem `docs/refactor/FE_SPEC_v6_PRESET_AND_REGISTRATION.md` cho spec mới nhất.
 
 Tài liệu này mô tả các thay đổi mới nhất về cấu hình ScoreRule qua preset, audience cho Series, và các bug-fix quan trọng trong luồng edit.
 

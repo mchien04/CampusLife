@@ -132,6 +132,7 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
 
     private void updateRuleInPlace(ActivityScoreRule rule, ActivityScoreRuleRequest req) {
         rule.setScoreType(req.getScoreType());
+        rule.setFailScoreType(req.getFailScoreType());
         rule.setTriggerType(req.getTriggerType());
         rule.setCalculation(req.getCalculation());
         rule.setPoints(req.getPoints() != null ? req.getPoints() : java.math.BigDecimal.ZERO);
@@ -161,6 +162,7 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
 
     private void applyRequestToEntity(ActivityScoreRuleRequest req, ActivityScoreRule rule) {
         rule.setScoreType(req.getScoreType());
+        rule.setFailScoreType(req.getFailScoreType());
         rule.setTriggerType(req.getTriggerType());
         rule.setCalculation(req.getCalculation());
         rule.setPoints(req.getPoints() != null ? req.getPoints() : java.math.BigDecimal.ZERO);
@@ -247,6 +249,7 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
         res.setId(rule.getId());
         res.setActivityId(rule.getActivity().getId());
         res.setScoreType(rule.getScoreType());
+        res.setFailScoreType(rule.getFailScoreType());
         res.setTriggerType(rule.getTriggerType());
         res.setCalculation(rule.getCalculation());
         res.setPoints(rule.getPoints());

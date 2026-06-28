@@ -13,12 +13,15 @@ public class ActivityPresetConfig {
     private ScoreType primaryScoreType;
     private BigDecimal participationPoints;
     private BigDecimal participationFailPoints;
+    private ScoreType participationFailScoreType;
     private Boolean noShowPenaltyEnabled;
     private BigDecimal noShowPenaltyPoints;
     private ScoreType noShowPenaltyScoreType;
     private BigDecimal submissionPassPoints;
     private BigDecimal submissionFailPoints;
+    private ScoreType submissionFailScoreType;
     private BigDecimal taskOverduePenaltyPoints;
+    private ScoreType taskOverduePenaltyScoreType;
     private BigDecimal minigameExhaustedPenaltyPoints;
     private ScoreType bonusScoreType;
     private BigDecimal bonusPoints;

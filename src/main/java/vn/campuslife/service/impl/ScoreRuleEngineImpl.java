@@ -23,6 +23,7 @@ import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreRuleAudience;
 import vn.campuslife.enumeration.ScoreRuleCalculation;
 import vn.campuslife.enumeration.ScoreRuleTrigger;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.model.score.ScoreEntryCommand;
 import vn.campuslife.repository.ActivityRepository;
@@ -81,9 +82,14 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             if (!isEligible(rule, student))
                 continue;
 
-            BigDecimal points = Boolean.TRUE.equals(participation.getIsCompleted())
+            boolean isSuccess = Boolean.TRUE.equals(participation.getIsCompleted());
+            BigDecimal points = isSuccess
                     ? rule.getPoints()
                     : rule.getFailPoints();
+
+            ScoreType actualScoreType = isSuccess
+                    ? rule.getScoreType()
+                    : (rule.getFailScoreType() != null ? rule.getFailScoreType() : rule.getScoreType());
 
             Semester semester = semesterResolver.resolveSemester(activity, rule, participation.getDate());
 
@@ -92,7 +98,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
                     .semesterId(semester.getId())
-                    .scoreType(rule.getScoreType())
+                    .scoreType(actualScoreType)
                     .sourceType(ScoreEntrySourceType.ACTIVITY_PARTICIPATION)
                     .sourceId(participation.getId())
                     .points(points)
@@ -185,6 +191,8 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 continue;
             }
 
+            ScoreType actualScoreType = rule.getFailScoreType() != null ? rule.getFailScoreType() : rule.getScoreType();
+
             LocalDateTime occurredAt = attempt.getSubmittedAt() != null ? attempt.getSubmittedAt() : LocalDateTime.now();
             Semester semester = semesterResolver.resolveSemester(activity, rule, occurredAt);
 
@@ -193,7 +201,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
                     .semesterId(semester.getId())
-                    .scoreType(rule.getScoreType())
+                    .scoreType(actualScoreType)
                     .sourceType(ScoreEntrySourceType.MINIGAME_ATTEMPT)
                     .sourceId(attempt.getId())
                     .points(points)
@@ -275,13 +283,18 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             if (!isEligible(rule, student))
                 continue;
 
+            boolean isSuccess = vn.campuslife.enumeration.SubmissionStatus.GRADED.equals(submission.getStatus())
+                    && Boolean.TRUE.equals(submission.getIsCompleted());
             BigDecimal points;
-            if (vn.campuslife.enumeration.SubmissionStatus.GRADED.equals(submission.getStatus())
-                    && Boolean.TRUE.equals(submission.getIsCompleted())) {
+            if (isSuccess) {
                 points = applySignForSuccess(rule, rule.getPoints());
             } else {
                 points = applySignForFailure(rule, rule.getFailPoints());
             }
+
+            ScoreType actualScoreType = isSuccess
+                    ? rule.getScoreType()
+                    : (rule.getFailScoreType() != null ? rule.getFailScoreType() : rule.getScoreType());
 
             Semester semester = semesterResolver.resolveSemester(activity, rule, submission.getSubmittedAt());
 
@@ -290,7 +303,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
                     .semesterId(semester.getId())
-                    .scoreType(rule.getScoreType())
+                    .scoreType(actualScoreType)
                     .sourceType(ScoreEntrySourceType.TASK_SUBMISSION)
                     .sourceId(submission.getId())
                     .points(points)

@@ -15,6 +15,7 @@ import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.ActivityPresetDefinitionResponse;
 import vn.campuslife.model.activity.PresetRuleDescriptor;
 import vn.campuslife.model.activity.FieldDefinition;
+import vn.campuslife.model.activity.ScoreRulePreviewRow;
 import vn.campuslife.model.activity.series.SeriesPresetDefinitionResponse;
 import vn.campuslife.enumeration.SeriesPresetCode;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
@@ -298,13 +299,14 @@ class ScorePresetServiceImplTest {
     }
 
     @Test
-    void getActivityPresetDefinitions_ParticipationFailPointsOptional() {
+    void getActivityPresetDefinitions_ParticipationFailPointsNotPresent() {
         List<ActivityPresetDefinitionResponse> responses = scorePresetService.getActivityPresetDefinitions();
 
         List<ActivityPresetCode> participationPresets = List.of(
                 ActivityPresetCode.EVENT_BASIC,
                 ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC,
-                ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS);
+                ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS,
+                ActivityPresetCode.CUSTOM);
 
         for (ActivityPresetCode code : participationPresets) {
             ActivityPresetDefinitionResponse preset = responses.stream()
@@ -315,12 +317,12 @@ class ScorePresetServiceImplTest {
                     .filter(r -> "PARTICIPATION_COMPLETED".equals(r.getRuleKey()))
                     .findFirst().orElseThrow();
 
-            FieldDefinition failPointsField = partRule.getFieldDefinitions().stream()
-                    .filter(f -> "participationFailPoints".equals(f.getFieldName()))
-                    .findFirst().orElseThrow();
+            boolean hasFailField = partRule.getFieldDefinitions().stream()
+                    .anyMatch(f -> "participationFailPoints".equals(f.getFieldName())
+                            || "participationFailScoreType".equals(f.getFieldName()));
 
-            assertFalse(failPointsField.isRequired(),
-                    "participationFailPoints should be optional for preset " + code);
+            assertFalse(hasFailField,
+                    "PARTICIPATION_COMPLETED should NOT have participationFailPoints or participationFailScoreType for preset " + code);
         }
     }
 
@@ -351,6 +353,58 @@ class ScorePresetServiceImplTest {
                 .filter(f -> "submissionFailPoints".equals(f.getFieldName()))
                 .findFirst().orElseThrow();
         assertTrue(subFailField.isRequired());
+
+        FieldDefinition subFailScoreTypeField = subRule.getFieldDefinitions().stream()
+                .filter(f -> "submissionFailScoreType".equals(f.getFieldName()))
+                .findFirst().orElseThrow();
+        assertFalse(subFailScoreTypeField.isRequired());
+    }
+
+    @Test
+    void getActivityPresetDefinitions_FailScoreTypesOnlyForEnterprise() {
+        List<ActivityPresetDefinitionResponse> responses = scorePresetService.getActivityPresetDefinitions();
+
+        // Enterprise presets SHOULD expose both submissionFailScoreType and taskOverduePenaltyScoreType
+        for (ActivityPresetCode code : List.of(ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC,
+                ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS)) {
+            ActivityPresetDefinitionResponse preset = responses.stream()
+                    .filter(p -> p.getCode() == code)
+                    .findFirst().orElseThrow();
+            PresetRuleDescriptor subRule = preset.getSupportedRules().stream()
+                    .filter(r -> "SUBMISSION_GRADED".equals(r.getRuleKey()))
+                    .findFirst().orElseThrow();
+            assertTrue(subRule.getFieldDefinitions().stream()
+                            .anyMatch(f -> "submissionFailScoreType".equals(f.getFieldName())),
+                    "Enterprise preset " + code + " should expose submissionFailScoreType");
+
+            PresetRuleDescriptor overdueRule = preset.getSupportedRules().stream()
+                    .filter(r -> "TASK_OVERDUE".equals(r.getRuleKey()))
+                    .findFirst().orElseThrow();
+            assertTrue(overdueRule.getFieldDefinitions().stream()
+                            .anyMatch(f -> "taskOverduePenaltyScoreType".equals(f.getFieldName())),
+                    "Enterprise preset " + code + " should expose taskOverduePenaltyScoreType");
+        }
+
+        // Non-enterprise presets should NOT expose these fields
+        for (ActivityPresetCode code : List.of(ActivityPresetCode.EVENT_WITH_SUBMISSION,
+                ActivityPresetCode.CUSTOM)) {
+            ActivityPresetDefinitionResponse preset = responses.stream()
+                    .filter(p -> p.getCode() == code)
+                    .findFirst().orElseThrow();
+            PresetRuleDescriptor subRule = preset.getSupportedRules().stream()
+                    .filter(r -> "SUBMISSION_GRADED".equals(r.getRuleKey()))
+                    .findFirst().orElseThrow();
+            assertFalse(subRule.getFieldDefinitions().stream()
+                            .anyMatch(f -> "submissionFailScoreType".equals(f.getFieldName())),
+                    "Non-enterprise preset " + code + " should NOT expose submissionFailScoreType");
+
+            PresetRuleDescriptor overdueRule = preset.getSupportedRules().stream()
+                    .filter(r -> "TASK_OVERDUE".equals(r.getRuleKey()))
+                    .findFirst().orElseThrow();
+            assertFalse(overdueRule.getFieldDefinitions().stream()
+                            .anyMatch(f -> "taskOverduePenaltyScoreType".equals(f.getFieldName())),
+                    "Non-enterprise preset " + code + " should NOT expose taskOverduePenaltyScoreType");
+        }
     }
 
     @Test
@@ -376,7 +430,7 @@ class ScorePresetServiceImplTest {
     void previewActivityPreset_EnterpriseSeminar_SubmissionMode_ExcludesParticipation() {
         ActivityPresetConfig config = new ActivityPresetConfig();
         config.setSubmissionEnabled(true);
-        config.setSubmissionPassPoints(BigDecimal.valueOf(5));
+        config.setSubmissionPassPoints(BigDecimal.ONE);
         config.setSubmissionFailPoints(BigDecimal.valueOf(1));
 
         ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
@@ -396,12 +450,54 @@ class ScorePresetServiceImplTest {
                 .filter(r -> r.getTriggerType() == ScoreRuleTrigger.SUBMISSION_GRADED)
                 .findFirst().orElseThrow();
         assertEquals(ScoreRuleCalculation.PASS_FAIL_POINTS, subRule.getCalculation());
-        assertEquals(BigDecimal.valueOf(5), subRule.getPoints());
+        assertEquals(BigDecimal.ONE, subRule.getPoints());
         assertEquals(BigDecimal.valueOf(1), subRule.getFailPoints());
     }
 
+
+
     @Test
-    void previewActivityPreset_EnterpriseSeminar_WithTaskOverduePenalty_GeneratesOverdueRule() {
+    void previewActivityPreset_EnterpriseSeminarSubmissionMode_PreviewRowsShowBothScoreTypes() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(true);
+        config.setSubmissionPassPoints(BigDecimal.ONE);
+        config.setSubmissionFailPoints(BigDecimal.valueOf(2));
+        config.setSubmissionFailScoreType(ScoreType.REN_LUYEN);
+        config.setTaskOverduePenaltyPoints(BigDecimal.valueOf(3));
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+        List<ScoreRulePreviewRow> rows = response.getPreviewRows();
+
+        assertFalse(rows.isEmpty());
+
+        ScoreRulePreviewRow passRow = rows.stream()
+                .filter(r -> "SUBMISSION_GRADED".equals(r.getTriggerType()) && "PASS".equals(r.getScenario()))
+                .findFirst().orElseThrow();
+        assertEquals("CHUYEN_DE", passRow.getScoreType());
+        assertEquals(BigDecimal.ONE, passRow.getPoints());
+        assertEquals("ALL_PARTICIPANTS", passRow.getAudience());
+        assertEquals("ACTIVITY_SEMESTER", passRow.getSemester());
+
+        ScoreRulePreviewRow failRow = rows.stream()
+                .filter(r -> "SUBMISSION_GRADED".equals(r.getTriggerType()) && "FAIL".equals(r.getScenario()))
+                .findFirst().orElseThrow();
+        assertEquals("REN_LUYEN", failRow.getScoreType());
+        assertEquals(BigDecimal.valueOf(-2), failRow.getPoints());
+
+        ScoreRulePreviewRow overdueRow = rows.stream()
+                .filter(r -> "TASK_OVERDUE".equals(r.getTriggerType()))
+                .findFirst().orElseThrow();
+        assertEquals("REN_LUYEN", overdueRow.getScoreType());
+        assertEquals(BigDecimal.valueOf(-3), overdueRow.getPoints());
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminar_WithTaskOverduePenalty_UsesRenLuyenByDefault() {
         ActivityPresetConfig config = new ActivityPresetConfig();
         config.setSubmissionEnabled(true);
         config.setTaskOverduePenaltyPoints(BigDecimal.valueOf(3));
@@ -413,8 +509,12 @@ class ScorePresetServiceImplTest {
 
         ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
 
-        assertTrue(response.getScoreRules().stream()
-                .anyMatch(r -> r.getTriggerType() == ScoreRuleTrigger.TASK_OVERDUE));
+        ActivityScoreRuleRequest overdueRule = response.getScoreRules().stream()
+                .filter(r -> r.getTriggerType() == ScoreRuleTrigger.TASK_OVERDUE)
+                .findFirst().orElseThrow();
+        assertEquals(ScoreType.REN_LUYEN, overdueRule.getScoreType(),
+                "Enterprise task overdue penalty should default to REN_LUYEN to avoid deducting CHUYEN_DE");
+        assertEquals(BigDecimal.valueOf(3), overdueRule.getFailPoints());
     }
 
     @Test
@@ -435,5 +535,184 @@ class ScorePresetServiceImplTest {
                 .anyMatch(r -> r.getTriggerType() == ScoreRuleTrigger.PARTICIPATION_COMPLETED));
         assertTrue(response.getScoreRules().stream()
                 .noneMatch(r -> r.getTriggerType() == ScoreRuleTrigger.SUBMISSION_GRADED));
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminar_MapsSubmissionFailScoreTypeCorrectly() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(true);
+        config.setSubmissionPassPoints(BigDecimal.ONE);
+        config.setSubmissionFailPoints(BigDecimal.valueOf(1));
+        config.setSubmissionFailScoreType(ScoreType.REN_LUYEN); // fail score type override!
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+
+        List<ActivityScoreRuleRequest> rules = response.getScoreRules();
+        assertTrue(rules.stream().noneMatch(r -> r.getTriggerType() == ScoreRuleTrigger.PARTICIPATION_COMPLETED),
+                "PARTICIPATION_COMPLETED should be excluded in submission mode");
+
+        ActivityScoreRuleRequest subRule = rules.stream()
+                .filter(r -> r.getTriggerType() == ScoreRuleTrigger.SUBMISSION_GRADED)
+                .findFirst().orElseThrow();
+        assertEquals(ScoreType.CHUYEN_DE, subRule.getScoreType());
+        assertEquals(BigDecimal.ONE, subRule.getPoints());
+        assertEquals(ScoreType.REN_LUYEN, subRule.getFailScoreType());
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminar_SubmissionFailScoreTypeDefaultsToRenLuyen() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(true);
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+
+        List<ActivityScoreRuleRequest> rules = response.getScoreRules();
+        assertTrue(rules.stream().noneMatch(r -> r.getTriggerType() == ScoreRuleTrigger.PARTICIPATION_COMPLETED),
+                "PARTICIPATION_COMPLETED should be excluded in submission mode");
+
+        ActivityScoreRuleRequest subRule = rules.stream()
+                .filter(r -> r.getTriggerType() == ScoreRuleTrigger.SUBMISSION_GRADED)
+                .findFirst().orElseThrow();
+        assertEquals(ScoreType.CHUYEN_DE, subRule.getScoreType());
+        assertEquals(BigDecimal.ONE, subRule.getPoints(),
+                "Enterprise submission pass should default to 1 CHUYEN_DE session");
+        assertEquals(ScoreType.REN_LUYEN, subRule.getFailScoreType(),
+                "Enterprise submission fail should default to REN_LUYEN to avoid deducting CHUYEN_DE sessions");
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminarWithBonus_SubmissionMode_BonusRuleUsesSubmissionGraded() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(true);
+        config.setBonusPoints(BigDecimal.valueOf(3));
+        config.setBonusScoreType(ScoreType.REN_LUYEN);
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+        List<ActivityScoreRuleRequest> rules = response.getScoreRules();
+
+        ActivityScoreRuleRequest bonusRule = rules.stream()
+                .filter(r -> r.getScoreType() == ScoreType.REN_LUYEN)
+                .findFirst().orElseThrow();
+        assertEquals(ScoreRuleTrigger.SUBMISSION_GRADED, bonusRule.getTriggerType(),
+                "Bonus rule trigger should match submission mode (SUBMISSION_GRADED)");
+        assertEquals(BigDecimal.valueOf(3), bonusRule.getPoints());
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminarWithBonus_ParticipationMode_BonusRuleUsesParticipationCompleted() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(false);
+        config.setBonusPoints(BigDecimal.valueOf(3));
+        config.setBonusScoreType(ScoreType.REN_LUYEN);
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+        List<ActivityScoreRuleRequest> rules = response.getScoreRules();
+
+        ActivityScoreRuleRequest bonusRule = rules.stream()
+                .filter(r -> r.getScoreType() == ScoreType.REN_LUYEN)
+                .findFirst().orElseThrow();
+        assertEquals(ScoreRuleTrigger.PARTICIPATION_COMPLETED, bonusRule.getTriggerType(),
+                "Bonus rule trigger should match participation mode (PARTICIPATION_COMPLETED)");
+        assertEquals(BigDecimal.valueOf(3), bonusRule.getPoints());
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminarWithBonus_SubmissionMode_PreviewRowsIncludeBonus() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(true);
+        config.setSubmissionPassPoints(BigDecimal.ONE);
+        config.setSubmissionFailPoints(BigDecimal.valueOf(2));
+        config.setSubmissionFailScoreType(ScoreType.REN_LUYEN);
+        config.setBonusScoreType(ScoreType.REN_LUYEN);
+        config.setBonusPoints(BigDecimal.valueOf(3));
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+        List<ScoreRulePreviewRow> rows = response.getPreviewRows();
+
+        assertFalse(rows.isEmpty());
+
+        long chuyenDeRows = rows.stream()
+                .filter(r -> "CHUYEN_DE".equals(r.getScoreType()))
+                .count();
+        assertTrue(chuyenDeRows > 0, "Should have at least one CHUYEN_DE row");
+
+        long bonusRows = rows.stream()
+                .filter(r -> "REN_LUYEN".equals(r.getScoreType()))
+                .count();
+        assertTrue(bonusRows > 0, "Should have at least one REN_LUYEN row (bonus)");
+
+        ScoreRulePreviewRow passRow = rows.stream()
+                .filter(r -> "SUBMISSION_GRADED".equals(r.getTriggerType()) && "PASS".equals(r.getScenario()) && "CHUYEN_DE".equals(r.getScoreType()))
+                .findFirst().orElseThrow(() -> new AssertionError("Missing PASS row with CHUYEN_DE"));
+        assertEquals(BigDecimal.ONE, passRow.getPoints());
+
+        ScoreRulePreviewRow bonusRow = rows.stream()
+                .filter(r -> "SUBMISSION_GRADED".equals(r.getTriggerType()) && "BONUS".equals(r.getScenario()) && "REN_LUYEN".equals(r.getScoreType()))
+                .findFirst().orElseThrow(() -> new AssertionError("Missing bonus row with REN_LUYEN"));
+        assertEquals(BigDecimal.valueOf(3), bonusRow.getPoints());
+    }
+
+    @Test
+    void previewActivityPreset_EnterpriseSeminarWithBonus_ParticipationMode_PreviewRowsIncludeBonus() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setSubmissionEnabled(false);
+        config.setParticipationPoints(BigDecimal.ONE);
+        config.setBonusScoreType(ScoreType.REN_LUYEN);
+        config.setBonusPoints(BigDecimal.valueOf(2));
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS);
+        request.setType(ActivityType.CHUYEN_DE_DOANH_NGHIEP);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+        List<ScoreRulePreviewRow> rows = response.getPreviewRows();
+
+        assertFalse(rows.isEmpty());
+
+        long chuyenDeRows = rows.stream()
+                .filter(r -> "CHUYEN_DE".equals(r.getScoreType()))
+                .count();
+        assertTrue(chuyenDeRows > 0, "Should have at least one CHUYEN_DE row");
+
+        long bonusRows = rows.stream()
+                .filter(r -> "REN_LUYEN".equals(r.getScoreType()))
+                .count();
+        assertTrue(bonusRows > 0, "Should have at least one REN_LUYEN row (bonus)");
+
+        ScoreRulePreviewRow mainRow = rows.stream()
+                .filter(r -> "PARTICIPATION_COMPLETED".equals(r.getTriggerType()) && "CHUYEN_DE".equals(r.getScoreType()))
+                .findFirst().orElseThrow(() -> new AssertionError("Missing PARTICIPATION_COMPLETED row with CHUYEN_DE"));
+        assertEquals(BigDecimal.ONE, mainRow.getPoints());
+
+        ScoreRulePreviewRow bonusRow = rows.stream()
+                .filter(r -> "PARTICIPATION_COMPLETED".equals(r.getTriggerType()) && "BONUS".equals(r.getScenario()) && "REN_LUYEN".equals(r.getScoreType()))
+                .findFirst().orElseThrow(() -> new AssertionError("Missing bonus row with REN_LUYEN"));
+        assertEquals(BigDecimal.valueOf(2), bonusRow.getPoints());
     }
 }

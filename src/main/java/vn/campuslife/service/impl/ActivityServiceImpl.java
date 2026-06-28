@@ -488,6 +488,8 @@ public class ActivityServiceImpl implements ActivityService {
                 boolean canCancel;
                 if (registration.getStatus() == RegistrationStatus.CANCELLED) {
                     canCancel = false;
+                } else if (registration.getStatus() == RegistrationStatus.ATTENDED) {
+                    canCancel = false;
                 } else if (registration.getStatus() == RegistrationStatus.APPROVED) {
                     if (activity.isRequiresApproval()) {
                         canCancel = false;

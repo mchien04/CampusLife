@@ -13,6 +13,7 @@ import java.util.List;
 @Data
 public class ActivityScoreRuleRequest {
     private ScoreType scoreType;
+    private ScoreType failScoreType;
     private ScoreRuleTrigger triggerType;
     private ScoreRuleCalculation calculation;
     private BigDecimal points;

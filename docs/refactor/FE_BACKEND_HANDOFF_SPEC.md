@@ -51,9 +51,10 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **MINIGAME_PASS_ONLY (v5.3)** | Fix bug thiếu NO_SHOW descriptor ở preset `MINIGAME_PASS_ONLY` & update default `noShowPenaltyEnabled = false`. | - Form MINIGAME_PASS_ONLY: hiển thị toggle NO_SHOW + input điểm phạt.<br>- Nếu không set custom `noShowPenaltyPoints`, BE fallback về `participationPoints`.<br>- Có thể tắt NO_SHOW bằng `presetConfig.noShowPenaltyEnabled = false`. | **Trung bình** |
 | **Minigame preset support (P5)** | `MinigameActivityCreateRequest` giờ có `presetCode`/`presetConfig`. `POST /api/activities/minigame` hỗ trợ preset (như Standard/Legacy). Policy A vẫn áp dụng: từ chối gửi `scoreRules` kèm non-CUSTOM `presetCode`. `MinigameActivityResponse` trả về `presetCode`. | - Mode 1 minigame: FE gửi `presetCode` + `presetConfig` thay vì `scoreRules` thủ công.<br>- `MinigameActivityMapper` tự động lưu `presetCode` vào Activity entity.<br>- Response GET trả về `presetCode` để FE biết preset hiện tại. | **Trung bình** |
 | **Bỏ ACTIVITY_AUDIENCE (P6)** | `GET /api/activities/presets` không còn trả về ruleKey `ACTIVITY_AUDIENCE` ở bất kỳ preset nào (kể cả CUSTOM). Audience giờ cấu hình per-rule trong từng descriptor. | - Xoá UI section `ACTIVITY_AUDIENCE` render từ supportedRules.<br>- Per-rule audience fields hiển thị trong từng rule descriptor riêng. | **Cao** |
-| **participationFailPoints optional (P6)** | Field `participationFailPoints` trong `PARTICIPATION_COMPLETED` descriptor có `required: false`. Áp dụng cho EVENT_BASIC, ENTERPRISE_SEMINAR_BASIC, ENTERPRISE_SEMINAR_WITH_BONUS, CUSTOM. | - Form dynamic dựa trên `FieldDefinition.required` — không bắt buộc nhập failPoints cho Participation rule. | **Trung bình** |
-| **Enterprise hỗ trợ SUBMISSION_GRADED (P6)** | `ENTERPRISE_SEMINAR_BASIC` và `ENTERPRISE_SEMINAR_WITH_BONUS` có thêm 2 rule trong `supportedRules`: `SUBMISSION_GRADED` (required=false, enabledByDefault=false, submissionFailPoints required=true) và `TASK_OVERDUE` (required=false, enabledByDefault=false). | - Form enterprise seminar: hiển thị thêm toggle SUBMISSION_GRADED và TASK_OVERDUE.<br>- Khi bật SUBMISSION_GRADED, field submissionFailPoints là bắt buộc. | **Cao** |
-| **Mutual exclusion + conflictsWith (P6)** | `PresetRuleDescriptor` có thêm `conflictsWith: string[]`. Enterprise preset: `PARTICIPATION_COMPLETED` conflicts với `SUBMISSION_GRADED`, và ngược lại. `ActivityPresetConfig` có thêm `submissionEnabled: boolean` (default false). | - FE render: khi toggle 1 rule ON, dùng `conflictsWith` để tự tắt rule conflict.<br>- Gửi `presetConfig.submissionEnabled = true` khi chọn submission mode.<br>- Preview API sẽ không trả về PARTICIPATION_COMPLETED khi `submissionEnabled=true`. | **Cao** |
+| **Bỏ participationFailPoints trong PARTICIPATION_COMPLETED (P6.1)** | `PARTICIPATION_COMPLETED` chỉ là check-in/check-out, không có nhánh fail. Descriptor không còn field `participationFailPoints` và `participationFailScoreType`. | - Xoá UI render 2 field này trong Participation rule form.<br>- BE tự xử lý fail path với 0 điểm, không sinh entry điểm phạt. | **Trung bình** |
+| **Enterprise hỗ trợ SUBMISSION_GRADED (P6)** | `ENTERPRISE_SEMINAR_BASIC` và `ENTERPRISE_SEMINAR_WITH_BONUS` có thêm `SUBMISSION_GRADED` và `TASK_OVERDUE` (đều required=false, enabledByDefault=false). `PARTICIPATION_COMPLETED` và `SUBMISSION_GRADED` xung khắc (chỉ chọn 1). | - Form enterprise seminar: hiển thị toggle SUBMISSION_GRADED và TASK_OVERDUE.<br>- Khi bật SUBMISSION_GRADED, dùng `conflictsWith` để tắt PARTICIPATION_COMPLETED.<br>- `submissionFailPoints` vẫn required; `submissionFailScoreType` mặc định `REN_LUYEN` để bảo vệ điểm CHUYEN_DE. | **Cao** |
+| **Fail/Penalty score type (P6.1)** | `ActivityScoreRuleRequest`/`Response` có thêm `failScoreType?: ScoreType \| null`. `SUBMISSION_GRADED` và `TASK_OVERDUE` descriptors **chỉ** expose `submissionFailScoreType` / `taskOverduePenaltyScoreType` cho enterprise presets. Các preset khác fail/penalty sẽ fallback về `scoreType`. | - FE chỉ hiển thị dropdown `submissionFailScoreType` và `taskOverduePenaltyScoreType` cho enterprise.<br>- Label: "Loại điểm phạt (để trống để mặc định theo Loại điểm chính)".<br>- Enterprise: default `REN_LUYEN` cho cả 2. | **Cao** |
+| **submissionEnabled (P6)** | `ActivityPresetConfig` có thêm `submissionEnabled: boolean` (default false). Dùng cho enterprise preset để bật/tắt submission mode. | - Gửi `presetConfig.submissionEnabled = true` khi admin bật SUBMISSION_GRADED.<br>- Preview API sẽ sinh SUBMISSION_GRADED + TASK_OVERDUE và **tắt** PARTICIPATION_COMPLETED khi `submissionEnabled=true`. | **Cao** |
 | **Lock preset on edit (P6)** | `PUT /api/activities/standard/{id}` từ chối đổi `presetCode` nếu activity đã có preset (khác null). Lỗi: `"Cannot change preset code from X to Y on update"`. | - Form edit: disable dropdown presetCode, chỉ cho sửa presetConfig.<br>- Hiển thị lỗi nếu FE cố gửi presetCode khác. | **Cao** |
 | **Cancel policy mới (P7)** | `DELETE /api/registrations/activity/{activityId}`: `requiresApproval=false` (auto-approved) → cho huỷ 1 lần, trước registrationDeadline 1 ngày. `requiresApproval=true` (admin-approved) → không cho huỷ. PENDING/WAITLIST → cho huỷ. Sau huỷ không cho đăng ký lại. | - Nút "Huỷ đăng ký" hiển thị dựa trên `canCancel` flag từ `checkRegistrationStatus`.<br>- "Không cho đăng ký lại" → FE ẩn nút đăng ký nếu đã có CANCELLED record. | **Cao** |
 | **Huỷ series + huỷ activity con (P7)** | `DELETE /api/series/{seriesId}/register`: huỷ series registration + tất cả activity con (trừ ATTENDED). Chặn nếu series `isImportant` hoặc `mandatoryForFacultyStudents`, hoặc có activity con đã ATTENDED. | - Nút "Huỷ đăng ký series" với confirm dialog.<br>- Hiển thị lỗi nếu không được phép huỷ. | **Cao** |
@@ -215,6 +216,7 @@ export type SubmissionStatus = "SUBMITTED" | "GRADED" | "RETURNED" | "LATE" | "M
 ```ts
 export interface ActivityScoreRuleRequest {
   scoreType: ScoreType;
+  failScoreType?: ScoreType | null; // loại điểm khi fail; null → fallback về scoreType
   triggerType: ScoreRuleTrigger;
   calculation: ScoreRuleCalculation;
   points: number | string; // BigDecimal
@@ -231,6 +233,7 @@ export interface ActivityScoreRuleResponse {
   id: number;
   activityId: number;
   scoreType: ScoreType;
+  failScoreType?: ScoreType | null;
   triggerType: ScoreRuleTrigger;
   calculation: ScoreRuleCalculation;
   points: number | string; // BigDecimal
@@ -246,13 +249,14 @@ export interface ActivityScoreRuleResponse {
 export interface ActivityPresetConfig {
   primaryScoreType?: ScoreType | null;
   participationPoints?: number | string | null; // BigDecimal
-  participationFailPoints?: number | string | null;
   noShowPenaltyEnabled?: boolean | null;
   noShowPenaltyPoints?: number | string | null;
   noShowPenaltyScoreType?: ScoreType | null;
   submissionPassPoints?: number | string | null;
   submissionFailPoints?: number | string | null;
+  submissionFailScoreType?: ScoreType | null; // enterprise only; null → fallback về primaryScoreType
   taskOverduePenaltyPoints?: number | string | null;
+  taskOverduePenaltyScoreType?: ScoreType | null; // enterprise only; null → fallback về primaryScoreType
   minigameExhaustedPenaltyPoints?: number | string | null;
   bonusScoreType?: ScoreType | null;
   bonusPoints?: number | string | null;
@@ -1786,8 +1790,9 @@ export interface CreateMiniGameRequest {
 16. **Unified minigame creation**: `POST /api/activities/minigame` giờ tạo đầy đủ quiz hierarchy (Activity → MiniGame → MiniGameQuiz → Questions → Options). Không cần gọi thêm `POST /api/minigames`. Nếu `quiz = null`, chỉ tạo activity shell (Mode 2 partial) — FE cần gọi `POST /api/minigames` sau để gắn quiz.
 17. **Bỏ ACTIVITY_AUDIENCE (P6)**: `GET /api/activities/presets` không còn trả về ruleKey `ACTIVITY_AUDIENCE`. FE xoá UI section render từ ruleKey này.
 18. **Preset lock on edit (P6)**: `PUT /api/activities/standard/{id}` từ chối đổi `presetCode`. FE disable dropdown presetCode khi edit, chỉ cho sửa `presetConfig`.
-19. **conflictsWith (P6)**: Khi toggle 1 rule ON, FE đọc `conflictsWith` để tự tắt rule xung khắc. Enterprise: PARTICIPATION_COMPLETED ↔ SUBMISSION_GRADED.
-20. **submissionEnabled (P6)**: Gửi `presetConfig.submissionEnabled = true` khi admin chọn submission mode cho enterprise. Preview API sẽ không trả về PARTICIPATION_COMPLETED rules.
+19. **Fail/Penalty score type (P6.1)**: `ActivityScoreRuleRequest`/`Response` có thêm `failScoreType?: ScoreType | null`. `SUBMISSION_GRADED` descriptor chỉ expose `submissionFailScoreType`; `TASK_OVERDUE` descriptor chỉ expose `taskOverduePenaltyScoreType` — cả 2 chỉ cho enterprise presets. Khi chấm fail hoặc áp penalty, BE dùng `failScoreType`/`scoreType` tương ứng; nếu null thì fallback về `scoreType` chính. Enterprise seminar default `REN_LUYEN` cho cả 2 để không trừ điểm `CHUYEN_DE`.
+20. **submissionEnabled (P6)**: Gửi `presetConfig.submissionEnabled = true` khi admin bật `SUBMISSION_GRADED` cho enterprise. Preview API sẽ sinh `SUBMISSION_GRADED` + `TASK_OVERDUE` và **tắt** `PARTICIPATION_COMPLETED` (xung khắc).
+21. **Bỏ participationFailPoints (P6.1)**: `PARTICIPATION_COMPLETED` descriptor không còn `participationFailPoints` / `participationFailScoreType`. FE xoá 2 field này khỏi Participation form.
 21. **Cancel policy (P7)**: `requiresApproval=false` → cho huỷ 1 lần, trước deadline 1 ngày. Sau huỷ không đăng ký lại. `requiresApproval=true` → chỉ huỷ được khi PENDING.
 22. **Series cancel (P7)**: `DELETE /api/series/{seriesId}/register` huỷ series + tất cả activity con (trừ ATTENDED).
 23. **Series waitlist (P7)**: `POST /api/series/{seriesId}/waitlist` khi series full.

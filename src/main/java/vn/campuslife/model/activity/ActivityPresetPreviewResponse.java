@@ -15,4 +15,5 @@ public class ActivityPresetPreviewResponse {
     private boolean requiresSubmission;
     private List<ActivityScoreRuleRequest> scoreRules = new ArrayList<>();
     private List<String> notes = new ArrayList<>();
+    private List<ScoreRulePreviewRow> previewRows = new ArrayList<>();
 }
