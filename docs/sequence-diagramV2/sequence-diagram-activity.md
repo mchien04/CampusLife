@@ -41,22 +41,22 @@ sequenceDiagram
     AC->>AS: createActivity(requestDTO)
     AS->>SR: findById(semesterId)
     SR->>DB: SELECT * FROM semesters WHERE id = ?
-    DB-->>SR: Semester record
+    DB-->>SR:' "Semester record"'
     SR-->>AS: Optional<Semester>
     alt Semester không tồn tại
         AS-->>AC: throw SemesterNotFoundException
-        AC-->>Client: 400 Bad Request<br/>{"error": "Semester not found"}
+        AC-->>Client:' 400 Bad Request<br/>{"error": "Semester not found"}'
         Client-->>Admin: Hiển thị lỗi: Học kỳ không tồn tại
     else Semester tồn tại
         AS->>AS: Tạo Activity entity:<br/>- isPublished = false (mặc định)<br/>- registrations = 0<br/>- createdAt = now()
         AS->>AR: save(activity)
         AR->>DB: INSERT INTO activities (...)<br/>VALUES (...)
-        DB-->>AR: Activity record (generated ID)
-        AR-->>AS: Activity entity
+        DB-->>AR:' "Activity record (generated ID)"'
+        AR-->>AS:' "Activity entity"'
         AS->>AS: Map Activity -> ActivityResponseDTO
         AS-->>AC: ActivityResponseDTO
         AC-->>Client: 201 Created<br/>Body: ActivityResponseDTO
-        Client-->>Admin: Hiển thị thông báo: "Tạo hoạt động thành công"
+        Client-->>Admin:' Hiển thị thông báo: "Tạo hoạt động thành công"'
     end
 
     Note over Admin, FS: === LUỒNG SỬA HOẠT ĐỘNG (PUT /api/admin/activities/{id}) ===
@@ -66,8 +66,8 @@ sequenceDiagram
     AC->>AS: updateActivity(id, requestDTO)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
@@ -75,17 +75,17 @@ sequenceDiagram
     else Activity tồn tại
         AS->>SR: findById(semesterId) [nếu semesterId thay đổi]
         SR->>DB: SELECT * FROM semesters WHERE id = ?
-        DB-->>SR: Semester record
+        DB-->>SR:' "Semester record"'
         SR-->>AS: Optional<Semester>
         AS->>AS: Update fields:<br/>name, description, startDate, endDate,<br/>location, maxParticipants, score, semesterId<br/>updatedAt = now()
         AS->>AR: save(activity)
         AR->>DB: UPDATE activities SET ... WHERE id = ?
-        DB-->>AR: Updated record
-        AR-->>AS: Activity entity
+        DB-->>AR:' "Updated record"'
+        AR-->>AS:' "Activity entity"'
         AS->>AS: Map -> ActivityResponseDTO
         AS-->>AC: ActivityResponseDTO
         AC-->>Client: 200 OK<br/>Body: ActivityResponseDTO
-        Client-->>Admin: Hiển thị thông báo: "Cập nhật hoạt động thành công"
+        Client-->>Admin:' Hiển thị thông báo: "Cập nhật hoạt động thành công"'
     end
 
     Note over Admin, FS: === LUỒNG XÓA HOẠT ĐỘNG (DELETE /api/admin/activities/{id}) ===
@@ -95,8 +95,8 @@ sequenceDiagram
     AC->>AS: deleteActivity(id)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
@@ -104,24 +104,24 @@ sequenceDiagram
     else Activity tồn tại
         AS->>RR: existsByActivityId(id)
         RR->>DB: SELECT COUNT(*) FROM registrations WHERE activity_id = ?
-        DB-->>RR: count (0 hoặc >0)
-        RR-->>AS: boolean (hasRegistrations)
+        DB-->>RR:' "count (0 hoặc >0)"'
+        RR-->>AS:' "boolean (hasRegistrations)"'
         alt Có sinh viên đã đăng ký (hasRegistrations = true)
             AS->>AS: Soft delete:<br/>- isDeleted = true<br/>- deletedAt = now()
             AS->>AR: save(activity)
             AR->>DB: UPDATE activities SET is_deleted=1, deleted_at=... WHERE id = ?
-            DB-->>AR: Updated record
-            AS-->>AC: Message: "Soft deleted (has registrations)"
-            AC-->>Client: 200 OK<br/>{"message": "Hoạt động đã được chuyển vào thùng rác (có sinh viên đăng ký)"}
+            DB-->>AR:' "Updated record"'
+            AS-->>AC:' Message: "Soft deleted (has registrations)"'
+            AC-->>Client:' 200 OK<br/>{"message": "Hoạt động đã được chuyển vào thùng rác (có sinh viên đăng ký)"}'
         else Không có đăng ký (hasRegistrations = false)
             AS->>AR: deleteById(id)
             AR->>DB: DELETE FROM activities WHERE id = ?
-            DB-->>AR: void
+            DB-->>AR:' "void"'
             AS->>AS: [Nếu có ảnh] Xóa file ảnh vật lý
             AS->>FS: deleteFiles(imageUrls)
             FS-->>AS: Xóa thành công / một số file không tồn tại
-            AS-->>AC: Message: "Hard deleted"
-            AC-->>Client: 200 OK<br/>{"message": "Xóa hoạt động thành công"}
+            AS-->>AC:' Message: "Hard deleted"'
+            AC-->>Client:' 200 OK<br/>{"message": "Xóa hoạt động thành công"}'
         end
         Client-->>Admin: Hiển thị thông báo kết quả xóa
     end
@@ -152,7 +152,7 @@ sequenceDiagram
     AC->>AS: getPublishedActivities(filterDTO)
     AS->>SR: findActiveSemester()
     SR->>DB: SELECT * FROM semesters<br/>WHERE status = 'OPEN' ORDER BY start_date DESC LIMIT 1
-    DB-->>SR: Semester record (semester đang mở)
+    DB-->>SR:' "Semester record (semester đang mở)"'
     SR-->>AS: Optional<Semester>
     alt Không có semester đang mở
         AS->>AS: fallback: lấy semester gần nhất
@@ -160,8 +160,8 @@ sequenceDiagram
     AS->>AS: Xây dựng điều kiện:<br/>- isPublished = true<br/>- isDeleted = false<br/>- semesterId = currentSemesterId<br/>- [optional] search keyword (name LIKE)
     AS->>AR: findAllByConditions(spec, pageable)
     AR->>DB: SELECT * FROM activities<br/>WHERE is_published=1 AND is_deleted=0<br/>AND semester_id = ? AND name LIKE ?<br/>LIMIT ? OFFSET ?
-    DB-->>AR: List<Activity> + Total count
-    AR-->>AS: Page<Activity>
+    DB-->>AR:' "List<Activity> + Total count"'
+    AR-->>AS:' "Page<Activity>"'
     AS->>AS: Map mỗi Activity -> ActivitySummaryDTO<br/>(id, name, startDate, endDate, location,<br/>maxParticipants, registrations, score, isOpen)
     AS-->>AC: Page<ActivitySummaryDTO>
     AC-->>Client: 200 OK<br/>Body: {content:[], totalElements, totalPages, ...}
@@ -177,8 +177,8 @@ sequenceDiagram
     AS->>AS: Xây dựng điều kiện (không filter isDeleted mặc định<br/>trừ khi có param includeDeleted=true):<br/>- [optional] semesterId<br/>- [optional] isPublished (true/false)<br/>- [optional] search keyword<br/>- isDeleted = false (default)
     AS->>AR: findAllByConditions(spec, pageable)
     AR->>DB: SELECT * FROM activities<br/>WHERE semester_id = ? AND is_published = ?<br/>AND name LIKE ? AND is_deleted = 0<br/>ORDER BY ? LIMIT ? OFFSET ?
-    DB-->>AR: List<Activity> + Total count
-    AR-->>AS: Page<Activity>
+    DB-->>AR:' "List<Activity> + Total count"'
+    AR-->>AS:' "Page<Activity>"'
     AS->>AS: Map mỗi Activity -> ActivityAdminDTO<br/>(thêm: isPublished, createdAt, updatedAt,<br/>registrationCount, createdBy)
     AS-->>AC: Page<ActivityAdminDTO>
     AC-->>Client: 200 OK<br/>Body: {content:[], totalElements, totalPages, ...}
@@ -210,8 +210,8 @@ sequenceDiagram
     AC->>AS: publishActivity(id)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
@@ -219,22 +219,22 @@ sequenceDiagram
     else Activity tồn tại
         alt isPublished = true (đã công khai)
             AS-->>AC: throw AlreadyPublishedException
-            AC-->>Client: 409 Conflict<br/>{"error": "Hoạt động đã được công khai"}
+            AC-->>Client:' 409 Conflict<br/>{"error": "Hoạt động đã được công khai"}'
         else isPublished = false
             AS->>AS: activity.setIsPublished(true)<br/>activity.setPublishedAt(now())
             AS->>AR: save(activity)
             AR->>DB: UPDATE activities SET is_published=1, published_at=... WHERE id = ?
-            DB-->>AR: Updated record
-            AR-->>AS: Activity entity
+            DB-->>AR:' "Updated record"'
+            AR-->>AS:' "Activity entity"'
             AS->>NR: sendNotificationToAllStudents(activity)
             NR->>NR: Tạo notification:<br/>"Hoạt động mới: [activity.name]"<br/>type: NEW_ACTIVITY<br/>target: ALL_STUDENTS
             NR->>DB: INSERT INTO notifications (...)
-            DB-->>NR: Notification record
-            NR-->>AS: void
+            DB-->>NR:' "Notification record"'
+            NR-->>AS:' "void"'
             AS->>AS: Map -> ActivityResponseDTO
             AS-->>AC: ActivityResponseDTO
             AC-->>Client: 200 OK<br/>Body: ActivityResponseDTO + message published
-            Client-->>Admin: Hiển thị thông báo: "Công khai thành công + Đã gửi thông báo"
+            Client-->>Admin:' Hiển thị thông báo: "Công khai thành công + Đã gửi thông báo"'
         end
     end
 
@@ -245,8 +245,8 @@ sequenceDiagram
     AC->>AS: unpublishActivity(id)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
@@ -254,17 +254,17 @@ sequenceDiagram
     else Activity tồn tại
         alt isPublished = false (chưa công khai)
             AS-->>AC: throw NotPublishedException
-            AC-->>Client: 409 Conflict<br/>{"error": "Hoạt động chưa được công khai"}
+            AC-->>Client:' 409 Conflict<br/>{"error": "Hoạt động chưa được công khai"}'
         else isPublished = true
             AS->>AS: activity.setIsPublished(false)<br/>activity.setPublishedAt(null)
             AS->>AR: save(activity)
             AR->>DB: UPDATE activities SET is_published=0, published_at=NULL WHERE id = ?
-            DB-->>AR: Updated record
-            AR-->>AS: Activity entity
+            DB-->>AR:' "Updated record"'
+            AR-->>AS:' "Activity entity"'
             AS->>AS: Map -> ActivityResponseDTO
             AS-->>AC: ActivityResponseDTO
             AC-->>Client: 200 OK<br/>Body: ActivityResponseDTO + message unpublish
-            Client-->>Admin: Hiển thị thông báo: "Hủy công khai thành công"
+            Client-->>Admin:' Hiển thị thông báo: "Hủy công khai thành công"'
         end
     end
 ```
@@ -295,8 +295,8 @@ sequenceDiagram
     AC->>AS: copyActivity(id)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record (original)
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record (original)"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity gốc không tồn tại hoặc đã bị xóa
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
@@ -305,39 +305,39 @@ sequenceDiagram
         AS->>AS: Tạo Activity mới (newActivity):<br/>- name = original.name + " (Copy)"<br/>- description = original.description<br/>- startDate = original.startDate<br/>- endDate = original.endDate<br/>- location = original.location<br/>- maxParticipants = original.maxParticipants<br/>- score = original.score<br/>- semesterId = original.semesterId<br/>- registrations = 0<br/>- isPublished = false<br/>- createdAt = now()<br/>- createdBy = currentAdminId
         AS->>AR: save(newActivity)
         AR->>DB: INSERT INTO activities (...) VALUES (...)
-        DB-->>AR: newActivity record (new ID)
-        AR-->>AS: newActivity entity
+        DB-->>AR:' "newActivity record (new ID)"'
+        AR-->>AS:' "newActivity entity"'
 
         AS->>AIR: findAllByActivityId(original.id)
         AIR->>DB: SELECT * FROM activity_images WHERE activity_id = ? ORDER BY display_order
-        DB-->>AIR: List<ActivityImage> (original images)
-        AIR-->>AS: List<ActivityImage>
+        DB-->>AIR:' "List<ActivityImage> (original images)"'
+        AIR-->>AS:' "List<ActivityImage>"'
         loop Với mỗi ảnh của activity gốc
             AS->>FS: copyFile(originalImage.url, newPath)
             FS-->>AS: newFileUrl
             AS->>AS: Tạo ActivityImage mới:<br/>- activityId = newActivity.id<br/>- url = newFileUrl<br/>- displayOrder = original.displayOrder<br/>- createdAt = now()
             AS->>AIR: save(newImage)
             AIR->>DB: INSERT INTO activity_images (...) VALUES (...)
-            DB-->>AIR: newImage record
+            DB-->>AIR:' "newImage record"'
         end
 
         AS->>APR: findAllByActivityId(original.id) [nếu có preset liên kết]
         APR->>DB: SELECT * FROM activity_presets WHERE activity_id = ?
-        DB-->>APR: List<ActivityPreset> (original presets)
-        APR-->>AS: List<ActivityPreset>
+        DB-->>APR:' "List<ActivityPreset> (original presets)"'
+        APR-->>AS:' "List<ActivityPreset>"'
         opt Nếu có preset liên kết
             loop Với mỗi preset
                 AS->>AS: Tạo ActivityPreset mới:<br/>- activityId = newActivity.id<br/>- presetId = original.presetId<br/>- customFields = original.customFields
                 AS->>APR: save(newPreset)
                 APR->>DB: INSERT INTO activity_presets (...) VALUES (...)
-                DB-->>APR: newPreset record
+                DB-->>APR:' "newPreset record"'
             end
         end
 
         AS->>AS: Map newActivity -> ActivityResponseDTO
         AS-->>AC: ActivityResponseDTO
         AC-->>Client: 201 Created<br/>Body: ActivityResponseDTO
-        Client-->>Admin: Hiển thị thông báo: "Sao chép hoạt động thành công"<br/>+ Điều hướng đến trang sửa hoạt động mới
+        Client-->>Admin:' Hiển thị thông báo: "Sao chép hoạt động thành công"<br/>+ Điều hướng đến trang sửa hoạt động mới'
     end
 ```
 
@@ -364,18 +364,18 @@ sequenceDiagram
     AC->>AS: previewPreset(presetId)
     AS->>PR: findById(presetId)
     PR->>DB: SELECT * FROM activity_presets WHERE id = ?
-    DB-->>PR: Preset record
+    DB-->>PR:' "Preset record"'
     PR-->>AS: Optional<Preset>
     alt Preset không tồn tại
         AS-->>AC: throw PresetNotFoundException
-        AC-->>Client: 404 Not Found<br/>{"error": "Preset không tồn tại"}
+        AC-->>Client:' 404 Not Found<br/>{"error": "Preset không tồn tại"}'
         Client-->>Admin: Hiển thị lỗi: Template không tìm thấy
     else Preset tồn tại
         AS->>AS: Generate PreviewDataDTO:<br/>- suggestedName = preset.name + " [YYYY-MM-DD]"<br/>- suggestedDescription = preset.descriptionTemplate<br/>- suggestedScore = preset.defaultScore<br/>- suggestedCategory = preset.category<br/>- suggestedMaxParticipants = preset.defaultMaxParticipants<br/>- suggestedLocation = preset.defaultLocation<br/>- suggestedDuration = preset.defaultDurationHours<br/>- defaultFields = preset.customFields<br/>- previewOnly = true (không lưu DB)
         AS-->>AC: PresetPreviewDTO
         AC-->>Client: 200 OK<br/>Body: PresetPreviewDTO
         Client->>Client: Render preview form (read-only/demo)<br/>với dữ liệu đề xuất
-        Client-->>Admin: Hiển thị preview:<br/>tên gợi ý, mô tả, điểm, loại hoạt động...<br/>Admin có thể bấm "Áp dụng" để điền vào form tạo
+        Client-->>Admin:' Hiển thị preview:<br/>tên gợi ý, mô tả, điểm, loại hoạt động...<br/>Admin có thể bấm "Áp dụng" để điền vào form tạo'
     end
 ```
 
@@ -405,8 +405,8 @@ sequenceDiagram
     AC->>AS: uploadImages(id, files)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
@@ -414,11 +414,11 @@ sequenceDiagram
     else Activity tồn tại
         AS->>AIR: countByActivityId(id)
         AIR->>DB: SELECT COUNT(*) FROM activity_images WHERE activity_id = ?
-        DB-->>AIR: currentCount
-        AIR-->>AS: int currentCount
+        DB-->>AIR:' "currentCount"'
+        AIR-->>AS:' "int currentCount"'
         alt currentCount + files.length > maxImages (10)
             AS-->>AC: throw MaxImagesExceededException
-            AC-->>Client: 400 Bad Request<br/>{"error": "Vượt quá số lượng ảnh cho phép"}
+            AC-->>Client:' 400 Bad Request<br/>{"error": "Vượt quá số lượng ảnh cho phép"}'
         else Số lượng hợp lệ
             loop Với mỗi file multipart
                 AS->>FS: storeFile(file, "activities/{id}/images/")
@@ -426,12 +426,12 @@ sequenceDiagram
                 AS->>AS: Tạo ActivityImage:<br/>- activityId = id<br/>- url = fileUrl<br/>- displayOrder = currentCount + index<br/>- fileName = originalFilename<br/>- fileSize = file.size<br/>- createdAt = now()
                 AS->>AIR: save(activityImage)
                 AIR->>DB: INSERT INTO activity_images (...) VALUES (...)
-                DB-->>AIR: ActivityImage record
+                DB-->>AIR:' "ActivityImage record"'
             end
             AS->>AIR: findAllByActivityIdOrderByDisplayOrder(id)
             AIR->>DB: SELECT * FROM activity_images WHERE activity_id = ? ORDER BY display_order
-            DB-->>AIR: List<ActivityImage>
-            AIR-->>AS: List<ActivityImage>
+            DB-->>AIR:' "List<ActivityImage>"'
+            AIR-->>AS:' "List<ActivityImage>"'
             AS->>AS: Map -> List<ActivityImageDTO>
             AS-->>AC: List<ActivityImageDTO>
             AC-->>Client: 201 Created<br/>Body: {images: [...], activityId: id}
@@ -447,37 +447,37 @@ sequenceDiagram
     AC->>AS: deleteImage(id, imageId)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
     else Activity tồn tại
         AS->>AIR: findByIdAndActivityId(imageId, id)
         AIR->>DB: SELECT * FROM activity_images WHERE id = ? AND activity_id = ?
-        DB-->>AIR: ActivityImage record
-        AIR-->>AS: Optional<ActivityImage>
+        DB-->>AIR:' "ActivityImage record"'
+        AIR-->>AS:' "Optional<ActivityImage>"'
         alt Image không tồn tại hoặc không thuộc activity
             AS-->>AC: throw ImageNotFoundException
-            AC-->>Client: 404 Not Found<br/>{"error": "Ảnh không tồn tại"}
+            AC-->>Client:' 404 Not Found<br/>{"error": "Ảnh không tồn tại"}'
         else Image tồn tại
             AS->>FS: deleteFile(image.url)
             FS-->>AS: deleted / file not found (log warning)
             AS->>AIR: deleteById(imageId)
             AIR->>DB: DELETE FROM activity_images WHERE id = ?
-            DB-->>AIR: void
+            DB-->>AIR:' "void"'
             AS->>AIR: findAllByActivityIdOrderByDisplayOrder(id)
             AIR->>DB: SELECT * FROM activity_images WHERE activity_id = ? ORDER BY display_order
-            DB-->>AIR: List<ActivityImage>
-            AIR-->>AS: List<ActivityImage>
+            DB-->>AIR:' "List<ActivityImage>"'
+            AIR-->>AS:' "List<ActivityImage>"'
             AS->>AS: Cập nhật lại displayOrder liên tục (0, 1, 2...)
             loop Với mỗi ảnh còn lại
                 AS->>AIR: updateDisplayOrder(image.id, newOrder)
                 AIR->>DB: UPDATE activity_images SET display_order = ? WHERE id = ?
-                DB-->>AIR: Updated
+                DB-->>AIR:' "Updated"'
             end
-            AS-->>AC: Message: "Xóa ảnh thành công"
-            AC-->>Client: 200 OK<br/>{"message": "Xóa ảnh thành công", remainingCount: N}
+            AS-->>AC:' Message: "Xóa ảnh thành công"'
+            AC-->>Client:' 200 OK<br/>{"message": "Xóa ảnh thành công", remainingCount: N}'
             Client->>Client: Cập nhật gallery (xoá ảnh khỏi UI)
             Client-->>Admin: Hiển thị thông báo xóa thành công
         end
@@ -491,35 +491,35 @@ sequenceDiagram
     AC->>AS: reorderImages(id, imageIds)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     alt Activity không tồn tại
         AS-->>AC: throw ActivityNotFoundException
         AC-->>Client: 404 Not Found
     else Activity tồn tại
         AS->>AIR: findAllByActivityId(id)
         AIR->>DB: SELECT * FROM activity_images WHERE activity_id = ?
-        DB-->>AIR: List<ActivityImage>
-        AIR-->>AS: List<ActivityImage>
+        DB-->>AIR:' "List<ActivityImage>"'
+        AIR-->>AS:' "List<ActivityImage>"'
         AS->>AS: Validate:<br/>- imageIds.length == existingImages.size<br/>- Tất cả ID trong imageIds phải thuộc về activity này
         alt Validation thất bại
             AS-->>AC: throw InvalidReorderException
-            AC-->>Client: 400 Bad Request<br/>{"error": "Danh sách ảnh không hợp lệ"}
+            AC-->>Client:' 400 Bad Request<br/>{"error": "Danh sách ảnh không hợp lệ"}'
         else Validation thành công
             loop Với mỗi index, imageId trong imageIds
                 AS->>AIR: updateDisplayOrder(imageId, index)
                 AIR->>DB: UPDATE activity_images SET display_order = ? WHERE id = ?
-                DB-->>AIR: Updated
+                DB-->>AIR:' "Updated"'
             end
             AS->>AIR: findAllByActivityIdOrderByDisplayOrder(id)
             AIR->>DB: SELECT * FROM activity_images WHERE activity_id = ? ORDER BY display_order
-            DB-->>AIR: List<ActivityImage>
-            AIR-->>AS: List<ActivityImage>
+            DB-->>AIR:' "List<ActivityImage>"'
+            AIR-->>AS:' "List<ActivityImage>"'
             AS->>AS: Map -> List<ActivityImageDTO>
             AS-->>AC: List<ActivityImageDTO>
             AC-->>Client: 200 OK<br/>Body: {images: [...], reordered: true}
             Client->>Client: Render gallery theo thứ tự mới
-            Client-->>Admin: Hiển thị thông báo: "Cập nhật thứ tự ảnh thành công"
+            Client-->>Admin:' Hiển thị thông báo: "Cập nhật thứ tự ảnh thành công"'
         end
     end
 ```

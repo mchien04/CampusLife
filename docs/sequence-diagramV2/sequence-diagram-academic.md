@@ -25,12 +25,12 @@ sequenceDiagram
     Note over SVC: Tạo AcademicYear mới<br/>từ dữ liệu request
     SVC->>REPO: save(academicYear)
     REPO->>DB: INSERT INTO academic_years<br/>(name, start_date, end_date)
-    DB-->>REPO: AcademicYear (đã lưu)
+    DB-->>REPO:' "AcademicYear (đã lưu)"'
     REPO-->>SVC: AcademicYear
 
-    SVC-->>CTL: Response(success, AcademicYear)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công
+    SVC-->>CTL:' "Response(success, AcademicYear)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công"'
 
     Note over A,DB: ===== SỬA NIÊN KHÓA =====
 
@@ -40,18 +40,18 @@ sequenceDiagram
 
     SVC->>REPO: findById(id)
     REPO->>DB: SELECT * FROM academic_years WHERE id = ?
-    DB-->>REPO: AcademicYear
+    DB-->>REPO:' "AcademicYear"'
     REPO-->>SVC: AcademicYear
 
     Note over SVC: Cập nhật thông tin<br/>setName(name), setStartDate(startDate),<br/>setEndDate(endDate)
     SVC->>REPO: save(academicYear)
     REPO->>DB: UPDATE academic_years SET<br/>name=?, start_date=?, end_date=?<br/>WHERE id = ?
-    DB-->>REPO: AcademicYear (đã cập nhật)
+    DB-->>REPO:' "AcademicYear (đã cập nhật)"'
     REPO-->>SVC: AcademicYear
 
-    SVC-->>CTL: Response(success, AcademicYear)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công
+    SVC-->>CTL:' "Response(success, AcademicYear)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công"'
 
     Note over A,DB: ===== XÓA NIÊN KHÓA =====
 
@@ -61,18 +61,18 @@ sequenceDiagram
 
     SVC->>REPO: findById(id)
     REPO->>DB: SELECT * FROM academic_years WHERE id = ?
-    DB-->>REPO: AcademicYear
+    DB-->>REPO:' "AcademicYear"'
     REPO-->>SVC: AcademicYear
 
     Note over SVC: Xóa năm học (hard delete)
     SVC->>REPO: delete(academicYear)
     REPO->>DB: DELETE FROM academic_years WHERE id = ?
-    DB-->>REPO: Deleted
+    DB-->>REPO:' "Deleted"'
     REPO-->>SVC: Deleted
 
-    SVC-->>CTL: Response(success)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công
+    SVC-->>CTL:' "Response(success)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công"'
 ```
 
 ---
@@ -97,19 +97,19 @@ sequenceDiagram
     Note over SVC: Kiểm tra năm học tồn tại
     SVC->>REPO: findYearById(yearId)
     REPO->>DB: SELECT * FROM academic_years WHERE id = ?
-    DB-->>REPO: AcademicYear (hoặc null)
+    DB-->>REPO:' "AcademicYear (hoặc null)"'
     REPO-->>SVC: AcademicYear
 
     Note over SVC: Nếu không tồn tại → throw NotFoundException<br/>Nếu tồn tại → tạo Semester mới
     SVC->>SVC: new Semester(year, name,<br/>startDate, endDate, open)
     SVC->>REPO: save(semester)
     REPO->>DB: INSERT INTO semesters<br/>(year_id, name, start_date, end_date, is_open)
-    DB-->>REPO: Semester (đã lưu)
+    DB-->>REPO:' "Semester (đã lưu)"'
     REPO-->>SVC: Semester
 
-    SVC-->>CTL: Response(success, Semester)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công
+    SVC-->>CTL:' "Response(success, Semester)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công"'
 
     Note over A,DB: ===== SỬA HỌC KỲ =====
 
@@ -119,24 +119,24 @@ sequenceDiagram
 
     SVC->>REPO: findSemesterById(id)
     REPO->>DB: SELECT * FROM semesters WHERE id = ?
-    DB-->>REPO: Semester
+    DB-->>REPO:' "Semester"'
     REPO-->>SVC: Semester
 
     Note over SVC: Kiểm tra năm học tồn tại
     SVC->>REPO: findYearById(yearId)
     REPO->>DB: SELECT * FROM academic_years WHERE id = ?
-    DB-->>REPO: AcademicYear
+    DB-->>REPO:' "AcademicYear"'
     REPO-->>SVC: AcademicYear
 
     Note over SVC: Cập nhật thông tin<br/>setYear(year), setName(name),<br/>setStartDate(startDate), setEndDate(endDate),<br/>setOpen(open)
     SVC->>REPO: save(semester)
     REPO->>DB: UPDATE semesters SET<br/>year_id=?, name=?, start_date=?,<br/>end_date=?, is_open=? WHERE id = ?
-    DB-->>REPO: Semester (đã cập nhật)
+    DB-->>REPO:' "Semester (đã cập nhật)"'
     REPO-->>SVC: Semester
 
-    SVC-->>CTL: Response(success, Semester)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công
+    SVC-->>CTL:' "Response(success, Semester)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công"'
 
     Note over A,DB: ===== XÓA HỌC KỲ =====
 
@@ -146,18 +146,18 @@ sequenceDiagram
 
     SVC->>REPO: findSemesterById(id)
     REPO->>DB: SELECT * FROM semesters WHERE id = ?
-    DB-->>REPO: Semester
+    DB-->>REPO:' "Semester"'
     REPO-->>SVC: Semester
 
     Note over SVC: Xóa học kỳ (hard delete)
     SVC->>REPO: delete(semester)
     REPO->>DB: DELETE FROM semesters WHERE id = ?
-    DB-->>REPO: Deleted
+    DB-->>REPO:' "Deleted"'
     REPO-->>SVC: Deleted
 
-    SVC-->>CTL: Response(success)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công
+    SVC-->>CTL:' "Response(success)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công"'
 ```
 
 ---
@@ -181,19 +181,19 @@ sequenceDiagram
 
     SVC->>REPO: findSemesterById(id)
     REPO->>DB: SELECT * FROM semesters WHERE id = ?
-    DB-->>REPO: Semester (hoặc null)
+    DB-->>REPO:' "Semester (hoặc null)"'
     REPO-->>SVC: Semester
 
     Note over SVC: Nếu không tìm thấy → throw NotFoundException
     Note over SVC: Cập nhật trạng thái<br/>semester.setOpen(open)
     SVC->>REPO: save(semester)
     REPO->>DB: UPDATE semesters SET is_open = ?<br/>WHERE id = ?
-    DB-->>REPO: Semester (đã cập nhật)
+    DB-->>REPO:' "Semester (đã cập nhật)"'
     REPO-->>SVC: Semester
 
-    SVC-->>CTL: Response(success, Semester)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo trạng thái mới
+    SVC-->>CTL:' "Response(success, Semester)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo trạng thái mới"'
 ```
 
 ---
@@ -218,15 +218,15 @@ sequenceDiagram
     Note over SVC: Bước 1: Tìm học kỳ theo ID
     SVC->>REPO: findSemesterById(id)
     REPO->>DB: SELECT * FROM semesters WHERE id = ?
-    DB-->>REPO: Semester (hoặc null)
+    DB-->>REPO:' "Semester (hoặc null)"'
     REPO-->>SVC: Semester
 
     Note over SVC: Nếu không tìm thấy → throw NotFoundException
     Note over SVC: Bước 2: Lấy danh sách sinh viên active
     SVC->>REPO: findAllActiveStudents()
     REPO->>DB: SELECT * FROM students WHERE status = 'ACTIVE'
-    DB-->>REPO: List&lt;Student&gt;
-    REPO-->>SVC: List&lt;Student&gt;
+    DB-->>REPO:' ""List<Student>""'
+    REPO-->>SVC:' "List<Student>"'
 
     Note over SVC: Bước 3: Tạo StudentSemesterScore<br/>cho từng sinh viên (score mặc định = 0)
     loop Với mỗi sinh viên active
@@ -236,12 +236,12 @@ sequenceDiagram
     Note over SVC: Bước 4: Batch save tất cả điểm
     SVC->>REPO: saveAll(listScores)
     REPO->>DB: INSERT INTO student_semester_scores<br/>(student_id, semester_id, score)<br/>VALUES (?, ?, 0), (?, ?, 0), ...
-    DB-->>REPO: List&lt;StudentSemesterScore&gt; (đã lưu)
-    REPO-->>SVC: List&lt;StudentSemesterScore&gt;
+    DB-->>REPO:' ""List<StudentSemesterScore> (đã lưu)""'
+    REPO-->>SVC:' "List<StudentSemesterScore>"'
 
-    SVC-->>CTL: Response(success,<br/>count: số lượng điểm đã khởi tạo)
-    CTL-->>C: ResponseEntity.ok()
-    C-->>A: Hiển thị thông báo thành công<br/>("Đã khởi tạo X điểm cho học kỳ Y")
+    SVC-->>CTL:' "Response(success,<br/>count: số lượng điểm đã khởi tạo)"'
+    CTL-->>C:' "ResponseEntity.ok()"'
+    C-->>A:' "Hiển thị thông báo thành công<br/>("Đã khởi tạo X điểm cho học kỳ Y")"'
 ```
 
 ---

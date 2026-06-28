@@ -39,62 +39,62 @@ sequenceDiagram
     Note over S, DB: 1. Tổng hợp số liệu Hoạt động
     S->>AR: countTotalActivities()
     AR->>DB: SELECT COUNT(*) FROM activities
-    DB-->>AR: totalCount
-    AR-->>S: total
+    DB-->>AR:' "totalCount"'
+    AR-->>S:' "total"'
 
     S->>AR: countByStatus("UPCOMING")
     AR->>DB: SELECT COUNT(*) FROM activities WHERE status = 'UPCOMING'
-    DB-->>AR: upcomingCount
-    AR-->>S: upcoming
+    DB-->>AR:' "upcomingCount"'
+    AR-->>S:' "upcoming"'
 
     S->>AR: countByStatus("ONGOING")
     AR->>DB: SELECT COUNT(*) FROM activities WHERE status = 'ONGOING'
-    DB-->>AR: ongoingCount
-    AR-->>S: ongoing
+    DB-->>AR:' "ongoingCount"'
+    AR-->>S:' "ongoing"'
 
     S->>AR: countByStatus("COMPLETED")
     AR->>DB: SELECT COUNT(*) FROM activities WHERE status = 'COMPLETED'
-    DB-->>AR: completedCount
-    AR-->>S: completed
+    DB-->>AR:' "completedCount"'
+    AR-->>S:' "completed"'
 
     Note over S, DB: 2. Tổng hợp số liệu Đăng ký tham gia
     S->>RR: countTotalRegistrations()
     RR->>DB: SELECT COUNT(*) FROM registrations
-    DB-->>RR: totalRegistrations
-    RR-->>S: totalRegistrations
+    DB-->>RR:' "totalRegistrations"'
+    RR-->>S:' "totalRegistrations"'
 
     S->>RR: countByStatus("APPROVED")
     RR->>DB: SELECT COUNT(*) FROM registrations WHERE status = 'APPROVED'
-    DB-->>RR: approvedCount
-    RR-->>S: approved
+    DB-->>RR:' "approvedCount"'
+    RR-->>S:' "approved"'
 
     S->>RR: countAttended()
     RR->>DB: SELECT COUNT(*) FROM registrations WHERE attended = true
-    DB-->>RR: attendedCount
-    RR-->>S: attended
+    DB-->>RR:' "attendedCount"'
+    RR-->>S:' "attended"'
 
     Note over S, DB: 3. Tổng điểm đã phát
     S->>SR: sumTotalScoreDistributed()
     SR->>DB: SELECT SUM(score) FROM score_records
-    DB-->>SR: totalScore
+    DB-->>SR:' "totalScore"'
     SR-->>S: totalScoreDistributed
 
     Note over S, DB: 4. Top hoạt động (Most Registered)
     S->>AR: findTopActivitiesByRegistration(limit)
     AR->>DB: SELECT a.*, COUNT(r.id) as reg_count FROM activities a JOIN registrations r ON a.id = r.activity_id GROUP BY a.id ORDER BY reg_count DESC LIMIT ?
-    DB-->>AR: topRegisteredActivities
-    AR-->>S: List<ActivityStatDTO>
+    DB-->>AR:' "topRegisteredActivities"'
+    AR-->>S:' "List<ActivityStatDTO>"'
 
     Note over S, DB: 5. Top hoạt động (Most Attended)
     S->>AR: findTopActivitiesByAttendance(limit)
     AR->>DB: SELECT a.*, COUNT(r.id) as attend_count FROM activities a JOIN registrations r ON a.id = r.activity_id WHERE r.attended = true GROUP BY a.id ORDER BY attend_count DESC LIMIT ?
-    DB-->>AR: topAttendedActivities
-    AR-->>S: List<ActivityStatDTO>
+    DB-->>AR:' "topAttendedActivities"'
+    AR-->>S:' "List<ActivityStatDTO>"'
 
     Note over S, DB: 6. Top sinh viên (Highest Score)
     S->>SR: findTopStudentsByTotalScore(limit)
     SR->>DB: SELECT s.*, SUM(sr.score) as total_score FROM students s JOIN score_records sr ON s.id = sr.student_id GROUP BY s.id ORDER BY total_score DESC LIMIT ?
-    DB-->>SR: topStudents
+    DB-->>SR:' "topStudents"'
     SR-->>S: List<StudentScoreDTO>
 
     S->>S: aggregateAllMetricsIntoDashboardResponse()
@@ -105,7 +105,7 @@ sequenceDiagram
     Ctrl-->>C: 200 OK + DashboardResponse (JSON)
     deactivate Ctrl
 
-    C-->>A: Hiển thị Dashboard với các widgets, biểu đồ, bảng xếp hạng
+    C-->>A:' "Hiển thị Dashboard với các widgets, biểu đồ, bảng xếp hạng"'
 ```
 
 ---
@@ -145,34 +145,34 @@ sequenceDiagram
     alt Có semesterId
         S->>SemR: findById(semesterId)
         SemR->>DB: SELECT * FROM semesters WHERE id = ?
-        DB-->>SemR: semester
+        DB-->>SemR:' "semester"'
         SemR-->>S: Semester
     end
 
     S->>AR: findActivitiesByFilter(startDate, endDate, semesterId, department)
     AR->>DB: SELECT * FROM activities WHERE ... ORDER BY start_date
-    DB-->>AR: List<Activity>
-    AR-->>S: List<Activity>
+    DB-->>AR:' "List<Activity>"'
+    AR-->>S:' "List<Activity>"'
 
     loop Với mỗi Activity
         S->>RR: countRegistrationsByActivityId(activityId)
         RR->>DB: SELECT COUNT(*) FROM registrations WHERE activity_id = ?
-        DB-->>RR: registrationCount
-        RR-->>S: registrationCount
+        DB-->>RR:' "registrationCount"'
+        RR-->>S:' "registrationCount"'
 
         S->>RR: countApprovedByActivityId(activityId)
         RR->>DB: SELECT COUNT(*) FROM registrations WHERE activity_id = ? AND status = 'APPROVED'
-        DB-->>RR: approvedCount
-        RR-->>S: approvedCount
+        DB-->>RR:' "approvedCount"'
+        RR-->>S:' "approvedCount"'
 
         S->>RR: countAttendedByActivityId(activityId)
         RR->>DB: SELECT COUNT(*) FROM registrations WHERE activity_id = ? AND attended = true
-        DB-->>RR: attendedCount
-        RR-->>S: attendedCount
+        DB-->>RR:' "attendedCount"'
+        RR-->>S:' "attendedCount"'
 
         S->>SR: getAverageScoreByActivityId(activityId)
         SR->>DB: SELECT AVG(score) FROM score_records WHERE activity_id = ?
-        DB-->>SR: avgScore
+        DB-->>SR:' "avgScore"'
         SR-->>S: avgScore
     end
 
@@ -185,7 +185,7 @@ sequenceDiagram
 
     Ctrl-->>C: 200 OK + List<ActivityStatisticsDTO> (JSON)
     deactivate Ctrl
-    C-->>A: Hiển thị bảng thống kê hoạt động + biểu đồ
+    C-->>A:' "Hiển thị bảng thống kê hoạt động + biểu đồ"'
 
     Note over A, DB: === LUỒNG 2B: THỐNG KÊ SINH VIÊN (K.44) ===
     Note over A, DB: Admin xem thống kê sinh viên theo lớp/department
@@ -200,35 +200,35 @@ sequenceDiagram
     alt Có semesterId
         S->>SemR: findById(semesterId)
         SemR->>DB: SELECT * FROM semesters WHERE id = ?
-        DB-->>SemR: semester
+        DB-->>SemR:' "semester"'
         SemR-->>S: Semester
     end
 
     S->>StR: findStudentsByFilter(classId, department, pageable)
     StR->>DB: SELECT * FROM students WHERE ... LIMIT ? OFFSET ?
-    DB-->>StR: Page<Student>
+    DB-->>StR:' "Page<Student>"'
     StR-->>S: Page<Student>
 
     S->>StR: countTotalStudentsByFilter(classId, department)
     StR->>DB: SELECT COUNT(*) FROM students WHERE ...
-    DB-->>StR: totalCount
+    DB-->>StR:' "totalCount"'
     StR-->>S: totalCount
 
     loop Với mỗi Student
         S->>SR: sumTotalScoreByStudentId(studentId, semesterId)
         SR->>DB: SELECT SUM(score) FROM score_records WHERE student_id = ? AND (semester_id = ? OR ? IS NULL)
-        DB-->>SR: totalScore
+        DB-->>SR:' "totalScore"'
         SR-->>S: totalScore
 
         S->>RR: countAttendedActivitiesByStudentId(studentId, semesterId)
         RR->>DB: SELECT COUNT(DISTINCT activity_id) FROM registrations WHERE student_id = ? AND attended = true ...
-        DB-->>RR: attendedActivityCount
-        RR-->>S: attendedActivityCount
+        DB-->>RR:' "attendedActivityCount"'
+        RR-->>S:' "attendedActivityCount"'
 
         S->>RR: countApprovedActivitiesByStudentId(studentId, semesterId)
         RR->>DB: SELECT COUNT(DISTINCT activity_id) FROM registrations WHERE student_id = ? AND status = 'APPROVED' ...
-        DB-->>RR: approvedActivityCount
-        RR-->>S: approvedActivityCount
+        DB-->>RR:' "approvedActivityCount"'
+        RR-->>S:' "approvedActivityCount"'
 
         S->>S: calculateParticipationRate(attended, approved)
     end
@@ -242,7 +242,7 @@ sequenceDiagram
 
     Ctrl-->>C: 200 OK + Page<StudentStatisticsDTO> (JSON)
     deactivate Ctrl
-    C-->>A: Hiển thị bảng thống kê sinh viên + phân trang + biểu đồ
+    C-->>A:' "Hiển thị bảng thống kê sinh viên + phân trang + biểu đồ"'
 ```
 
 ---
@@ -276,12 +276,12 @@ sequenceDiagram
 
     S->>SemR: findById(semesterId)
     SemR->>DB: SELECT * FROM semesters WHERE id = ?
-    DB-->>SemR: semester
+    DB-->>SemR:' "semester"'
     SemR-->>S: Semester (validate tồn tại)
 
     S->>SR: findAllScoreRecordsBySemesterId(semesterId)
     SR->>DB: SELECT * FROM score_records WHERE semester_id = ?
-    DB-->>SR: List<ScoreRecord>
+    DB-->>SR:' "List<ScoreRecord>"'
     SR-->>S: List<ScoreRecord>
 
     Note over S, DB: Group by sourceType và tính tổng điểm
@@ -307,7 +307,7 @@ sequenceDiagram
     Ctrl-->>C: 200 OK + ScoreBreakdownResponse (JSON)
     deactivate Ctrl
 
-    C-->>A: Hiển thị biểu đồ tròn/cột phân tích nguồn điểm
+    C-->>A:' "Hiển thị biểu đồ tròn/cột phân tích nguồn điểm"'
 ```
 
 ---

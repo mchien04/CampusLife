@@ -29,27 +29,27 @@ sequenceDiagram
     Note over SVC,SR: [Phase 2] Retrieve Student Profile & Context
     SVC->>SR: 6. findStudentById(studentId)
     SR->>DB: 7. SELECT * FROM students WHERE id = ? AND status = 'ACTIVE'
-    DB-->>SR: 8. Student record (id, name, major, interests, academic_year)
+    DB-->>SR:' "8. Student record (id, name, major, interests, academic_year)"'
     SR-->>SVC: 9. Optional<Student>
     SVC->>SVC: 10. Validate student exists
 
     SVC->>RR: 11. findRegisteredActivityIdsByStudentId(studentId)
     RR->>DB: 12. SELECT activity_id FROM registrations WHERE student_id = ? AND status IN ('CONFIRMED','PENDING')
-    DB-->>RR: 13. List<activity_id> (registered activity IDs)
-    RR-->>SVC: 14. Set<Long> registeredIds
+    DB-->>RR:' "13. List<activity_id> (registered activity IDs)"'
+    RR-->>SVC:' "14. Set<Long> registeredIds"'
 
     %% ======================== PHASE 3: CANDIDATE ACTIVITIES ========================
     Note over SVC,AR: [Phase 3] Retrieve Candidate Activities
     SVC->>AR: 15. findOpenActivitiesExcluding(studentId, registeredIds)
     AR->>DB: 16. SELECT a.* FROM activities a LEFT JOIN registrations r ON a.id = r.activity_id WHERE a.status = 'OPEN' AND (r.student_id IS NULL OR r.student_id != ?) AND a.deadline > NOW() AND a.remaining_slots > 0
-    DB-->>AR: 17. List<Activity> (open, not registered, has slots, not expired)
-    AR-->>SVC: 18. List<Activity> candidateActivities
+    DB-->>AR:' "17. List<Activity> (open, not registered, has slots, not expired)"'
+    AR-->>SVC:' "18. List<Activity> candidateActivities"'
 
     SVC->>SVC: 19. Validate candidateActivities not empty
     alt candidateActivities is empty
-        SVC-->>CTL: 20. EmptyList<RecommendationDTO>
-        CTL-->>C: 21. 200 OK + [] (no recommendations available)
-        C-->>S: 22. Hiển thị "Chưa có hoạt động phù hợp"
+        SVC-->>CTL:' "20. EmptyList<RecommendationDTO>"'
+        CTL-->>C:' "21. 200 OK + [] (no recommendations available)"'
+        C-->>S:' "22. Hiển thị "Chưa có hoạt động phù hợp""'
     else candidateActivities exists
 
         %% ======================== PHASE 4: SCORING ========================
@@ -82,11 +82,11 @@ sequenceDiagram
         %% ======================== PHASE 5: RESPONSE ========================
         Note over SVC,CTL: [Phase 5] Build & Return Response
         SVC->>SVC: 34. Map to RecommendationDTO (activityId, name, matchScore, reason, thumbnail, deadline, remainingSlots)
-        SVC-->>CTL: 35. List<RecommendationDTO> topRecommendations
-        CTL-->>C: 36. 200 OK + JSON payload
+        SVC-->>CTL:' "35. List<RecommendationDTO> topRecommendations"'
+        CTL-->>C:' "36. 200 OK + JSON payload"'
         Note right of CTL: Response: {\n  studentId: 123,\n  recommendations: [\n    {activityId, name, matchScore, reason, ...},\n    ...\n  ],\n  generatedAt: "2025-01-15T10:30:00Z"\n}
         C->>C: 37. Parse JSON & render UI components
-        C-->>S: 38. Display recommendation cards (ranked by matchScore)
+        C-->>S:' "38. Display recommendation cards (ranked by matchScore)"'
         Note over S: UI shows: Tên hoạt động, Độ phù hợp (%%),\nLý do gợi ý, Slot còn lại, Deadline
     end
 ```

@@ -31,12 +31,12 @@ sequenceDiagram
     CTL->>SVC: getTasks(filterDTO, pageable)
     SVC->>REP: findAll(Specification, Pageable)
     REP->>DB: SELECT t.*, a.name AS activity_name,<br/>COUNT(ta.id) AS assignee_count<br/>FROM task t<br/>LEFT JOIN activity a ON t.activity_id = a.id<br/>LEFT JOIN task_assignment ta ON t.id = ta.task_id<br/>WHERE (...filters...)<br/>GROUP BY t.id<br/>ORDER BY t.deadline ASC<br/>LIMIT ... OFFSET ...
-    DB-->>REP: ResultSet (rows)
-    REP-->>SVC: Page<TaskProjection>
+    DB-->>REP:' "ResultSet (rows)"'
+    REP-->>SVC:' "Page<TaskProjection>"'
     SVC->>SVC: Map sang TaskResponseDTO:<br/>(taskId, title, description, status,<br/>deadline, activityName, assigneeCount)
-    SVC-->>CTL: Page<TaskResponseDTO>
-    CTL-->>C: 200 OK + JSON {content, totalElements, totalPages, ...}
-    C-->>U: Hiển thị bảng danh sách nhiệm vụ<br/>có phân trang và filter
+    SVC-->>CTL:' "Page<TaskResponseDTO>"'
+    CTL-->>C:' "200 OK + JSON {content, totalElements, totalPages, ...}"'
+    C-->>U:' "Hiển thị bảng danh sách nhiệm vụ<br/>có phân trang và filter"'
 
     %% ===========================
     %% 2. Thêm nhiệm vụ (3.3.29) — POST /api/admin/tasks
@@ -51,23 +51,23 @@ sequenceDiagram
     CTL->>SVC: createTask(CreateTaskRequestDTO)
     SVC->>REP: findById(activityId) — kiểm tra Activity tồn tại
     REP->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>REP: Activity row (exists)
-    REP-->>SVC: Optional<Activity>
+    DB-->>REP:' "Activity row (exists)"'
+    REP-->>SVC:' "Optional<Activity>"'
 
     alt Activity không tồn tại
-        SVC-->>CTL: throw ResourceNotFoundException("Activity not found")
-        CTL-->>C: 404 Not Found + error message
-        C-->>U: Hiển thị lỗi "Hoạt động không tồn tại"
+        SVC-->>CTL:' "throw ResourceNotFoundException("Activity not found")"'
+        CTL-->>C:' "404 Not Found + error message"'
+        C-->>U:' "Hiển thị lỗi "Hoạt động không tồn tại""'
     else Activity tồn tại
         SVC->>SVC: Tạo Task entity:<br/>activityId = dto.activityId<br/>title = dto.title<br/>description = dto.description<br/>status = PENDING<br/>deadline = dto.deadline<br/>priority = dto.priority<br/>createdAt = now()
 
         SVC->>REP: save(taskEntity)
         REP->>DB: INSERT INTO task (activity_id, title, description, status, deadline, priority, created_at)<br/>VALUES (?, ?, ?, 'PENDING', ?, ?, NOW())
-        DB-->>REP: Generated taskId
-        REP-->>SVC: Task entity (đã có id)
-        SVC-->>CTL: TaskResponseDTO (taskId, ...)
-        CTL-->>C: 201 Created + JSON {taskId, title, description, status, deadline, priority, activityId}
-        C-->>U: Hiển thị thông báo "Tạo nhiệm vụ thành công"<br/>và cập nhật danh sách
+        DB-->>REP:' "Generated taskId"'
+        REP-->>SVC:' "Task entity (đã có id)"'
+        SVC-->>CTL:' "TaskResponseDTO (taskId, ...)"'
+        CTL-->>C:' "201 Created + JSON {taskId, title, description, status, deadline, priority, activityId}"'
+        C-->>U:' "Hiển thị thông báo "Tạo nhiệm vụ thành công"<br/>và cập nhật danh sách"'
     end
 
     %% ===========================
@@ -83,36 +83,36 @@ sequenceDiagram
     CTL->>SVC: deleteTask(id)
     SVC->>REP: findById(id)
     REP->>DB: SELECT * FROM task WHERE id = ?
-    DB-->>REP: Task row
-    REP-->>SVC: Optional<Task>
+    DB-->>REP:' "Task row"'
+    REP-->>SVC:' "Optional<Task>"'
 
     alt Task không tồn tại
-        SVC-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Nhiệm vụ không tồn tại"
+        SVC-->>CTL:' "throw ResourceNotFoundException"'
+        CTL-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Nhiệm vụ không tồn tại""'
     else Task tồn tại
         SVC->>REP: findAssignmentsByTaskId(id) — kiểm tra assignee
         REP->>DB: SELECT * FROM task_assignment WHERE task_id = ?<br/>AND status IN ('IN_PROGRESS', 'ASSIGNED')
-        DB-->>REP: ResultSet
-        REP-->>SVC: List<TaskAssignment> (active assignments)
+        DB-->>REP:' "ResultSet"'
+        REP-->>SVC:' "List<TaskAssignment> (active assignments)"'
 
         alt Có assignee đang thực hiện (status ≠ COMPLETED)
-            SVC-->>CTL: throw BusinessException("Không thể xóa: có người đang thực hiện nhiệm vụ")
-            CTL-->>C: 409 Conflict + error message
-            C-->>U: Hiển thị lỗi "Nhiệm vụ đang được thực hiện, không thể xóa"
+            SVC-->>CTL: 'throw BusinessException: Không thể xóa - có người đang thực hiện nhiệm vụ'
+            CTL-->>C:' "409 Conflict + error message"'
+            C-->>U:' "Hiển thị lỗi "Nhiệm vụ đang được thực hiện, không thể xóa""'
         else Tất cả đã COMPLETED hoặc không có assignee
             SVC->>REP: deleteAllAssignmentsByTaskId(id)
             REP->>DB: DELETE FROM task_assignment WHERE task_id = ?
-            DB-->>REP: affected rows
+            DB-->>REP:' "affected rows"'
 
             SVC->>REP: delete(taskEntity)
             REP->>DB: DELETE FROM task WHERE id = ?
-            DB-->>REP: deleted
-            REP-->>SVC: void
+            DB-->>REP:' "deleted"'
+            REP-->>SVC:' "void"'
 
-            SVC-->>CTL: void
-            CTL-->>C: 200 OK / 204 No Content + success message
-            C-->>U: Hiển thị "Xóa nhiệm vụ thành công"<br/>và refresh danh sách
+            SVC-->>CTL:' "void"'
+            CTL-->>C:' "200 OK / 204 No Content + success message"'
+            C-->>U:' "Hiển thị "Xóa nhiệm vụ thành công"<br/>và refresh danh sách"'
         end
     end
 
@@ -129,39 +129,39 @@ sequenceDiagram
     CTL->>SVC: updateTask(id, UpdateTaskRequestDTO)
     SVC->>REP: findById(id)
     REP->>DB: SELECT * FROM task WHERE id = ?
-    DB-->>REP: Task row
-    REP-->>SVC: Optional<Task>
+    DB-->>REP:' "Task row"'
+    REP-->>SVC:' "Optional<Task>"'
 
     alt Task không tồn tại
-        SVC-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Nhiệm vụ không tồn tại"
+        SVC-->>CTL:' "throw ResourceNotFoundException"'
+        CTL-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Nhiệm vụ không tồn tại""'
     else Task tồn tại
         SVC->>SVC: Lưu oldDeadline = task.deadline
         SVC->>SVC: Cập nhật entity:<br/>task.title = dto.title<br/>task.description = dto.description<br/>task.deadline = dto.deadline<br/>task.priority = dto.priority<br/>task.status = dto.status<br/>task.updatedAt = now()
 
         SVC->>REP: save(taskEntity)
         REP->>DB: UPDATE task SET title=?, description=?, deadline=?, priority=?, status=?, updated_at=NOW() WHERE id=?
-        DB-->>REP: updated row
-        REP-->>SVC: Task entity (updated)
+        DB-->>REP:' "updated row"'
+        REP-->>SVC:' "Task entity (updated)"'
 
         alt deadline được thay đổi (oldDeadline ≠ dto.deadline)
             SVC->>SVC: Lấy danh sách assignee của task
             SVC->>REP: findAssignmentsByTaskId(taskId)
             REP->>DB: SELECT * FROM task_assignment WHERE task_id = ?
-            DB-->>REP: List<TaskAssignment>
-            REP-->>SVC: List<TaskAssignment>
+            DB-->>REP:' "List<TaskAssignment>"'
+            REP-->>SVC:' "List<TaskAssignment>"'
 
             loop Với mỗi assignee
                 SVC->>SVC: Tạo Notification:<br/>"Deadline nhiệm vụ [title] đã được cập nhật"<br/>→ gửi đến assigneeId
                 SVC->>DB: INSERT INTO notification (user_id, type, title, message, created_at)<br/>VALUES (?, 'TASK_DEADLINE_CHANGED', ?, ?, NOW())
-                DB-->>SVC: notification saved
+                DB-->>SVC:' "notification saved"'
             end
         end
 
-        SVC-->>CTL: TaskResponseDTO (updated)
-        CTL-->>C: 200 OK + JSON {taskId, title, description, status, deadline, priority, updatedAt}
-        C-->>U: Hiển thị "Cập nhật nhiệm vụ thành công"<br/>và refresh danh sách
+        SVC-->>CTL:' "TaskResponseDTO (updated)"'
+        CTL-->>C:' "200 OK + JSON {taskId, title, description, status, deadline, priority, updatedAt}"'
+        C-->>U:' "Hiển thị "Cập nhật nhiệm vụ thành công"<br/>và refresh danh sách"'
     end
 ```
 
@@ -190,22 +190,22 @@ sequenceDiagram
     CTL->>SVC: getTaskAssignments(taskId)
     SVC->>REP: findTaskById(taskId) — kiểm tra task tồn tại
     REP->>DB: SELECT * FROM task WHERE id = ?
-    DB-->>REP: Task row
-    REP-->>SVC: Optional<Task>
+    DB-->>REP:' "Task row"'
+    REP-->>SVC:' "Optional<Task>"'
 
     alt Task không tồn tại
-        SVC-->>CTL: throw ResourceNotFoundException("Task not found")
-        CTL-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Nhiệm vụ không tồn tại"
+        SVC-->>CTL:' "throw ResourceNotFoundException("Task not found")"'
+        CTL-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Nhiệm vụ không tồn tại""'
     else Task tồn tại
         SVC->>REP: findAllAssignmentsByTaskIdWithUser(taskId)
         REP->>DB: SELECT ta.*, u.id AS user_id, u.full_name AS user_name<br/>FROM task_assignment ta<br/>JOIN user u ON ta.assignee_id = u.id<br/>WHERE ta.task_id = ?<br/>ORDER BY ta.assigned_at DESC
-        DB-->>REP: ResultSet (rows)
-        REP-->>SVC: List<TaskAssignmentProjection>
+        DB-->>REP:' "ResultSet (rows)"'
+        REP-->>SVC:' "List<TaskAssignmentProjection>"'
         SVC->>SVC: Map sang TaskAssignmentResponseDTO:<br/>(assigneeId, assigneeName, status, assignedAt, completedAt, note)
-        SVC-->>CTL: List<TaskAssignmentResponseDTO>
-        CTL-->>C: 200 OK + JSON [{assigneeId, assigneeName, status, assignedAt, completedAt, note}, ...]
-        C-->>U: Hiển thị bảng phân công:<br/>Tên người thực hiện, trạng thái, thời gian phân công,<br/>thời gian hoàn thành, ghi chú
+        SVC-->>CTL:' "List<TaskAssignmentResponseDTO>"'
+        CTL-->>C:' "200 OK + JSON [{assigneeId, assigneeName, status, assignedAt, completedAt, note}, ...]"'
+        C-->>U:' "Hiển thị bảng phân công:<br/>Tên người thực hiện, trạng thái, thời gian phân công,<br/>thời gian hoàn thành, ghi chú"'
     end
 
     %% ===========================
@@ -222,54 +222,54 @@ sequenceDiagram
 
     SVC->>REP: findTaskById(taskId)
     REP->>DB: SELECT * FROM task WHERE id = ?
-    DB-->>REP: Task row
-    REP-->>SVC: Optional<Task>
+    DB-->>REP:' "Task row"'
+    REP-->>SVC:' "Optional<Task>"'
 
     alt Task không tồn tại
-        SVC-->>CTL: throw ResourceNotFoundException("Task not found")
-        CTL-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Nhiệm vụ không tồn tại"
+        SVC-->>CTL:' "throw ResourceNotFoundException("Task not found")"'
+        CTL-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Nhiệm vụ không tồn tại""'
     else Task tồn tại
         SVC->>REP: findUserById(assigneeId) — kiểm tra user tồn tại
         REP->>DB: SELECT * FROM user WHERE id = ?
-        DB-->>REP: User row
-        REP-->>SVC: Optional<User>
+        DB-->>REP:' "User row"'
+        REP-->>SVC:' "Optional<User>"'
 
         alt User không tồn tại
-            SVC-->>CTL: throw ResourceNotFoundException("User not found")
-            CTL-->>C: 404 Not Found
-            C-->>U: Hiển thị lỗi "Người dùng không tồn tại"
+            SVC-->>CTL:' "throw ResourceNotFoundException("User not found")"'
+            CTL-->>C:' "404 Not Found"'
+            C-->>U:' "Hiển thị lỗi "Người dùng không tồn tại""'
         else User tồn tại
             SVC->>SVC: Kiểm tra quyền user (role phù hợp):<br/>User phải có role STAFF / VOLUNTEER / hoặc role được phân công nhiệm vụ
             alt User không có quyền phù hợp
-                SVC-->>CTL: throw AccessDeniedException("User không có quyền nhận nhiệm vụ này")
-                CTL-->>C: 403 Forbidden
-                C-->>U: Hiển thị lỗi "Người dùng không đủ quyền để nhận nhiệm vụ"
+                SVC-->>CTL:' "throw AccessDeniedException("User không có quyền nhận nhiệm vụ này")"'
+                CTL-->>C:' "403 Forbidden"'
+                C-->>U:' "Hiển thị lỗi "Người dùng không đủ quyền để nhận nhiệm vụ""'
             else User có quyền phù hợp
                 SVC->>REP: existsByTaskIdAndAssigneeId(taskId, assigneeId)<br/>— kiểm tra đã được assign chưa
                 REP->>DB: SELECT COUNT(*) FROM task_assignment WHERE task_id = ? AND assignee_id = ?
-                DB-->>REP: count (0 hoặc >0)
-                REP-->>SVC: boolean
+                DB-->>REP:' "count (0 hoặc >0)"'
+                REP-->>SVC:' "boolean"'
 
                 alt User đã được phân công nhiệm vụ này
-                    SVC-->>CTL: throw BusinessException("Người dùng đã được phân công nhiệm vụ này")
-                    CTL-->>C: 409 Conflict
-                    C-->>U: Hiển thị lỗi "Người dùng đã được phân công nhiệm vụ này rồi"
+                    SVC-->>CTL:' "throw BusinessException("Người dùng đã được phân công nhiệm vụ này")"'
+                    CTL-->>C:' "409 Conflict"'
+                    C-->>U:' "Hiển thị lỗi "Người dùng đã được phân công nhiệm vụ này rồi""'
                 else User chưa được phân công
                     SVC->>SVC: Tạo TaskAssignment entity:<br/>taskId = taskId<br/>assigneeId = dto.assigneeId<br/>status = ASSIGNED<br/>assignedAt = now()<br/>completedAt = null<br/>note = dto.note
 
                     SVC->>REP: save(taskAssignmentEntity)
                     REP->>DB: INSERT INTO task_assignment (task_id, assignee_id, status, assigned_at, completed_at, note)<br/>VALUES (?, ?, 'ASSIGNED', NOW(), NULL, ?)
-                    DB-->>REP: Generated assignmentId
-                    REP-->>SVC: TaskAssignment entity (đã có id)
+                    DB-->>REP:' "Generated assignmentId"'
+                    REP-->>SVC:' "TaskAssignment entity (đã có id)"'
 
                     SVC->>SVC: Tạo Notification:<br/>"Bạn được phân công nhiệm vụ: [Task Title]"<br/>→ gửi đến assigneeId
                     SVC->>DB: INSERT INTO notification (user_id, type, title, message, created_at, related_task_id)<br/>VALUES (?, 'TASK_ASSIGNED', 'Nhiệm vụ mới', ?, NOW(), ?)
-                    DB-->>SVC: notification saved
+                    DB-->>SVC:' "notification saved"'
 
-                    SVC-->>CTL: TaskAssignmentResponseDTO<br/>(assignmentId, assigneeId, assigneeName, status, assignedAt, note)
-                    CTL-->>C: 201 Created + JSON {assignmentId, assigneeId, assigneeName, status, assignedAt, note}
-                    C-->>U: Hiển thị "Phân công nhiệm vụ thành công"<br/>và cập nhật danh sách phân công
+                    SVC-->>CTL:' "TaskAssignmentResponseDTO<br/>(assignmentId, assigneeId, assigneeName, status, assignedAt, note)"'
+                    CTL-->>C:' "201 Created + JSON {assignmentId, assigneeId, assigneeName, status, assignedAt, note}"'
+                    C-->>U:' "Hiển thị "Phân công nhiệm vụ thành công"<br/>và cập nhật danh sách phân công"'
                 end
             end
         end
@@ -288,34 +288,34 @@ sequenceDiagram
     CTL->>SVC: unassignTask(taskId, assignmentId)
     SVC->>REP: findById(assignmentId)
     REP->>DB: SELECT * FROM task_assignment WHERE id = ? AND task_id = ?
-    DB-->>REP: TaskAssignment row
-    REP-->>SVC: Optional<TaskAssignment>
+    DB-->>REP:' "TaskAssignment row"'
+    REP-->>SVC:' "Optional<TaskAssignment>"'
 
     alt Assignment không tồn tại
-        SVC-->>CTL: throw ResourceNotFoundException("Assignment not found")
-        CTL-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Phân công không tồn tại"
+        SVC-->>CTL:' "throw ResourceNotFoundException("Assignment not found")"'
+        CTL-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Phân công không tồn tại""'
     else Assignment tồn tại
         SVC->>SVC: Kiểm tra status:<br/>Nếu policy cho phép hủy dù đang thực hiện → tiếp tục<br/>Nếu policy chỉ cho phép hủy khi chưa COMPLETED → kiểm tra
 
         alt Status = COMPLETED và policy không cho phép hủy
-            SVC-->>CTL: throw BusinessException("Không thể hủy phân công đã hoàn thành")
-            CTL-->>C: 409 Conflict
-            C-->>U: Hiển thị lỗi "Phân công đã hoàn thành, không thể hủy"
+            SVC-->>CTL:' "throw BusinessException("Không thể hủy phân công đã hoàn thành")"'
+            CTL-->>C:' "409 Conflict"'
+            C-->>U:' "Hiển thị lỗi "Phân công đã hoàn thành, không thể hủy""'
         else Cho phép hủy (status chưa COMPLETED hoặc policy linh hoạt)
             SVC->>SVC: Lưu assigneeId trước khi xóa (để gửi notification)
             SVC->>REP: delete(taskAssignmentEntity)
             REP->>DB: DELETE FROM task_assignment WHERE id = ?
-            DB-->>REP: deleted
-            REP-->>SVC: void
+            DB-->>REP:' "deleted"'
+            REP-->>SVC:' "void"'
 
             SVC->>SVC: Tạo Notification:<br/>"Phân công nhiệm vụ [Task Title] của bạn đã bị hủy"<br/>→ gửi đến assigneeId
             SVC->>DB: INSERT INTO notification (user_id, type, title, message, created_at, related_task_id)<br/>VALUES (?, 'TASK_UNASSIGNED', 'Hủy phân công', ?, NOW(), ?)
-            DB-->>SVC: notification saved
+            DB-->>SVC:' "notification saved"'
 
-            SVC-->>CTL: void / success
-            CTL-->>C: 200 OK / 204 No Content + success message
-            C-->>U: Hiển thị "Hủy phân công thành công"<br/>và refresh danh sách phân công
+            SVC-->>CTL:' "void / success"'
+            CTL-->>C:' "200 OK / 204 No Content + success message"'
+            C-->>U:' "Hiển thị "Hủy phân công thành công"<br/>và refresh danh sách phân công"'
         end
     end
 ```
