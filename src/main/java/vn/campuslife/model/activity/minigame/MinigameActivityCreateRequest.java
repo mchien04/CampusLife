@@ -3,6 +3,8 @@ package vn.campuslife.model.activity.minigame;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vn.campuslife.enumeration.ActivityPresetCode;
+import vn.campuslife.model.activity.ActivityPresetConfig;
 import vn.campuslife.model.score.ActivityScoreRuleRequest;
 import vn.campuslife.model.activity.quiz.CreateMiniGameRequest;
 
@@ -29,6 +31,8 @@ public class MinigameActivityCreateRequest {
     private String bannerUrl;
     private String shareLink;
     private List<ActivityScoreRuleRequest> scoreRules;
+    private ActivityPresetCode presetCode;
+    private ActivityPresetConfig presetConfig;
 
     // Quiz fields
     private QuizConfigRequest quiz;
@@ -38,6 +42,7 @@ public class MinigameActivityCreateRequest {
     @AllArgsConstructor
     public static class QuizConfigRequest {
         private String title;
+        private String description;
         private Integer questionCount;
         private Integer timeLimit;
         private Integer requiredCorrectAnswers;

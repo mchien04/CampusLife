@@ -10,6 +10,7 @@ import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.task.ActivityTaskResponse;
@@ -566,6 +567,15 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                         && assignment.getTask().getDeadline() != null
                         && assignment.getTask().getDeadline().isBefore(now)
                         && assignment.getStatus() != TaskStatus.COMPLETED) {
+                    // Skip if student did not attend — they are a no-show, TASK_OVERDUE does not apply.
+                    // NO_SHOW penalty handles the no-show case; this prevents double-penalty.
+                    Optional<ActivityRegistration> regOpt = activityRegistrationRepository
+                            .findByActivityIdAndStudentId(
+                                    assignment.getTask().getActivity().getId(),
+                                    assignment.getStudent().getId());
+                    if (regOpt.isPresent() && regOpt.get().getStatus() != RegistrationStatus.ATTENDED) {
+                        continue;
+                    }
                     assignment.setStatus(TaskStatus.OVERDUE);
                     taskAssignmentRepository.save(assignment);
                     try {

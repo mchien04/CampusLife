@@ -30,6 +30,7 @@ public class SeriesResponse {
     private List<Long> targetDepartmentIds;
     private boolean isImportant;
     private boolean mandatoryForFacultyStudents;
+    private boolean isDraft;
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
     private LocalDateTime createdAt;

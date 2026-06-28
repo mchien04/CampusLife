@@ -27,6 +27,7 @@ import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.MinigameActivityService;
 import vn.campuslife.service.ReminderScheduleService;
+import vn.campuslife.service.ScorePresetService;
 import vn.campuslife.service.mapper.MinigameActivityMapper;
 import vn.campuslife.service.validator.MinigameActivityValidator;
 import vn.campuslife.util.UrlUtils;
@@ -54,6 +55,7 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ActivityRegistrationAutoService autoRegisterService;
     private final ReminderScheduleService reminderScheduleService;
+    private final ScorePresetService scorePresetService;
     private final MinigameActivityValidator validator;
     private final MinigameActivityMapper mapper;
     private final UploadProperties uploadProperties;
@@ -63,6 +65,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     public Response createMinigame(MinigameActivityCreateRequest request) {
         try {
             validator.validate(request);
+
+            scorePresetService.applyActivityPreset(request);
 
             Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
 
@@ -86,11 +90,14 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             autoRegisterService.autoRegisterStudents(savedShell);
             reminderScheduleService.syncEventRemindersForActivity(savedShell);
 
-            MiniGame miniGame = mapper.toMiniGameEntity(request.getQuiz(), savedShell);
-            miniGame = miniGameRepository.save(miniGame);
+            MiniGame miniGame = null;
+            if (request.getQuiz() != null) {
+                miniGame = mapper.toMiniGameEntity(request.getQuiz(), savedShell);
+                miniGame = miniGameRepository.save(miniGame);
 
-            // Persist quiz, questions, and options
-            persistQuizQuestionsAndOptions(miniGame, request.getQuiz());
+                // Persist quiz, questions, and options
+                persistQuizQuestionsAndOptions(miniGame, request.getQuiz());
+            }
 
             return Response.success("Minigame created successfully", mapper.toResponse(savedShell, miniGame));
         } catch (IllegalArgumentException e) {
@@ -140,7 +147,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
                     }
                 } else {
                     miniGame = mapper.toMiniGameEntity(new MinigameActivityCreateRequest.QuizConfigRequest(
-                            request.getQuiz().getTitle(), request.getQuiz().getQuestionCount(),
+                            request.getQuiz().getTitle(), request.getQuiz().getDescription(),
+                            request.getQuiz().getQuestionCount(),
                             request.getQuiz().getTimeLimit(), request.getQuiz().getRequiredCorrectAnswers(),
                             request.getQuiz().getMaxAttempts(), request.getQuiz().getShowAnswers(),
                             request.getQuiz().getQuestions()), savedShell);

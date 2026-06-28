@@ -82,6 +82,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents,
+            Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         // Validate required fields
         if (name == null || name.trim().isEmpty()) {
@@ -117,6 +118,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
 series.setPresetCode(presetCode);
         series.setImportant(Boolean.TRUE.equals(isImportant));
         series.setMandatoryForFacultyStudents(Boolean.TRUE.equals(mandatoryForFacultyStudents));
+        series.setDraft(Boolean.TRUE.equals(isDraft));
 
         if (mainActivityId != null) {
             Optional<Activity> mainActivityOpt = activityRepository.findById(mainActivityId);
@@ -130,8 +132,8 @@ series.setPresetCode(presetCode);
         ActivitySeries saved = seriesRepository.save(series);
         logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
 
-        // Auto-register students to main activity if series flags require it
-        if (saved.getMainActivity() != null) {
+        // Auto-register students to main activity if series flags require it (only when non-draft)
+        if (!saved.isDraft() && saved.getMainActivity() != null) {
             autoRegisterService.autoRegisterStudents(
                     saved.getMainActivity(),
                     saved.isImportant(),
@@ -226,7 +228,7 @@ series.setPresetCode(presetCode);
         autoRegisterStudentsForNewActivityInSeries(series, saved);
         reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
 
-        return Response.success("Activity created in series successfully", saved);
+        return Response.success("Activity created in series successfully", seriesChildMapper.toResponse(saved, series.getName()));
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
@@ -268,19 +270,11 @@ series.setPresetCode(presetCode);
                 return Response.error("Registration has not started yet");
             }
 
-            // Kiểm tra ticketQuantity (đếm số student đã đăng ký ít nhất 1 activity trong
-            // series)
+            // Kiểm tra ticketQuantity (đếm số student APPROVED trong series)
             if (series.getTicketQuantity() != null) {
-                List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-                Set<Long> registeredStudentIds = new HashSet<>();
-                for (Activity activity : activities) {
-                    List<ActivityRegistration> regs = registrationRepository
-                            .findByActivityIdAndActivityIsDeletedFalse(activity.getId());
-                    for (ActivityRegistration reg : regs) {
-                        registeredStudentIds.add(reg.getStudent().getId());
-                    }
-                }
-                if (registeredStudentIds.size() >= series.getTicketQuantity()) {
+                long approvedCount = registrationRepository.countDistinctStudentBySeriesIdAndStatus(
+                        seriesId, RegistrationStatus.APPROVED);
+                if (approvedCount >= series.getTicketQuantity()) {
                     return Response.error("Series is full");
                 }
             }
@@ -360,6 +354,74 @@ series.setPresetCode(presetCode);
 
     @Override
     @Transactional
+    public Response registerForSeriesWaitlist(Long seriesId, Long studentId) {
+        try {
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return Response.error("Series not found");
+            }
+            ActivitySeries series = seriesOpt.get();
+
+            Optional<Student> studentOpt = studentRepository.findById(studentId);
+            if (studentOpt.isEmpty()) {
+                return Response.error("Student not found");
+            }
+            Student student = studentOpt.get();
+
+            if (series.getRegistrationDeadline() != null &&
+                    LocalDateTime.now().isAfter(series.getRegistrationDeadline())) {
+                return Response.error("Registration deadline has passed");
+            }
+
+            if (registrationRepository.existsBySeriesIdAndStudentId(seriesId, studentId)) {
+                return Response.error("Already registered or in waitlist for this series");
+            }
+
+            // Only allow waitlist if series is full
+            if (series.getTicketQuantity() != null) {
+                long approvedCount = registrationRepository.countDistinctStudentBySeriesIdAndStatus(
+                        seriesId, RegistrationStatus.APPROVED);
+                if (approvedCount < series.getTicketQuantity()) {
+                    return Response.error("Series still has slots. Please register normally.");
+                }
+            } else {
+                return Response.error("Series has unlimited slots. Please register normally.");
+            }
+
+            List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+            if (activities.isEmpty()) {
+                return Response.error("No activities found in series");
+            }
+
+            List<ActivityRegistration> registrations = new ArrayList<>();
+            for (Activity activity : activities) {
+                if (registrationRepository.existsByActivityIdAndStudentId(activity.getId(), studentId)) {
+                    continue;
+                }
+                ActivityRegistration registration = new ActivityRegistration();
+                registration.setActivity(activity);
+                registration.setStudent(student);
+                registration.setRegisteredDate(LocalDateTime.now());
+                registration.setSeriesId(seriesId);
+                registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+                registration.setStatus(RegistrationStatus.WAITLIST);
+                registrations.add(registration);
+            }
+
+            if (registrations.isEmpty()) {
+                return Response.error("Already registered for all activities in series");
+            }
+
+            registrationRepository.saveAll(registrations);
+            return Response.success("Successfully joined series waitlist", registrations);
+        } catch (Exception e) {
+            logger.error("Failed to join series waitlist: {}", e.getMessage(), e);
+            return Response.error("Failed to join series waitlist: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
     public Response addActivityToSeries(Long activityId, Long seriesId, Integer order) {
         try {
             Optional<Activity> activityOpt = activityRepository.findById(activityId);
@@ -399,26 +461,21 @@ series.setPresetCode(presetCode);
      */
     private void autoRegisterStudentsForNewActivityInSeries(ActivitySeries series, Activity newActivity) {
         try {
+            if (series.isDraft()) {
+                logger.info("Skipping auto-registration for activity in draft series (seriesId={})", series.getId());
+                return;
+            }
+
             // First: propagate existing series registrations (students who registered
             // for any sibling activity) to the new activity.
             Long seriesId = series.getId();
 
-            // Lấy tất cả activities trong series (trừ activity mới nếu cần)
-            List<Activity> activitiesInSeries = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
-
             // Thu thập tất cả student đã đăng ký ít nhất 1 activity trong series
-            Set<Long> studentIds = new HashSet<>();
-            for (Activity activity : activitiesInSeries) {
-                // Không cần bỏ qua newActivity vì tại thời điểm này activity mới chưa có đăng
-                // ký
-                List<ActivityRegistration> regs = registrationRepository
-                        .findByActivityIdAndActivityIsDeletedFalse(activity.getId());
-                for (ActivityRegistration reg : regs) {
-                    if (reg.getStudent() != null && reg.getStudent().getId() != null) {
-                        studentIds.add(reg.getStudent().getId());
-                    }
-                }
-            }
+            List<ActivityRegistration> allRegistrations = registrationRepository.findBySeriesId(seriesId);
+            Set<Long> studentIds = allRegistrations.stream()
+                    .filter(reg -> reg.getStudent() != null && reg.getStudent().getId() != null)
+                    .map(reg -> reg.getStudent().getId())
+                    .collect(Collectors.toSet());
 
             if (studentIds.isEmpty()) {
                 logger.info("No existing registrations in series {} to auto-register for new activity {}", seriesId,
@@ -680,6 +737,9 @@ series.setPresetCode(presetCode);
                         seriesMap.put("minimumPenaltyPoints", series.getMinimumPenaltyPoints());
                         seriesMap.put("createdAt", series.getCreatedAt());
                         seriesMap.put("isDeleted", series.isDeleted());
+                        seriesMap.put("isImportant", series.isImportant());
+                        seriesMap.put("mandatoryForFacultyStudents", series.isMandatoryForFacultyStudents());
+                        seriesMap.put("isDraft", series.isDraft());
 
                         // Đếm số activities trong series
                         Long totalActivities = activityRepository.countBySeriesId(series.getId());
@@ -1264,6 +1324,7 @@ series.setPresetCode(presetCode);
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents,
+            Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode) {
         try {
             // Find series
@@ -1359,13 +1420,16 @@ if (presetCode != null) {
             if (mandatoryForFacultyStudents != null) {
                 series.setMandatoryForFacultyStudents(mandatoryForFacultyStudents);
             }
+            if (isDraft != null) {
+                series.setDraft(isDraft);
+            }
 
             ActivitySeries saved = seriesRepository.save(series);
             reminderScheduleService.syncSeriesMinimumRequirementReminders(saved);
             logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
 
-            // Auto-register students to main activity if series flags require it
-            if (saved.getMainActivity() != null) {
+            // Auto-register students to main activity if series flags require it (only when non-draft)
+            if (!saved.isDraft() && saved.getMainActivity() != null) {
                 autoRegisterService.autoRegisterStudents(
                         saved.getMainActivity(),
                         saved.isImportant(),
@@ -1446,6 +1510,7 @@ if (presetCode != null) {
                 .collect(Collectors.toList()));
         response.setImportant(series.isImportant());
         response.setMandatoryForFacultyStudents(series.isMandatoryForFacultyStudents());
+        response.setDraft(series.isDraft());
         response.setPresetCode(series.getPresetCode());
         response.setPresetConfig(null);
         response.setCreatedAt(series.getCreatedAt());

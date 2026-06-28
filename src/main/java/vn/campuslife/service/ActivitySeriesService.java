@@ -20,6 +20,7 @@ public interface ActivitySeriesService {
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
                         ScoreRuleAudience audience, List<Long> departmentIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
                         SeriesPresetCode presetCode);
 
         /**
@@ -40,6 +41,8 @@ public interface ActivitySeriesService {
          * Student đăng ký series (tự động đăng ký tất cả activities trong series)
          */
         Response registerForSeries(Long seriesId, Long studentId);
+
+        Response registerForSeriesWaitlist(Long seriesId, Long studentId);
 
         /**
          * Cập nhật tiến độ sinh viên khi check-in activity thuộc chuỗi
@@ -108,6 +111,7 @@ public interface ActivitySeriesService {
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
                         ScoreRuleAudience audience, List<Long> departmentIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
                         SeriesPresetCode presetCode);
 
         /**

@@ -50,7 +50,7 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
     /**
      * Kiểm tra xem student đã đăng ký activity này chưa
      */
-    @Query("SELECT COUNT(ar) > 0 FROM ActivityRegistration ar WHERE ar.activity.id = :activityId AND ar.student.id = :studentId")
+    @Query("SELECT COUNT(ar) > 0 FROM ActivityRegistration ar WHERE ar.activity.id = :activityId AND ar.student.id = :studentId AND ar.status <> 'CANCELLED'")
     boolean existsByActivityIdAndStudentId(@Param("activityId") Long activityId,
                                            @Param("studentId") Long studentId);
 
@@ -197,4 +197,13 @@ public interface ActivityRegistrationRepository extends JpaRepository<ActivityRe
      */
     @Query("SELECT r.student.id FROM ActivityRegistration r WHERE r.activity.id = :activityId")
     Set<Long> findStudentIdsByActivityId(@Param("activityId") Long activityId);
+
+    @Query("SELECT COUNT(DISTINCT ar.student.id) FROM ActivityRegistration ar WHERE ar.seriesId = :seriesId AND ar.status = :status")
+    Long countDistinctStudentBySeriesIdAndStatus(@Param("seriesId") Long seriesId,
+                                                  @Param("status") RegistrationStatus status);
+
+    Optional<ActivityRegistration> findFirstByActivityIdAndStatusOrderByRegisteredDateAsc(Long activityId, RegistrationStatus status);
+
+    @Query("SELECT COUNT(ar) > 0 FROM ActivityRegistration ar WHERE ar.activity.id = :activityId AND ar.student.id = :studentId AND ar.status = 'CANCELLED'")
+    boolean existsCancelledByActivityIdAndStudentId(@Param("activityId") Long activityId, @Param("studentId") Long studentId);
 }

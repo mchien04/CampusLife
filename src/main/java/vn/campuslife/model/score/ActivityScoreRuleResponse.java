@@ -15,6 +15,7 @@ public class ActivityScoreRuleResponse {
     private Long id;
     private Long activityId;
     private ScoreType scoreType;
+    private ScoreType failScoreType;
     private ScoreRuleTrigger triggerType;
     private ScoreRuleCalculation calculation;
     private BigDecimal points;

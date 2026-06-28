@@ -3,6 +3,8 @@
 > **Scope:** Frontend tích hợp khả năng bật/tắt các rule đi kèm `presetCode` theo metadata `required` và `enabledByDefault` trả về từ backend.
 > **Backend Source of Truth:** `ScorePresetServiceImpl.java`, `PresetRuleDescriptor`, `FieldDefinition`.
 > **Affected FE Flows:** Tạo hoạt động (Standard / Minigame), Cập nhật hoạt động, Preset Preview.
+>
+> **⚠️ Outdated (P6.1):** Tài liệu này tham chiếu `participationFailPoints` đã bị xoá khỏi `PARTICIPATION_COMPLETED`. Xem `docs/refactor/FE_SPEC_v6_PRESET_AND_REGISTRATION.md` và `docs/refactor/FE_BACKEND_HANDOFF_SPEC.md` cho spec mới nhất.
 
 ---
 
@@ -468,8 +470,8 @@ Hiển thị trong màn chi tiết / danh sách hoạt động:
 
 ### MINIGAME_PASS_ONLY
 - `MINIGAME_PASSED`: required=true, enabledByDefault=true.
+- `NO_SHOW`: required=false, enabledByDefault=true → mặc định bật. `noShowPenaltyPoints` mặc định = `participationPoints` (5). FE nhập dương, BE tự negate.
 - `MINIGAME_EXHAUSTED_ATTEMPTS`: required=false, enabledByDefault=false → mặc định tắt.
-- Không có `NO_SHOW`.
 
 ### CUSTOM
 - Không có `supportedRules`. Hiển thị form nhập `scoreRules` thủ công.

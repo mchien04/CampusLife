@@ -43,4 +43,7 @@ public class ActivityRegistration {
     private LocalDateTime createdAt;
     @Column(unique = true, length = 20)
     private String ticketCode;
+
+    @Column(nullable = false)
+    private boolean hasCancelledBefore = false;
 }

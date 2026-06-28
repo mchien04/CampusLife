@@ -480,11 +480,31 @@ public class ActivityServiceImpl implements ActivityService {
 
             if (registrationOpt.isPresent()) {
                 ActivityRegistration registration = registrationOpt.get();
+                Activity activity = registration.getActivity();
                 result.put("registrationId", registration.getId());
                 result.put("status", registration.getStatus());
                 result.put("registeredDate", registration.getRegisteredDate());
-                result.put("canCancel",
-                        !registration.getStatus().equals(vn.campuslife.enumeration.RegistrationStatus.APPROVED));
+
+                boolean canCancel;
+                if (registration.getStatus() == RegistrationStatus.CANCELLED) {
+                    canCancel = false;
+                } else if (registration.getStatus() == RegistrationStatus.ATTENDED) {
+                    canCancel = false;
+                } else if (registration.getStatus() == RegistrationStatus.APPROVED) {
+                    if (activity.isRequiresApproval()) {
+                        canCancel = false;
+                    } else if (registration.isHasCancelledBefore()) {
+                        canCancel = false;
+                    } else if (activity.getRegistrationDeadline() != null
+                            && LocalDateTime.now().isAfter(activity.getRegistrationDeadline().minusDays(1))) {
+                        canCancel = false;
+                    } else {
+                        canCancel = true;
+                    }
+                } else {
+                    canCancel = true;
+                }
+                result.put("canCancel", canCancel);
             }
 
             return new Response(true, "Registration status checked successfully", result);

@@ -272,4 +272,16 @@ public class ActivityRegistrationServiceImplTest {
         assertNull(participation.getCheckOutTime());
         verify(scoreRuleEngine).applySubmissionGraded(gradedSubmission, studentUser);
     }
+
+    @Test
+    void cancelRegistration_StatusIsAttended_ReturnsError() {
+        registration.setStatus(RegistrationStatus.ATTENDED);
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L)).thenReturn(Optional.of(registration));
+
+        Response response = activityRegistrationService.cancelRegistration(100L, 10L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Không thể huỷ đăng ký đã điểm danh tham gia (ATTENDED).", response.getMessage());
+        verify(registrationRepository, never()).save(any());
+    }
 }

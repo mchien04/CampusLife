@@ -107,6 +107,10 @@ public class ActivitySeries {
     @Comment("Danh sách khoa áp dụng khi audience != ALL_PARTICIPANTS")
     private Set<Department> targetDepartments = new LinkedHashSet<>();
 
+    @Column(nullable = false)
+    @Comment("Bản nháp (true = chưa công bố)")
+    private boolean isDraft = true;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "preset_code", length = 50)
     @Comment("Preset code used to configure score rules for this series")

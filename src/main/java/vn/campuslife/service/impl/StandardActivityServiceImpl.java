@@ -96,6 +96,13 @@ public class StandardActivityServiceImpl implements StandardActivityService {
             }
             Activity existing = opt.get();
 
+            if (request.getPresetCode() != null && existing.getPresetCode() != null
+                    && request.getPresetCode() != existing.getPresetCode()) {
+                return Response.error("Cannot change preset code from " + existing.getPresetCode()
+                        + " to " + request.getPresetCode() + " on update. "
+                        + "You can only customize score rules within the current preset.");
+            }
+
             ActivityType effectiveType = request.getType() != null ? request.getType() : existing.getType();
 
             if (request.getType() != null && request.getType() != existing.getType()) {

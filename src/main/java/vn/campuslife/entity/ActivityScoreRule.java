@@ -40,6 +40,10 @@ public class ActivityScoreRule {
     private ScoreType scoreType;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "fail_score_type", length = 50)
+    private ScoreType failScoreType;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "trigger_type", nullable = false, length = 50)
     private ScoreRuleTrigger triggerType;
 

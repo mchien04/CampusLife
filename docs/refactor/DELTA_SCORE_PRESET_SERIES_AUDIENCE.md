@@ -3,6 +3,8 @@
 > **Date:** 2026-06-28
 > **Baseline:** Post `FE_BACKEND_HANDOFF_SPEC.md` v3.1
 > **Source:** Java backend (controllers, DTOs, services, validators)
+>
+> **⚠️ Outdated (P6.1):** `participationFailPoints` đã bị xoá khỏi `PARTICIPATION_COMPLETED`; thay vào đó là `submissionFailScoreType` cho `SUBMISSION_GRADED`. Xem `docs/refactor/FE_SPEC_v6_PRESET_AND_REGISTRATION.md` cho spec mới nhất.
 
 Tài liệu này mô tả các thay đổi mới nhất về cấu hình ScoreRule qua preset, audience cho Series, và các bug-fix quan trọng trong luồng edit.
 
@@ -284,7 +286,7 @@ function renderField(field: FieldDefinition): JSX.Element {
 | `BONUS_POINTS` | Cộng điểm thưởng | ENTERPRISE_SEMINAR_WITH_BONUS |
 | `MINIGAME_PASSED` | Điểm hoàn thành minigame | MINIGAME_PASS_ONLY |
 | `MINIGAME_EXHAUSTED_ATTEMPTS` | Phạt hết lượt chơi | MINIGAME_PASS_ONLY |
-| `NO_SHOW` | Phạt vắng mặt | EVENT_BASIC, EVENT_WITH_SUBMISSION, ENTERPRISE_SEMINAR_BASIC, ENTERPRISE_SEMINAR_WITH_BONUS |
+| `NO_SHOW` | Phạt vắng mặt | EVENT_BASIC, EVENT_WITH_SUBMISSION, ENTERPRISE_SEMINAR_BASIC, ENTERPRISE_SEMINAR_WITH_BONUS, MINIGAME_PASS_ONLY |
 | **`ACTIVITY_AUDIENCE`** ✨ | **Giới hạn đối tượng (activity)** | **Tất cả preset** |
 | `MILESTONE_POINTS` | Điểm mốc tích lũy | SERIES_MILESTONE_BASIC, ENTERPRISE_SERIES |
 | `MINIMUM_REQUIREMENT` | Yêu cầu tối thiểu | SERIES_MILESTONE_BASIC, ENTERPRISE_SERIES |
