@@ -31,9 +31,9 @@ sequenceDiagram
     AuthService->>AuthService: generate Refresh token<br/>(expires: 7 ngày)
     Note over AuthService: Lưu refresh token vào DB (nếu có lưu)
     
-    AuthService-->>AuthController: TokenPair(accessToken, refreshToken, tokenType="Bearer", expiresIn)
+    AuthService-->>AuthController:' TokenPair(accessToken, refreshToken, tokenType="Bearer", expiresIn)'
     AuthController-->>Client: 200 OK<br/>TokenPair JSON
-    Client-->>User: Hiển thị "Đăng nhập thành công"<br/>Lưu token vào localStorage/cookie
+    Client-->>User:' Hiển thị "Đăng nhập thành công"<br/>Lưu token vào localStorage/cookie'
     Note over Client: Redirect đến trang chủ theo role
 ```
 
@@ -67,9 +67,9 @@ sequenceDiagram
     Database-->>UserRepository: Updated
     UserRepository-->>AuthController: Done
     
-    AuthController-->>Client: 200 OK<br/>{ "message": "Logout successful" }
+    AuthController-->>Client:' 200 OK<br/>{ "message": "Logout successful" }'
     Client->>Client: Xóa token khỏi localStorage/cookie
-    Client-->>User: Hiển thị "Đăng xuất thành công"<br/>Redirect về trang login
+    Client-->>User:' Hiển thị "Đăng xuất thành công"<br/>Redirect về trang login'
 ```
 
 ---
@@ -106,8 +106,8 @@ sequenceDiagram
     UserRepository-->>AuthService: Updated
     
     AuthService-->>AuthController: Password changed
-    AuthController-->>Client: 200 OK<br/>{ "message": "Password changed successfully" }
-    Client-->>User: Hiển thị "Đổi mật khẩu thành công"
+    AuthController-->>Client:' 200 OK<br/>{ "message": "Password changed successfully" }'
+    Client-->>User:' Hiển thị "Đổi mật khẩu thành công"'
     Note over Client: Optional: Tự động logout yêu cầu đăng nhập lại
 ```
 
@@ -157,8 +157,8 @@ sequenceDiagram
     EmailService-->>AuthService: Email sent
     AuthService-->>AuthController: RegistrationResult(userId, emailSent=true)
     
-    AuthController-->>Client: 201 Created<br/>{ "message": "Registration successful. Please check your email to verify." }
-    Client-->>User: Hiển thị "Đăng ký thành công. Vui lòng kiểm tra email để xác thực."
+    AuthController-->>Client:' 201 Created<br/>{ "message": "Registration successful. Please check your email to verify." }'
+    Client-->>User:' Hiển thị "Đăng ký thành công. Vui lòng kiểm tra email để xác thực."'
 ```
 
 ---
@@ -203,8 +203,8 @@ sequenceDiagram
     end
     
     AuthService-->>AuthController: ForgotPasswordResult(success)
-    AuthController-->>Client: 200 OK<br/>{ "message": "If your email exists, a password reset link has been sent." }
-    Client-->>User: Hiển thị "Nếu email tồn tại, bạn sẽ nhận được link đặt lại mật khẩu."
+    AuthController-->>Client:' 200 OK<br/>{ "message": "If your email exists, a password reset link has been sent." }'
+    Client-->>User:' Hiển thị "Nếu email tồn tại, bạn sẽ nhận được link đặt lại mật khẩu."'
 ```
 
 ---
@@ -241,8 +241,8 @@ sequenceDiagram
     UserRepository-->>AuthService: Activated
     
     AuthService-->>AuthController: Account verified successfully
-    AuthController-->>Client: 200 OK<br/>{ "message": "Account verified successfully. You can now login." }
-    Client-->>User: Hiển thị "Xác thực tài khoản thành công!"<br/>Redirect đến trang login
+    AuthController-->>Client:' 200 OK<br/>{ "message": "Account verified successfully. You can now login." }'
+    Client-->>User:' Hiển thị "Xác thực tài khoản thành công!"<br/>Redirect đến trang login'
 ```
 
 ---
@@ -304,8 +304,8 @@ sequenceDiagram
     EmailService-->>AdminUserService: Email sent
     
     AdminUserService-->>AdminUserController: CreatedUserResult(userId, role, emailSent=true)
-    AdminUserController-->>Client: 201 Created<br/>{ "message": "User created successfully. Credentials sent to email." }
-    Client-->>Admin: Hiển thị "Tạo tài khoản thành công. Thông tin đăng nhập đã gửi qua email."
+    AdminUserController-->>Client:' 201 Created<br/>{ "message": "User created successfully. Credentials sent to email." }'
+    Client-->>Admin:' Hiển thị "Tạo tài khoản thành công. Thông tin đăng nhập đã gửi qua email."'
 ```
 
 ---

@@ -41,9 +41,9 @@ sequenceDiagram
         activate CR
         CR->>DB: SELECT * FROM chat_sessions WHERE session_id = ?
         activate DB
-        DB-->>CR: ChatSession entity
+        DB-->>CR:' "ChatSession entity"'
         deactivate DB
-        CR-->>CS: Optional<ChatSession>
+        CR-->>CS:' "Optional<ChatSession>"'
         deactivate CR
     else sessionId null hoặc không tồn tại
         CS->>CS: Tạo sessionId mới (UUID)
@@ -51,9 +51,9 @@ sequenceDiagram
         activate CR
         CR->>DB: INSERT INTO chat_sessions (...)
         activate DB
-        DB-->>CR: ChatSession persisted
+        DB-->>CR:' "ChatSession persisted"'
         deactivate DB
-        CR-->>CS: ChatSession
+        CR-->>CS:' "ChatSession"'
         deactivate CR
     end
 
@@ -61,9 +61,9 @@ sequenceDiagram
     activate CR
     CR->>DB: SELECT * FROM chat_messages<br/>WHERE session_id = ?<br/>ORDER BY created_at DESC LIMIT N
     activate DB
-    DB-->>CR: List<ChatMessage> (last N messages)
+    DB-->>CR:' "List<ChatMessage> (last N messages)"'
     deactivate DB
-    CR-->>CS: List<ChatMessage>
+    CR-->>CS:' "List<ChatMessage>"'
     deactivate CR
 
     CS->>CS: Xây dựng context:<br/>- System prompt (vai trò trợ lý campus)<br/>- History (last N messages)<br/>- Current message
@@ -106,18 +106,18 @@ sequenceDiagram
     activate CR
     CR->>DB: INSERT INTO chat_messages<br/>(session_id, sender, content, created_at)
     activate DB
-    DB-->>CR: ChatMessage persisted
+    DB-->>CR:' "ChatMessage persisted"'
     deactivate DB
-    CR-->>CS: ChatMessage
+    CR-->>CS:' "ChatMessage"'
     deactivate CR
 
     CS->>CR: saveAIMessage(sessionId, "AI", responseContent, timestamp)
     activate CR
     CR->>DB: INSERT INTO chat_messages<br/>(session_id, sender, content, created_at)
     activate DB
-    DB-->>CR: ChatMessage persisted
+    DB-->>CR:' "ChatMessage persisted"'
     deactivate DB
-    CR-->>CS: ChatMessage
+    CR-->>CS:' "ChatMessage"'
     deactivate CR
 
     CS->>CS: Build ChatResponseDTO<br/>{ sessionId, reply, timestamp, model, tokensUsed }
@@ -126,12 +126,12 @@ sequenceDiagram
     deactivate CS
 
     activate CT
-    CT-->>C: ResponseEntity<ChatResponseDTO> (200 OK)
+    CT-->>C:' "ResponseEntity<ChatResponseDTO> (200 OK)"'
     deactivate CT
 
     activate C
     C->>C: Update UI state<br/>Append AI message to chat history
-    C-->>U: Hiển thị reply AI + sessionId
+    C-->>U:' "Hiển thị reply AI + sessionId"'
     deactivate C
 
     Note over U, AI: Kết thúc luồng xử lý chat

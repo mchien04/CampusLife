@@ -39,7 +39,7 @@ sequenceDiagram
     Database-->>Repository: result
 
     alt Username hoặc Email đã tồn tại
-        Service-->>Controller: throw ConflictException("User already exists")
+        Service-->>Controller:' throw ConflictException("User already exists")'
         Controller-->>Client: 409 Conflict
         Client-->>Admin: Hiển thị lỗi trùng lặp
     else Hợp lệ — tiếp tục tạo
@@ -66,7 +66,7 @@ sequenceDiagram
 
         Service-->>Controller: UserResponseDTO { id, username, fullName, email, role, isActive, createdAt }
         Controller-->>Client: 201 Created + Response Body
-        Client-->>Admin: Hiển thị thông báo "Tạo tài khoản thành công"
+        Client-->>Admin:' Hiển thị thông báo "Tạo tài khoản thành công"'
     end
 
     %% ============================
@@ -108,9 +108,9 @@ sequenceDiagram
     Database-->>Repository: User entity
 
     alt User không tồn tại
-        Service-->>Controller: throw NotFoundException("User not found")
+        Service-->>Controller:' throw NotFoundException("User not found")'
         Controller-->>Client: 404 Not Found
-        Client-->>Admin: Hiển thị lỗi "Không tìm thấy tài khoản"
+        Client-->>Admin:' Hiển thị lỗi "Không tìm thấy tài khoản"'
     else User tồn tại
         Service->>Service: Cập nhật các trường từ DTO<br/>fullName, email, phone, isActive
 
@@ -145,7 +145,7 @@ sequenceDiagram
 
         Service-->>Controller: UserResponseDTO { id, username, fullName, email, role, isActive, updatedAt }
         Controller-->>Client: 200 OK + Response Body
-        Client-->>Admin: Hiển thị thông báo "Cập nhật tài khoản thành công"
+        Client-->>Admin:' Hiển thị thông báo "Cập nhật tài khoản thành công"'
     end
 
     %% ============================
@@ -165,23 +165,23 @@ sequenceDiagram
     Database-->>Repository: User entity
 
     alt User không tồn tại
-        Service-->>Controller: throw NotFoundException("User not found")
+        Service-->>Controller:' throw NotFoundException("User not found")'
         Controller-->>Client: 404 Not Found
-        Client-->>Admin: Hiển thị lỗi "Không tìm thấy tài khoản"
+        Client-->>Admin:' Hiển thị lỗi "Không tìm thấy tài khoản"'
     else User tồn tại
         Service->>Service: Kiểm tra user.id != currentUserId<br/>→ Không được tự xóa chính mình
 
         alt User là chính Admin đang đăng nhập
-            Service-->>Controller: throw ForbiddenException("Cannot delete yourself")
+            Service-->>Controller:' throw ForbiddenException("Cannot delete yourself")'
             Controller-->>Client: 403 Forbidden
-            Client-->>Admin: Hiển thị lỗi "Không thể xóa tài khoản của chính mình"
+            Client-->>Admin:' Hiển thị lỗi "Không thể xóa tài khoản của chính mình"'
         else Không phải chính mình
             Service->>Service: Kiểm tra user.role == SUPER_ADMIN<br/>VÀ đếm số SUPER_ADMIN còn lại == 1
 
             alt Là Super Admin duy nhất còn lại
-                Service-->>Controller: throw ForbiddenException("Cannot delete the last super admin")
+                Service-->>Controller:' throw ForbiddenException("Cannot delete the last super admin")'
                 Controller-->>Client: 403 Forbidden
-                Client-->>Admin: Hiển thị lỗi "Không thể xóa Super Admin duy nhất"
+                Client-->>Admin:' Hiển thị lỗi "Không thể xóa Super Admin duy nhất"'
             else Hợp lệ — thực hiện xóa
                 alt Soft Delete (mặc định / khuyến nghị)
                     Service->>Service: user.setIsDeleted(true)<br/>user.setIsActive(false)
@@ -200,9 +200,9 @@ sequenceDiagram
                 end
 
                 Database-->>Repository: Success / Affected rows
-                Service-->>Controller: DeleteSuccessResponse { id, message: "Deleted successfully" }
+                Service-->>Controller:' DeleteSuccessResponse { id, message: "Deleted successfully" }'
                 Controller-->>Client: 200 OK + Response Body
-                Client-->>Admin: Xóa user khỏi danh sách hiển thị<br/>Hiển thị thông báo "Xóa tài khoản thành công"
+                Client-->>Admin:' Xóa user khỏi danh sách hiển thị<br/>Hiển thị thông báo "Xóa tài khoản thành công"'
             end
         end
     end

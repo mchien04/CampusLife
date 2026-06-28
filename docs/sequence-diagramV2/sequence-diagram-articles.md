@@ -26,23 +26,23 @@ sequenceDiagram
     AC->>AS: createArticle(dto)
     AS->>AR: existsBySlug(slug)
     AR->>DB: SELECT slug FROM articles WHERE slug = ?
-    DB-->>AR: ResultSet
-    AR-->>AS: true / false
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "true / false"'
 
     alt Slug đã tồn tại
         AS-->>AC: Throw DuplicateSlugException
-        AC-->>C: 409 CONFLICT<br/>{error: "Slug already exists"}
-        C-->>A: Hiển thị lỗi slug trùng
+        AC-->>C:' 409 CONFLICT<br/>{error: "Slug already exists"}'
+        C-->>A:' "Hiển thị lỗi slug trùng"'
     else Slug chưa tồn tại
         AS->>FS: uploadCoverImage(coverImage) [nếu có]
         FS-->>AS: coverImageUrl
         AS->>AR: save(articleEntity)
         AR->>DB: INSERT INTO articles (...)
-        DB-->>AR: articleId (generated)
-        AR-->>AS: ArticleEntity
+        DB-->>AR:' "articleId (generated)"'
+        AR-->>AS:' "ArticleEntity"'
         AS-->>AC: ArticleResponseDTO
-        AC-->>C: 201 CREATED<br/>{articleId, title, slug, status: "DRAFT"}
-        C-->>A: Hiển thị "Tạo bài viết thành công"
+        AC-->>C:' 201 CREATED<br/>{articleId, title, slug, status: "DRAFT"}'
+        C-->>A:' "Hiển thị "Tạo bài viết thành công""'
     end
 
     Note over A, FS: === XUẤT BẢN (PUT /api/admin/articles/{id}/publish) ===
@@ -52,39 +52,39 @@ sequenceDiagram
     AC->>AS: publishArticle(id)
     AS->>AR: findById(id)
     AR->>DB: SELECT * FROM articles WHERE id = ?
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
 
     alt Article không tồn tại
         AS-->>AC: Throw ArticleNotFoundException
         AC-->>C: 404 NOT FOUND
-        C-->>A: Hiển thị lỗi không tìm thấy bài viết
+        C-->>A:' "Hiển thị lỗi không tìm thấy bài viết"'
     else Article tồn tại
         AS->>AS: article.setPublished(true)<br/>article.setPublishedAt(Now)
         AS->>AR: save(article)
         AR->>DB: UPDATE articles SET published = true, published_at = ? ...
-        DB-->>AR: updated
-        AR-->>AS: ArticleEntity
+        DB-->>AR:' "updated"'
+        AR-->>AS:' "ArticleEntity"'
 
         alt Article liên kết với Activity
             AS->>AS: activityId = article.getActivityId()
             AS->>NS: notifyActivityParticipants(activityId, article)
             NS->>NR: findParticipantsByActivityId(activityId)
             NR->>DB: SELECT student_id FROM activity_participants WHERE activity_id = ?
-            DB-->>NR: List<studentId>
-            NR-->>NS: List<Student>
+            DB-->>NR:' "List<studentId>"'
+            NR-->>NS:' "List<Student>"'
             loop Mỗi participant
                 NS->>NR: save(notification)
                 NR->>DB: INSERT INTO notifications (user_id, type, content, article_id) ...
-                DB-->>NR: notificationId
+                DB-->>NR:' "notificationId"'
             end
-            NR-->>NS: saved
+            NR-->>NS:' "saved"'
             NS-->>AS: notificationSent
         end
 
         AS-->>AC: ArticleResponseDTO (published=true)
         AC-->>C: 200 OK<br/>{articleId, title, slug, published: true, publishedAt}
-        C-->>A: Hiển thị "Xuất bản thành công"
+        C-->>A:' "Hiển thị "Xuất bản thành công""'
     end
 ```
 
@@ -117,25 +117,25 @@ sequenceDiagram
     GC->>AS: getArticleBySlug(slug)
     AS->>AR: findBySlugAndPublishedTrue(slug)
     AR->>DB: SELECT * FROM articles WHERE slug = ? AND published = true
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
 
     alt Article không tồn tại hoặc chưa publish
         AS-->>GC: Throw ArticleNotFoundException
-        GC-->>C: 404 NOT FOUND<br/>{error: "Article not found"}
-        C-->>U: Hiển thị trang 404 hoặc "Bài viết không tồn tại"
+        GC-->>C:' 404 NOT FOUND<br/>{error: "Article not found"}'
+        C-->>U:' "Hiển thị trang 404 hoặc "Bài viết không tồn tại""'
     else Article tồn tại
         AS->>AS: article.setViewCount(article.getViewCount() + 1)
         AS->>AR: save(article) [async/batch]
         AR->>DB: UPDATE articles SET view_count = view_count + 1 WHERE id = ?
-        DB-->>AR: updated
+        DB-->>AR:' "updated"'
         AS->>UR: findById(article.getAuthorId())
         UR->>DB: SELECT * FROM users WHERE id = ?
-        DB-->>UR: ResultSet
+        DB-->>UR:' "ResultSet"'
         UR-->>AS: UserEntity
         AS-->>GC: ArticleDetailDTO (article + author info)
         GC-->>C: 200 OK<br/>{articleId, title, content, viewCount, author: {name, avatar}, ...}
-        C-->>U: Hiển thị bài viết chi tiết
+        C-->>U:' "Hiển thị bài viết chi tiết"'
     end
 
     Note over U, DB: === TÌM KIẾM BÀI VIẾT (GET /api/articles?search=&tag=&page=) ===
@@ -145,11 +145,11 @@ sequenceDiagram
     GC->>AS: searchArticles(search, tag, pageable)
     AS->>AR: findByTitleContainingOrContentContainingOrTagsContaining(search, search, search, pageable)<br/>[nếu có tag thì thêm AND tags LIKE %tag%]
     AR->>DB: SELECT * FROM articles WHERE published = true AND (title LIKE ? OR content LIKE ? OR tags LIKE ?) LIMIT ? OFFSET ?
-    DB-->>AR: ResultSet
-    AR-->>AS: Page<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Page<ArticleEntity>"'
     AS-->>GC: Page<ArticleSummaryDTO>
     GC-->>C: 200 OK<br/>{content: [...], totalElements, totalPages, currentPage}
-    C-->>U: Hiển thị danh sách bài viết kèm phân trang
+    C-->>U:' "Hiển thị danh sách bài viết kèm phân trang"'
 ```
 
 **Tóm tắt:**
@@ -183,45 +183,45 @@ sequenceDiagram
     CS->>AS: findBySlugAndPublishedTrue(slug)
     AS->>AR: findBySlugAndPublishedTrue(slug)
     AR->>DB: SELECT * FROM articles WHERE slug = ? AND published = true
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
     AS-->>CS: ArticleEntity
 
     alt Article không tồn tại hoặc chưa publish
         CS-->>GC: Throw ArticleNotFoundException
         GC-->>C: 404 NOT FOUND
-        C-->>S: Hiển thị lỗi không tìm thấy bài viết
+        C-->>S:' "Hiển thị lỗi không tìm thấy bài viết"'
     else Article tồn tại
         CS->>FS: filterContent(content) [Spam/Bad words check]
         FS-->>CS: FilterResult (isClean / blockedWords)
 
         alt Nội dung vi phạm
             CS-->>GC: Throw ContentNotAllowedException
-            GC-->>C: 400 BAD REQUEST<br/>{error: "Content contains inappropriate words"}
-            C-->>S: Hiển thị lỗi nội dung không hợp lệ
+            GC-->>C:' 400 BAD REQUEST<br/>{error: "Content contains inappropriate words"}'
+            C-->>S:' "Hiển thị lỗi nội dung không hợp lệ"'
         else Nội dung hợp lệ
             CS->>CS: Tạo CommentEntity<br/>(articleId, studentId, content, parentId, createdAt)
             CS->>CR: save(comment)
             CR->>DB: INSERT INTO comments (article_id, student_id, content, parent_id, created_at) ...
-            DB-->>CR: commentId
-            CR-->>CS: CommentEntity
+            DB-->>CR:' "commentId"'
+            CR-->>CS:' "CommentEntity"'
             CS->>CR: findByArticleIdOrderByCreatedAtDesc(articleId)
             CR->>DB: SELECT * FROM comments WHERE article_id = ? ORDER BY created_at DESC
-            DB-->>CR: List<CommentEntity>
-            CR-->>CS: List<CommentEntity>
+            DB-->>CR:' "List<CommentEntity>"'
+            CR-->>CS:' "List<CommentEntity>"'
             CS-->>GC: CommentResponseDTO (comment + list)
 
             alt Comment không phải của author (gửi notification)
                 CS->>NS: notifyAuthor(article.getAuthorId(), comment)
                 NS->>NR: save(notification)
                 NR->>DB: INSERT INTO notifications (user_id, type, content, article_id, comment_id) ...
-                DB-->>NR: notificationId
-                NR-->>NS: NotificationEntity
+                DB-->>NR:' "notificationId"'
+                NR-->>NS:' "NotificationEntity"'
                 NS-->>CS: notificationSent
             end
 
             GC-->>C: 201 CREATED<br/>{commentId, content, studentId, createdAt, parentId}
-            C-->>S: Hiển thị comment mới trong danh sách
+            C-->>S:' "Hiển thị comment mới trong danh sách"'
         end
     end
 ```
@@ -256,33 +256,33 @@ sequenceDiagram
     WS->>AS: findBySlug(slug)
     AS->>AR: findBySlug(slug)
     AR->>DB: SELECT * FROM articles WHERE slug = ?
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
     AS-->>WS: ArticleEntity
 
     alt Article không tồn tại
         WS-->>GC: Throw ArticleNotFoundException
         GC-->>C: 404 NOT FOUND
-        C-->>S: Hiển thị lỗi không tìm thấy bài viết
+        C-->>S:' "Hiển thị lỗi không tìm thấy bài viết"'
     else Article tồn tại
         WS->>WR: existsByArticleIdAndStudentId(articleId, studentId)
         WR->>DB: SELECT * FROM article_wishlists WHERE article_id = ? AND student_id = ?
-        DB-->>WR: ResultSet
+        DB-->>WR:' "ResultSet"'
         WR-->>WS: true / false
 
         alt Đã có trong wishlist
             WS-->>GC: Throw AlreadyWishlistedException
-            GC-->>C: 409 CONFLICT<br/>{error: "Already in wishlist"}
-            C-->>S: Icon heart đã active, không thay đổi
+            GC-->>C:' 409 CONFLICT<br/>{error: "Already in wishlist"}'
+            C-->>S:' "Icon heart đã active, không thay đổi"'
         else Chưa có trong wishlist
             WS->>WS: Tạo ArticleWishlistEntity<br/>(articleId, studentId, createdAt)
             WS->>WR: save(wishlist)
             WR->>DB: INSERT INTO article_wishlists (article_id, student_id, created_at) ...
-            DB-->>WR: wishlistId
+            DB-->>WR:' "wishlistId"'
             WR-->>WS: ArticleWishlistEntity
             WS-->>GC: WishlistResponseDTO
             GC-->>C: 201 CREATED<br/>{wishlistId, articleId, studentId, createdAt}
-            C-->>S: Icon heart active (đỏ), hiển thị "Đã thêm vào yêu thích"
+            C-->>S:' "Icon heart active (đỏ), hiển thị "Đã thêm vào yêu thích""'
         end
     end
 
@@ -294,32 +294,32 @@ sequenceDiagram
     WS->>AS: findBySlug(slug)
     AS->>AR: findBySlug(slug)
     AR->>DB: SELECT * FROM articles WHERE slug = ?
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
     AS-->>WS: ArticleEntity
 
     alt Article không tồn tại
         WS-->>GC: Throw ArticleNotFoundException
         GC-->>C: 404 NOT FOUND
-        C-->>S: Hiển thị lỗi
+        C-->>S:' "Hiển thị lỗi"'
     else Article tồn tại
         WS->>WR: findByArticleIdAndStudentId(articleId, studentId)
         WR->>DB: SELECT * FROM article_wishlists WHERE article_id = ? AND student_id = ?
-        DB-->>WR: ResultSet
+        DB-->>WR:' "ResultSet"'
         WR-->>WS: Optional<ArticleWishlistEntity>
 
         alt Không tồn tại trong wishlist
             WS-->>GC: Throw WishlistNotFoundException
-            GC-->>C: 404 NOT FOUND<br/>{error: "Not in wishlist"}
-            C-->>S: Icon heart inactive, không thay đổi
+            GC-->>C:' 404 NOT FOUND<br/>{error: "Not in wishlist"}'
+            C-->>S:' "Icon heart inactive, không thay đổi"'
         else Tồn tại trong wishlist
             WS->>WR: delete(wishlist)
             WR->>DB: DELETE FROM article_wishlists WHERE id = ?
-            DB-->>WR: deleted
+            DB-->>WR:' "deleted"'
             WR-->>WS: void
             WS-->>GC: void
             GC-->>C: 204 NO CONTENT
-            C-->>S: Icon heart inactive, hiển thị "Đã bỏ yêu thích"
+            C-->>S:' "Icon heart inactive, hiển thị "Đã bỏ yêu thích""'
         end
     end
 ```
@@ -351,21 +351,21 @@ sequenceDiagram
     GC->>AS: getArticleBySlug(slug)
     AS->>AR: findBySlugAndPublishedTrue(slug)
     AR->>DB: SELECT * FROM articles WHERE slug = ? AND published = true
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
 
     alt Article không tồn tại
         AS-->>GC: Throw ArticleNotFoundException
         GC-->>C: 404 NOT FOUND
-        C-->>U: Hiển thị lỗi
+        C-->>U:' "Hiển thị lỗi"'
     else Article tồn tại
         AS->>AS: article.setViewCount(viewCount + 1)
         AS->>AR: save(article) [Async hoặc Batch]
         AR->>DB: UPDATE articles SET view_count = view_count + 1 WHERE id = ?
-        DB-->>AR: updated
+        DB-->>AR:' "updated"'
         AS-->>GC: ArticleDetailDTO
         GC-->>C: 200 OK<br/>{article + viewCount}
-        C-->>U: Hiển thị bài viết + viewCount cập nhật
+        C-->>U:' "Hiển thị bài viết + viewCount cập nhật"'
     end
 
     Note over U, DB: === PHẢN ỨNG (REACTION) (POST /api/articles/{slug}/reactions) ===
@@ -376,49 +376,49 @@ sequenceDiagram
     RS->>AS: findBySlug(slug)
     AS->>AR: findBySlug(slug)
     AR->>DB: SELECT * FROM articles WHERE slug = ?
-    DB-->>AR: ResultSet
-    AR-->>AS: Optional<ArticleEntity>
+    DB-->>AR:' "ResultSet"'
+    AR-->>AS:' "Optional<ArticleEntity>"'
     AS-->>RS: ArticleEntity
 
     alt Article không tồn tại
         RS-->>GC: Throw ArticleNotFoundException
         GC-->>C: 404 NOT FOUND
-        C-->>U: Hiển thị lỗi
+        C-->>U:' "Hiển thị lỗi"'
     else Article tồn tại
         RS->>RR: findByArticleIdAndStudentIdAndType(articleId, studentId, type)
         RR->>DB: SELECT * FROM article_reactions WHERE article_id = ? AND student_id = ? AND type = ?
-        DB-->>RR: ResultSet
-        RR-->>RS: Optional<ArticleReactionEntity>
+        DB-->>RR:' "ResultSet"'
+        RR-->>RS:' "Optional<ArticleReactionEntity>"'
 
         alt Đã react cùng type
             RS-->>GC: Throw DuplicateReactionException
-            GC-->>C: 409 CONFLICT<br/>{error: "Already reacted with this type"}
-            C-->>U: Giữ nguyên trạng thái reaction
+            GC-->>C:' 409 CONFLICT<br/>{error: "Already reacted with this type"}'
+            C-->>U:' "Giữ nguyên trạng thái reaction"'
         else Chưa react cùng type
             RS->>RR: findByArticleIdAndStudentId(articleId, studentId) [Tìm reaction khác type]
             RR->>DB: SELECT * FROM article_reactions WHERE article_id = ? AND student_id = ?
-            DB-->>RR: ResultSet
-            RR-->>RS: Optional<ArticleReactionEntity>
+            DB-->>RR:' "ResultSet"'
+            RR-->>RS:' "Optional<ArticleReactionEntity>"'
 
             alt Đã react type khác
                 RS->>RS: reaction.setType(newType)
                 RS->>RR: save(reaction)
                 RR->>DB: UPDATE article_reactions SET type = ? WHERE id = ?
-                DB-->>RR: updated
+                DB-->>RR:' "updated"'
             else Chưa react bao giờ
                 RS->>RS: Tạo ArticleReactionEntity<br/>(articleId, studentId, type, createdAt)
                 RS->>RR: save(reaction)
                 RR->>DB: INSERT INTO article_reactions (article_id, student_id, type, created_at) ...
-                DB-->>RR: reactionId
+                DB-->>RR:' "reactionId"'
             end
-            RR-->>RS: ArticleReactionEntity
+            RR-->>RS:' "ArticleReactionEntity"'
             RS->>RR: countByArticleIdAndType(articleId, type)
             RR->>DB: SELECT COUNT(*) FROM article_reactions WHERE article_id = ? AND type = ?
-            DB-->>RR: count
-            RR-->>RS: count
+            DB-->>RR:' "count"'
+            RR-->>RS:' "count"'
             RS-->>GC: ReactionResponseDTO<br/>{reactionId, type, count}
             GC-->>C: 200 OK / 201 CREATED<br/>{reactionId, type, count, articleId}
-            C-->>U: Hiển thị reaction đã chọn + count cập nhật
+            C-->>U:' "Hiển thị reaction đã chọn + count cập nhật"'
         end
     end
 ```

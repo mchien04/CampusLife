@@ -67,15 +67,15 @@ sequenceDiagram
     Controller->>RegService: cancelRegistration(id, studentId)
     RegService->>RegRepo: findById(id)
     RegRepo->>DB: SELECT * FROM activity_registrations WHERE id = ?
-    DB-->>RegRepo: Registration entity
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration entity"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
 
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
     RegService->>RegService: Kiểm tra registration.studentId == studentId<br/>Nếu không khớp → throw AccessDeniedException
 
     RegService->>ActRepo: findById(registration.activityId)
     ActRepo->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>ActRepo: Activity entity
+    DB-->>ActRepo:' "Activity entity"'
     ActRepo-->>RegService: Optional<Activity>
 
     RegService->>RegService: Kiểm tra activity.startDate > now()<br/>Nếu đã bắt đầu → throw ActivityAlreadyStartedException
@@ -83,12 +83,12 @@ sequenceDiagram
     RegService->>RegService: registration.setStatus(CANCELLED)
     RegService->>RegRepo: save(registration)
     RegRepo->>DB: UPDATE activity_registrations<br/>SET status = 'CANCELLED', updated_at = now()<br/>WHERE id = ?
-    DB-->>RegRepo: Updated row
-    RegRepo-->>RegService: Registration (saved)
+    DB-->>RegRepo:' "Updated row"'
+    RegRepo-->>RegService:' "Registration (saved)"'
 
-    RegService-->>Controller: RegistrationDTO
+    RegService-->>Controller:' "RegistrationDTO"'
     Controller-->>Client: 200 OK + ApiResponse(success)
-    Client-->>Student: Hiển thị thông báo<br/>"Hủy đăng ký thành công"
+    Client-->>Student:' Hiển thị thông báo<br/>"Hủy đăng ký thành công"'
 ```
 
 ---
@@ -118,9 +118,9 @@ sequenceDiagram
     Controller->>RegService: getPendingRegistrations(pageable)
     RegService->>RegRepo: findByStatus(PENDING, pageable)
     RegRepo->>DB: SELECT ... WHERE status = 'PENDING'
-    DB-->>RegRepo: Page<Registration>
-    RegRepo-->>RegService: Page<Registration>
-    RegService-->>Controller: Page<RegistrationDTO>
+    DB-->>RegRepo:' "Page<Registration>"'
+    RegRepo-->>RegService:' "Page<Registration>"'
+    RegService-->>Controller:' "Page<RegistrationDTO>"'
     Controller-->>Client: 200 OK + List<PENDING registrations>
     Client-->>Admin: Hiển thị danh sách chờ phê duyệt
 
@@ -131,8 +131,8 @@ sequenceDiagram
 
     RegService->>RegRepo: findById(id)
     RegRepo->>DB: SELECT * FROM activity_registrations WHERE id = ?
-    DB-->>RegRepo: Registration entity
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration entity"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
 
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
     RegService->>RegService: Kiểm tra status != APPROVED && status != REJECTED<br/>Nếu đã phê duyệt/từ chối → throw AlreadyProcessedException
@@ -148,19 +148,19 @@ sequenceDiagram
 
     RegService->>RegRepo: save(registration)
     RegRepo->>DB: UPDATE activity_registrations<br/>SET status = ?, ticket_code = ?, updated_at = now()<br/>WHERE id = ?
-    DB-->>RegRepo: Updated row
-    RegRepo-->>RegService: Registration (saved)
+    DB-->>RegRepo:' "Updated row"'
+    RegRepo-->>RegService:' "Registration (saved)"'
 
     RegService->>NotiService: sendNotification(studentId, title, message)
     NotiService->>NotiRepo: save(notification)
     NotiRepo->>DB: INSERT INTO notifications ...
-    DB-->>NotiRepo: Notification entity
+    DB-->>NotiRepo:' "Notification entity"'
     NotiRepo-->>NotiService: Notification
     NotiService-->>RegService: void
 
-    RegService-->>Controller: RegistrationDTO
+    RegService-->>Controller:' "RegistrationDTO"'
     Controller-->>Client: 200 OK + ApiResponse(success)
-    Client-->>Admin: Hiển thị thông báo<br/>"Đã phê duyệt / Từ chối thành công"
+    Client-->>Admin:' Hiển thị thông báo<br/>"Đã phê duyệt / Từ chối thành công"'
 ```
 
 ---
@@ -192,17 +192,17 @@ sequenceDiagram
     Controller->>RegService: getMyRegistrationHistory(studentId)
     RegService->>RegRepo: findByStudentId(studentId, pageable)
     RegRepo->>DB: SELECT * FROM activity_registrations<br/>WHERE student_id = ? AND is_deleted = false<br/>ORDER BY registered_date DESC
-    DB-->>RegRepo: List<Registration>
-    RegRepo-->>RegService: List<Registration>
+    DB-->>RegRepo:' "List<Registration>"'
+    RegRepo-->>RegService:' "List<Registration>"'
 
     RegService->>StuRepo: findById(studentId)
     StuRepo->>DB: SELECT * FROM students WHERE id = ?
-    DB-->>StuRepo: Student entity
-    StuRepo-->>RegService: Student
+    DB-->>StuRepo:' "Student entity"'
+    StuRepo-->>RegService:' "Student"'
 
     RegService->>RegService: Map từng Registration → RegistrationHistoryDTO<br/>(activityName, status, ticketCode, registeredDate,<br/>activityStartDate, activityLocation)
 
-    RegService-->>Controller: List<RegistrationHistoryDTO>
+    RegService-->>Controller:' "List<RegistrationHistoryDTO>"'
     Controller-->>Client: 200 OK + List<RegistrationHistoryDTO>
     Client-->>Student: Hiển thị bảng lịch sử<br/>có phân trang và filter
 ```
@@ -240,8 +240,8 @@ sequenceDiagram
 
     RegService->>RegRepo: findByTicketCodeAndActivityId(ticketCode, activityId)
     RegRepo->>DB: SELECT * FROM activity_registrations<br/>WHERE ticket_code = ? AND activity_id = ?
-    DB-->>RegRepo: Registration entity
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration entity"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
 
     RegService->>RegService: Kiểm tra status == APPROVED<br/>Nếu không → throw InvalidStatusException
@@ -249,7 +249,7 @@ sequenceDiagram
 
     RegService->>ActRepo: findById(activityId)
     ActRepo->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>ActRepo: Activity entity
+    DB-->>ActRepo:' "Activity entity"'
     ActRepo-->>RegService: Optional<Activity>
     RegService->>RegService: Kiểm tra now() trong [startDate, endDate]<br/>Nếu ngoài thời gian → throw ActivityNotInProgressException
 
@@ -257,17 +257,17 @@ sequenceDiagram
     RegService->>RegService: registration.setCheckInTime(now())
     RegService->>RegRepo: save(registration)
     RegRepo->>DB: UPDATE activity_registrations<br/>SET status = 'ATTENDED', check_in_time = now()<br/>WHERE id = ?
-    DB-->>RegRepo: Updated row
-    RegRepo-->>RegService: Registration (saved)
+    DB-->>RegRepo:' "Updated row"'
+    RegRepo-->>RegService:' "Registration (saved)"'
 
     RegService->>PartService: createParticipationRecord(studentId, activityId, checkInTime)
     PartService->>PartRepo: save(participationRecord)
     PartRepo->>DB: INSERT INTO participation_records<br/>(student_id, activity_id, check_in_time, valid, created_at)<br/>VALUES (?, ?, ?, false, now())
-    DB-->>PartRepo: ParticipationRecord entity
+    DB-->>PartRepo:' "ParticipationRecord entity"'
     PartRepo-->>PartService: ParticipationRecord
     PartService-->>RegService: ParticipationRecord
 
-    RegService-->>Controller: CheckInResponseDTO<br/>(studentName, activityName, checkInTime, status)
+    RegService-->>Controller:' "CheckInResponseDTO<br/>(studentName, activityName, checkInTime, status)"'
     Controller-->>Client: 200 OK + ApiResponse(success)
     Client-->>Admin: Hiển thị thông tin check-in thành công<br/>+ Gửi notification cho Student
 
@@ -279,8 +279,8 @@ sequenceDiagram
 
     RegService->>RegRepo: findByTicketCode(ticketCode)
     RegRepo->>DB: SELECT * FROM activity_registrations WHERE ticket_code = ?
-    DB-->>RegRepo: Registration entity
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration entity"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
 
     RegService->>RegService: Kiểm tra status == ATTENDED<br/>Nếu không → throw InvalidStatusException
@@ -289,30 +289,30 @@ sequenceDiagram
     RegService->>RegService: registration.setCheckOutTime(now())
     RegService->>RegRepo: save(registration)
     RegRepo->>DB: UPDATE activity_registrations<br/>SET check_out_time = now()<br/>WHERE id = ?
-    DB-->>RegRepo: Updated row
-    RegRepo-->>RegService: Registration (saved)
+    DB-->>RegRepo:' "Updated row"'
+    RegRepo-->>RegService:' "Registration (saved)"'
 
     RegService->>PartService: updateCheckOut(participationRecordId, checkOutTime)
     PartService->>PartRepo: findByStudentIdAndActivityId(studentId, activityId)
     PartRepo->>DB: SELECT * FROM participation_records<br/>WHERE student_id = ? AND activity_id = ?
-    DB-->>PartRepo: ParticipationRecord
+    DB-->>PartRepo:' "ParticipationRecord"'
     PartRepo-->>PartService: ParticipationRecord
 
     PartService->>PartService: record.setCheckOutTime(now())
     PartService->>PartService: duration = checkOutTime - checkInTime (minutes)
     PartService->>ActRepo: findById(activityId)
     ActRepo->>DB: SELECT min_duration FROM activities WHERE id = ?
-    DB-->>ActRepo: minDuration
+    DB-->>ActRepo:' "minDuration"'
     ActRepo-->>PartService: minDuration
 
     PartService->>PartService: Nếu duration >= minDuration<br/>record.setValid(true)
     PartService->>PartRepo: save(record)
     PartRepo->>DB: UPDATE participation_records<br/>SET check_out_time = ?, valid = ?, updated_at = now()<br/>WHERE id = ?
-    DB-->>PartRepo: Updated row
+    DB-->>PartRepo:' "Updated row"'
     PartRepo-->>PartService: ParticipationRecord (saved)
     PartService-->>RegService: ParticipationRecord
 
-    RegService-->>Controller: CheckOutResponseDTO<br/>(studentName, checkInTime, checkOutTime, duration, valid)
+    RegService-->>Controller:' "CheckOutResponseDTO<br/>(studentName, checkInTime, checkOutTime, duration, valid)"'
     Controller-->>Client: 200 OK + ApiResponse(success)
     Client-->>Admin: Hiển thị thông tin check-out + valid status<br/>+ Gửi notification cho Student
 ```
@@ -346,21 +346,21 @@ sequenceDiagram
     Controller->>RegService: getMyTickets(studentId)
     RegService->>RegRepo: findByStudentIdAndStatusIn(studentId, [APPROVED, ATTENDED])
     RegRepo->>DB: SELECT * FROM activity_registrations<br/>WHERE student_id = ? AND status IN ('APPROVED','ATTENDED')<br/>AND is_deleted = false<br/>ORDER BY registered_date DESC
-    DB-->>RegRepo: List<Registration>
-    RegRepo-->>RegService: List<Registration>
+    DB-->>RegRepo:' "List<Registration>"'
+    RegRepo-->>RegService:' "List<Registration>"'
 
     loop Map từng Registration → TicketResponse
         RegService->>ActRepo: findById(registration.activityId)
         ActRepo->>DB: SELECT * FROM activities WHERE id = ?
-        DB-->>ActRepo: Activity
+        DB-->>ActRepo:' "Activity"'
         ActRepo-->>RegService: Activity
         RegService->>RegService: Tạo QRCodeImage từ ticketCode<br/>(dùng thư viện ZXing/QRCode generation)
     end
 
     RegService->>RegService: Build List<TicketResponse><br/>(ticketCode, activityName, startDate, location, qrCodeImageBase64)
-    RegService-->>Controller: List<TicketResponse>
+    RegService-->>Controller:' "List<TicketResponse>"'
     Controller-->>Client: 200 OK + List<TicketResponse>
-    Client-->>Student: Hiển thị danh sách vé dạng card/grid<br/>có QR code + nút "Tải về / Chia sẻ"
+    Client-->>Student:' Hiển thị danh sách vé dạng card/grid<br/>có QR code + nút "Tải về / Chia sẻ"'
 ```
 
 ---
@@ -392,22 +392,22 @@ sequenceDiagram
 
     RegService->>RegRepo: findByTicketCode(ticketCode)
     RegRepo->>DB: SELECT * FROM activity_registrations<br/>WHERE ticket_code = ?
-    DB-->>RegRepo: Registration entity
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration entity"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
 
     RegService->>StuRepo: findById(registration.studentId)
     StuRepo->>DB: SELECT * FROM students WHERE id = ?
-    DB-->>StuRepo: Student
-    StuRepo-->>RegService: Student
+    DB-->>StuRepo:' "Student"'
+    StuRepo-->>RegService:' "Student"'
 
     RegService->>ActRepo: findById(registration.activityId)
     ActRepo->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>ActRepo: Activity
+    DB-->>ActRepo:' "Activity"'
     ActRepo-->>RegService: Activity
 
     RegService->>RegService: Build TicketStatusDTO<br/>(status, studentName, activityName,<br/>ticketCode, registeredDate, checkInTime, checkOutTime)
-    RegService-->>Controller: TicketStatusDTO
+    RegService-->>Controller:' "TicketStatusDTO"'
     Controller-->>Client: 200 OK + TicketStatusDTO
     Client-->>Admin: Hiển thị thông tin vé<br/>màu sắc theo status (xanh=APPROVED, đỏ=CANCELLED, ...)
 ```
@@ -446,13 +446,13 @@ sequenceDiagram
 
     RegService->>RegRepo: findByTicketCode(ticketCode)
     RegRepo->>DB: SELECT * FROM activity_registrations WHERE ticket_code = ?
-    DB-->>RegRepo: Registration
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
 
     RegService->>ActRepo: findById(registration.activityId)
     ActRepo->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>ActRepo: Activity
+    DB-->>ActRepo:' "Activity"'
     ActRepo-->>RegService: Activity
     RegService->>RegService: Kiểm tra activity đang check-in<br/>Nếu không trong thời gian → throw ActivityNotInProgressException
 
@@ -460,9 +460,9 @@ sequenceDiagram
     RegService->>RegService: Kiểm tra checkInTime == null<br/>Nếu đã check-in → throw AlreadyCheckedInException
 
     RegService->>RegService: Build TicketValidationDTO<br/>(valid=true, studentName, studentId, activityName, activityId, status)
-    RegService-->>Controller: TicketValidationDTO
+    RegService-->>Controller:' "TicketValidationDTO"'
     Controller-->>Client: 200 OK + TicketValidationDTO
-    Client-->>Admin: Hiển thị thông tin sinh viên + trạng thái valid<br/>+ Nút "Check-in ngay"
+    Client-->>Admin:' Hiển thị thông tin sinh viên + trạng thái valid<br/>+ Nút "Check-in ngay"'
 
     Note over Admin, DB: Luồng 7.2: Check-in bằng QR Code (N.52)
 
@@ -476,8 +476,8 @@ sequenceDiagram
 
     RegService->>RegRepo: findByTicketCode(ticketCode)
     RegRepo->>DB: SELECT * FROM activity_registrations WHERE ticket_code = ?
-    DB-->>RegRepo: Registration
-    RegRepo-->>RegService: Optional<Registration>
+    DB-->>RegRepo:' "Registration"'
+    RegRepo-->>RegService:' "Optional<Registration>"'
     RegService->>RegService: Kiểm tra tồn tại<br/>Nếu empty → throw RegistrationNotFoundException
 
     RegService->>RegService: Kiểm tra status == APPROVED<br/>Nếu không → throw InvalidStatusException
@@ -485,7 +485,7 @@ sequenceDiagram
 
     RegService->>ActRepo: findById(registration.activityId)
     ActRepo->>DB: SELECT * FROM activities WHERE id = ?
-    DB-->>ActRepo: Activity
+    DB-->>ActRepo:' "Activity"'
     ActRepo-->>RegService: Activity
     RegService->>RegService: Kiểm tra now() trong [startDate, endDate]<br/>Nếu ngoài → throw ActivityNotInProgressException
 
@@ -494,18 +494,18 @@ sequenceDiagram
     RegService->>RegService: registration.setCheckInDevice(deviceId)
     RegService->>RegRepo: save(registration)
     RegRepo->>DB: UPDATE activity_registrations<br/>SET status='ATTENDED', check_in_time=now(),<br/>check_in_device = ? WHERE id = ?
-    DB-->>RegRepo: Updated row
-    RegRepo-->>RegService: Registration (saved)
+    DB-->>RegRepo:' "Updated row"'
+    RegRepo-->>RegService:' "Registration (saved)"'
 
     RegService->>PartService: createParticipationRecord(studentId, activityId, checkInTime)
     PartService->>PartRepo: save(participationRecord)
     PartRepo->>DB: INSERT INTO participation_records ...
-    DB-->>PartRepo: ParticipationRecord
+    DB-->>PartRepo:' "ParticipationRecord"'
     PartRepo-->>PartService: ParticipationRecord
     PartService-->>RegService: ParticipationRecord
 
     RegService->>RegService: Build QRCheckInResponse<br/>(success=true, studentInfo, activityName, checkInTime, deviceId)
-    RegService-->>Controller: QRCheckInResponse
+    RegService-->>Controller:' "QRCheckInResponse"'
     Controller-->>Client: 200 OK + QRCheckInResponse
     Client-->>Admin: Hiển thị thông tin sinh viên + ảnh đại diện<br/>+ Trạng thái check-in thành công
     Client->>Client: Phát âm thanh / hiệu ứng check-in thành công
@@ -541,8 +541,8 @@ sequenceDiagram
 
     RegService->>RegRepo: findAttendedWithoutParticipation()
     RegRepo->>DB: SELECT r.* FROM activity_registrations r<br/>LEFT JOIN participation_records p<br/>ON r.student_id = p.student_id AND r.activity_id = p.activity_id<br/>WHERE r.status = 'ATTENDED' AND p.id IS NULL
-    DB-->>RegRepo: List<Registration>
-    RegRepo-->>RegService: List<Registration>
+    DB-->>RegRepo:' "List<Registration>"'
+    RegRepo-->>RegService:' "List<Registration>"'
 
     RegService->>RegService: Kiểm tra nếu list rỗng → return 0
 
@@ -551,15 +551,15 @@ sequenceDiagram
         PartService->>PartService: Build ParticipationRecord<br/>(studentId, activityId, checkInTime, valid=false)
         PartService->>PartRepo: save(record)
         PartRepo->>DB: INSERT INTO participation_records ...
-        DB-->>PartRepo: ParticipationRecord
+        DB-->>PartRepo:' "ParticipationRecord"'
         PartRepo-->>PartService: ParticipationRecord
     end
 
     PartService-->>RegService: List<ParticipationRecord> (đã tạo)
     RegService->>RegService: Đếm số lượng đã tạo = count
-    RegService-->>Controller: BackfillResultDTO (syncedCount=count)
+    RegService-->>Controller:' "BackfillResultDTO (syncedCount=count)"'
     Controller-->>Client: 200 OK + BackfillResultDTO
-    Client-->>Admin: Hiển thị thông báo<br/>"Đã đồng bộ X bản ghi điểm danh"
+    Client-->>Admin:' Hiển thị thông báo<br/>"Đã đồng bộ X bản ghi điểm danh"'
 ```
 
 ---

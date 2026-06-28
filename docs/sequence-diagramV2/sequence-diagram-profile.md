@@ -30,26 +30,26 @@ sequenceDiagram
 
     SV->>RP: 4. findUserByUsername(username)
     RP->>DB: 5. SELECT * FROM users WHERE username = ?
-    DB-->>RP: 6. User record (id, username, email, role, status, ...)
-    RP-->>SV: 7. Optional<User>
+    DB-->>RP:' "6. User record (id, username, email, role, status, ...)"'
+    RP-->>SV:' "7. Optional<User>"'
 
     alt User không tồn tại
-        SV-->>CTL: 8a. Throw ResourceNotFoundException("User not found")
-        CTL-->>C: 9a. 404 Not Found + ErrorResponse
-        C-->>A: 10a. Hiển thị thông báo "Không tìm thấy người dùng"
+        SV-->>CTL:' 8a. Throw ResourceNotFoundException("User not found")'
+        CTL-->>C:' "9a. 404 Not Found + ErrorResponse"'
+        C-->>A:' "10a. Hiển thị thông báo "Không tìm thấy người dùng""'
     else User tồn tại
         SV->>SV: 8b. Extract role from User
 
         alt Role = STUDENT
             SV->>RP: 9b.1. findStudentProfileByUserId(userId)
             RP->>DB: 10b.1. SELECT sp.*, sc.name AS class_name, d.name AS dept_name<br/>FROM student_profiles sp<br/>JOIN student_classes sc ON sp.class_id = sc.id<br/>JOIN departments d ON sp.department_id = d.id<br/>WHERE sp.user_id = ?
-            DB-->>RP: 11b.1. StudentProfile + StudentClass + Department
-            RP-->>SV: 12b.1. StudentProfile entity
+            DB-->>RP:' "11b.1. StudentProfile + StudentClass + Department"'
+            RP-->>SV:' "12b.1. StudentProfile entity"'
 
             SV->>RP: 13b.1. calculateTotalScore(studentId)
             RP->>DB: 14b.1. SELECT SUM(score) FROM student_semester_scores<br/>WHERE student_id = ?
-            DB-->>RP: 15b.1. totalScore (BigDecimal/Double)
-            RP-->>SV: 16b.1. totalScore
+            DB-->>RP:' "15b.1. totalScore (BigDecimal/Double)"'
+            RP-->>SV:' "16b.1. totalScore"'
 
             SV->>SV: 17b.1. mapToStudentProfileResponse()<br/>(personalInfo, academicInfo, className, departmentName, totalScore)
             SV-->>CTL: 18b.1. StudentProfileResponse
@@ -57,8 +57,8 @@ sequenceDiagram
         else Role = STAFF
             SV->>RP: 9b.2. findStaffProfileByUserId(userId)
             RP->>DB: 10b.2. SELECT sp.*, d.name AS dept_name<br/>FROM staff_profiles sp<br/>JOIN departments d ON sp.department_id = d.id<br/>WHERE sp.user_id = ?
-            DB-->>RP: 11b.2. StaffProfile + Department
-            RP-->>SV: 12b.2. StaffProfile entity
+            DB-->>RP:' "11b.2. StaffProfile + Department"'
+            RP-->>SV:' "12b.2. StaffProfile entity"'
 
             SV->>SV: 13b.2. mapToStaffProfileResponse()<br/>(personalInfo, staffInfo, departmentName)
             SV-->>CTL: 14b.2. StaffProfileResponse
@@ -68,8 +68,8 @@ sequenceDiagram
             SV-->>CTL: 10b.3. UserProfileResponse
         end
 
-        CTL-->>C: 11b. 200 OK + ProfileResponse (StudentProfileResponse | StaffProfileResponse | UserProfileResponse)
-        C-->>A: 12b. Hiển thị thông tin chi tiết theo từng role
+        CTL-->>C:' "11b. 200 OK + ProfileResponse (StudentProfileResponse | StaffProfileResponse | UserProfileResponse)"'
+        C-->>A:' "12b. Hiển thị thông tin chi tiết theo từng role"'
     end
 
     %% ============================================================
@@ -83,34 +83,34 @@ sequenceDiagram
 
     SV->>RP: 5. findUserById(userId)
     RP->>DB: 6. SELECT * FROM users WHERE id = ?
-    DB-->>RP: 7. User record
-    RP-->>SV: 8. User entity
+    DB-->>RP:' "7. User record"'
+    RP-->>SV:' "8. User entity"'
 
     SV->>RP: 9. findStudentProfileByUserId(userId)
     RP->>DB: 10. SELECT sp.*, sc.name AS class_name, sc.code AS class_code,<br/>d.name AS dept_name, d.code AS dept_code<br/>FROM student_profiles sp<br/>JOIN student_classes sc ON sp.class_id = sc.id<br/>JOIN departments d ON sp.department_id = d.id<br/>WHERE sp.user_id = ?
-    DB-->>RP: 11. StudentProfile + StudentClass + Department
-    RP-->>SV: 12. StudentProfile entity
+    DB-->>RP:' "11. StudentProfile + StudentClass + Department"'
+    RP-->>SV:' "12. StudentProfile entity"'
 
     SV->>RP: 13. findAddressByStudentProfileId(profileId)
     RP->>DB: 14. SELECT * FROM addresses WHERE profile_id = ?<br/>AND is_primary = true
-    DB-->>RP: 15. Address record (street, ward, district, province, country)
-    RP-->>SV: 16. Address entity
+    DB-->>RP:' "15. Address record (street, ward, district, province, country)"'
+    RP-->>SV:' "16. Address entity"'
 
     SV->>RP: 17. getCurrentSemesterScore(studentId)
     RP->>DB: 18. SELECT * FROM student_semester_scores<br/>WHERE student_id = ?<br/>AND semester = (SELECT MAX(semester) FROM student_semester_scores WHERE student_id = ?)
-    DB-->>RP: 19. StudentSemesterScore (semester, score, rank, credits)
-    RP-->>SV: 20. StudentSemesterScore entity
+    DB-->>RP:' "19. StudentSemesterScore (semester, score, rank, credits)"'
+    RP-->>SV:' "20. StudentSemesterScore entity"'
 
     SV->>RP: 21. findTaskAssignmentsByStudentId(studentId)
     RP->>DB: 22. SELECT ta.*, t.title, t.description, t.deadline, t.status<br/>FROM task_assignments ta<br/>JOIN tasks t ON ta.task_id = t.id<br/>WHERE ta.student_id = ?<br/>ORDER BY t.deadline DESC
-    DB-->>RP: 23. List<TaskAssignment + Task>
-    RP-->>SV: 24. List<TaskAssignment> entities
+    DB-->>RP:' "23. List<TaskAssignment + Task>"'
+    RP-->>SV:' "24. List<TaskAssignment> entities"'
 
     SV->>SV: 25. buildFullStudentProfileResponse()<br/>- personalInfo: User (fullName, dob, gender, email, phone)<br/>- academicInfo: StudentProfile (studentCode, enrollmentYear, status)<br/>- classInfo: StudentClass (className, classCode)<br/>- departmentInfo: Department (departmentName, departmentCode)<br/>- contact: phone, email<br/>- address: Address (street, ward, district, province)<br/>- scores: StudentSemesterScore (currentSemester, totalScore, credits)<br/>- tasks: List<TaskAssignment> (taskId, title, status, deadline)
 
     SV-->>CTL: 26. StudentProfileResponse đầy đủ
-    CTL-->>C: 27. 200 OK + StudentProfileResponse
-    C-->>S: 28. Hiển thị thông tin cá nhân đầy đủ:<br/>- Thông tin cá nhân<br/>- Thông tin học tập<br/>- Thông tin liên hệ & địa chỉ<br/>- Điểm số kỳ hiện tại<br/>- Danh sách nhiệm vụ được phân công
+    CTL-->>C:' "27. 200 OK + StudentProfileResponse"'
+    C-->>S:' "28. Hiển thị thông tin cá nhân đầy đủ:<br/>- Thông tin cá nhân<br/>- Thông tin học tập<br/>- Thông tin liên hệ & địa chỉ<br/>- Điểm số kỳ hiện tại<br/>- Danh sách nhiệm vụ được phân công"'
 ```
 
 ---

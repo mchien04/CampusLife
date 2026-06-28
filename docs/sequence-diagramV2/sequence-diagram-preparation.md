@@ -36,21 +36,21 @@ sequenceDiagram
 
     S->>R: findActivityById(activityId)
     R->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>R: Activity
-    R-->>S: Optional<Activity>
+    DB-->>R:' "Activity"'
+    R-->>S:' "Optional<Activity>"'
 
     alt Activity không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Activity không tồn tại"
+        CT-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Activity không tồn tại""'
     else Activity tồn tại
         S->>S: activity.setPreparationMode(!activity.isPreparationMode())
         S->>S: activity.setIsPreparationMode(true)
 
         S->>R: findPreparationContextByActivityId(activityId)
         R->>DB: SELECT * FROM preparation_context WHERE activity_id = ?
-        DB-->>R: PreparationContext (nếu có)
-        R-->>S: Optional<PreparationContext>
+        DB-->>R:' "PreparationContext (nếu có)"'
+        R-->>S:' "Optional<PreparationContext>"'
 
         alt PreparationContext chưa tồn tại
             S->>S: create new PreparationContext()
@@ -59,26 +59,26 @@ sequenceDiagram
             S->>S: ctx.setCreatedAt(now)
             S->>R: save(ctx)
             R->>DB: INSERT INTO preparation_context ...
-            DB-->>R: PreparationContext
-            R-->>S: PreparationContext
+            DB-->>R:' "PreparationContext"'
+            R-->>S:' "PreparationContext"'
         else Đã tồn tại
             S->>S: ctx.setStatus(PreparationStatus.PREPARING)
             S->>R: save(ctx)
             R->>DB: UPDATE preparation_context SET ...
-            DB-->>R: PreparationContext
-            R-->>S: PreparationContext
+            DB-->>R:' "PreparationContext"'
+            R-->>S:' "PreparationContext"'
         end
 
         S->>R: save(activity)
         R->>DB: UPDATE activity SET is_preparation_mode = true ...
-        DB-->>R: Activity
-        R-->>S: Activity
+        DB-->>R:' "Activity"'
+        R-->>S:' "Activity"'
 
         S->>S: getAssignedStaff(activityId)
         S->>R: findOrganizersByActivityId(activityId)
         R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ?
-        DB-->>R: List<ActivityOrganizer>
-        R-->>S: List<ActivityOrganizer>
+        DB-->>R:' "List<ActivityOrganizer>"'
+        R-->>S:' "List<ActivityOrganizer>"'
 
         loop Gửi notification cho từng Staff được assign
             S->>NS: sendNotification(userId, "Chế độ chuẩn bị đã bật", "Activity " + activityId)
@@ -87,8 +87,8 @@ sequenceDiagram
         end
 
         S-->>CT: PreparationToggleResultDTO
-        CT-->>C: 200 OK + DTO
-        C-->>U: Hiển thị "Đã bật chế độ chuẩn bị" + danh sách staff nhận thông báo
+        CT-->>C:' "200 OK + DTO"'
+        C-->>U:' "Hiển thị "Đã bật chế độ chuẩn bị" + danh sách staff nhận thông báo"'
     end
 ```
 
@@ -119,23 +119,23 @@ sequenceDiagram
 
     S->>R: findUserById(userId)
     R->>DB: SELECT * FROM user WHERE id = ?
-    DB-->>R: User
-    R-->>S: Optional<User>
+    DB-->>R:' "User"'
+    R-->>S:' "Optional<User>"'
 
     alt User không tồn tại
-        S-->>CT: throw NotFoundException("User không tồn tại")
-        CT-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "User không tồn tại"
+        S-->>CT:' throw NotFoundException("User không tồn tại")'
+        CT-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "User không tồn tại""'
     else User tồn tại
         S->>R: findOrganizerByActivityAndUser(activityId, userId)
         R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ? AND user_id = ?
-        DB-->>R: ActivityOrganizer (nếu có)
-        R-->>S: Optional<ActivityOrganizer>
+        DB-->>R:' "ActivityOrganizer (nếu có)"'
+        R-->>S:' "Optional<ActivityOrganizer>"'
 
         alt User đã là organizer của activity này
-            S-->>CT: throw ConflictException("User đã là organizer")
-            CT-->>C: 409 Conflict
-            C-->>U: Hiển thị lỗi "User đã là organizer của sự kiện này"
+            S-->>CT:' throw ConflictException("User đã là organizer")'
+            CT-->>C:' "409 Conflict"'
+            C-->>U:' "Hiển thị lỗi "User đã là organizer của sự kiện này""'
         else User chưa là organizer
             S->>S: create new ActivityOrganizer()
             S->>S: ao.setActivityId(activityId)
@@ -144,15 +144,15 @@ sequenceDiagram
             S->>S: ao.setJoinedAt(now)
             S->>R: save(ao)
             R->>DB: INSERT INTO activity_organizer ...
-            DB-->>R: ActivityOrganizer
-            R-->>S: ActivityOrganizer
+            DB-->>R:' "ActivityOrganizer"'
+            R-->>S:' "ActivityOrganizer"'
 
             S->>NS: sendNotification(userId, "Bạn được thêm vào ban tổ chức", activityId)
             NS-->>S: Notification sent
 
             S-->>CT: ActivityOrganizerDTO
-            CT-->>C: 201 Created + DTO
-            C-->>U: Hiển thị "Thêm organizer thành công"
+            CT-->>C:' "201 Created + DTO"'
+            C-->>U:' "Hiển thị "Thêm organizer thành công""'
         end
     end
 
@@ -164,25 +164,25 @@ sequenceDiagram
 
     S->>R: findOrganizerByActivityAndUser(activityId, userId)
     R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ? AND user_id = ?
-    DB-->>R: ActivityOrganizer
-    R-->>S: Optional<ActivityOrganizer>
+    DB-->>R:' "ActivityOrganizer"'
+    R-->>S:' "Optional<ActivityOrganizer>"'
 
     alt Organizer không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Organizer không tồn tại"
+        CT-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Organizer không tồn tại""'
     else Organizer tồn tại
         S->>R: delete(ao)
         R->>DB: DELETE FROM activity_organizer WHERE id = ?
-        DB-->>R: void
-        R-->>S: void
+        DB-->>R:' "void"'
+        R-->>S:' "void"'
 
         S->>NS: sendNotification(userId, "Bạn đã bị xóa khỏi ban tổ chức", activityId)
         NS-->>S: Notification sent
 
         S-->>CT: void
-        CT-->>C: 204 No Content
-        C-->>U: Hiển thị "Xóa organizer thành công"
+        CT-->>C:' "204 No Content"'
+        C-->>U:' "Hiển thị "Xóa organizer thành công""'
     end
 
     Note over U, NS: === LUỒNG 2C: CẤP PREP-SUPERVISOR ===
@@ -193,27 +193,27 @@ sequenceDiagram
 
     S->>R: findOrganizerByActivityAndUser(activityId, userId)
     R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ? AND user_id = ?
-    DB-->>R: ActivityOrganizer
-    R-->>S: Optional<ActivityOrganizer>
+    DB-->>R:' "ActivityOrganizer"'
+    R-->>S:' "Optional<ActivityOrganizer>"'
 
     alt Organizer không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Organizer không tồn tại"
+        CT-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Organizer không tồn tại""'
     else Organizer tồn tại
         S->>S: ao.setRole(OrganizerRole.PREP_SUPERVISOR)
         S->>S: ao.setUpdatedAt(now)
         S->>R: save(ao)
         R->>DB: UPDATE activity_organizer SET role = 'PREP_SUPERVISOR' ...
-        DB-->>R: ActivityOrganizer
-        R-->>S: ActivityOrganizer
+        DB-->>R:' "ActivityOrganizer"'
+        R-->>S:' "ActivityOrganizer"'
 
         S->>NS: sendNotification(userId, "Bạn được cấp quyền Supervisor chuẩn bị", activityId)
         NS-->>S: Notification sent
 
         S-->>CT: ActivityOrganizerDTO
-        CT-->>C: 200 OK + DTO
-        C-->>U: Hiển thị "Cấp quyền Supervisor thành công"
+        CT-->>C:' "200 OK + DTO"'
+        C-->>U:' "Hiển thị "Cấp quyền Supervisor thành công""'
     end
 ```
 
@@ -244,33 +244,33 @@ sequenceDiagram
 
     S->>R: findTaskById(taskId)
     R->>DB: SELECT * FROM preparation_task WHERE id = ?
-    DB-->>R: PreparationTask
-    R-->>S: Optional<PreparationTask>
+    DB-->>R:' "PreparationTask"'
+    R-->>S:' "Optional<PreparationTask>"'
 
     alt Task không tồn tại
-        S-->>CT: throw NotFoundException("Task không tồn tại")
-        CT-->>C: 404 Not Found
-        C-->>U1: Hiển thị lỗi "Task không tồn tại"
+        S-->>CT:' throw NotFoundException("Task không tồn tại")'
+        CT-->>C:' "404 Not Found"'
+        C-->>U1:' "Hiển thị lỗi "Task không tồn tại""'
     else Task tồn tại
         S->>R: findUserById(assigneeId)
         R->>DB: SELECT * FROM user WHERE id = ?
-        DB-->>R: User
-        R-->>S: Optional<User>
+        DB-->>R:' "User"'
+        R-->>S:' "Optional<User>"'
 
         alt Assignee không tồn tại
-            S-->>CT: throw NotFoundException("Assignee không tồn tại")
-            CT-->>C: 404 Not Found
-            C-->>U1: Hiển thị lỗi "Assignee không tồn tại"
+            S-->>CT:' throw NotFoundException("Assignee không tồn tại")'
+            CT-->>C:' "404 Not Found"'
+            C-->>U1:' "Hiển thị lỗi "Assignee không tồn tại""'
         else Assignee tồn tại
             S->>R: findOrganizerByActivityAndUser(task.activityId, assigneeId)
             R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ? AND user_id = ?
-            DB-->>R: ActivityOrganizer
-            R-->>S: Optional<ActivityOrganizer>
+            DB-->>R:' "ActivityOrganizer"'
+            R-->>S:' "Optional<ActivityOrganizer>"'
 
             alt Assignee không phải organizer của activity
-                S-->>CT: throw ForbiddenException("Assignee không thuộc ban tổ chức")
-                CT-->>C: 403 Forbidden
-                C-->>U1: Hiển thị lỗi "Assignee không thuộc ban tổ chức"
+                S-->>CT:' throw ForbiddenException("Assignee không thuộc ban tổ chức")'
+                CT-->>C:' "403 Forbidden"'
+                C-->>U1:' "Hiển thị lỗi "Assignee không thuộc ban tổ chức""'
             else Assignee là organizer hợp lệ
                 S->>S: create new PreparationTaskAssignment()
                 S->>S: pta.setTaskId(taskId)
@@ -281,20 +281,20 @@ sequenceDiagram
                 S->>S: pta.setAssignedBy(currentUserId)
                 S->>R: save(pta)
                 R->>DB: INSERT INTO preparation_task_assignment ...
-                DB-->>R: PreparationTaskAssignment
-                R-->>S: PreparationTaskAssignment
+                DB-->>R:' "PreparationTaskAssignment"'
+                R-->>S:' "PreparationTaskAssignment"'
 
                 S->>R: save(task) // cập nhật task status nếu cần
                 R->>DB: UPDATE preparation_task SET ...
-                DB-->>R: PreparationTask
-                R-->>S: PreparationTask
+                DB-->>R:' "PreparationTask"'
+                R-->>S:' "PreparationTask"'
 
                 S->>NS: sendNotification(assigneeId, "Bạn được phân công nhiệm vụ chuẩn bị", taskId)
                 NS-->>S: Notification sent
 
                 S-->>CT: PreparationTaskAssignmentDTO
-                CT-->>C: 201 Created + DTO
-                C-->>U1: Hiển thị "Phân công thành công"
+                CT-->>C:' "201 Created + DTO"'
+                C-->>U1:' "Hiển thị "Phân công thành công""'
             end
         end
     end
@@ -307,25 +307,25 @@ sequenceDiagram
 
     S->>R: findAssignmentById(assignmentId)
     R->>DB: SELECT * FROM preparation_task_assignment WHERE id = ?
-    DB-->>R: PreparationTaskAssignment
-    R-->>S: Optional<PreparationTaskAssignment>
+    DB-->>R:' "PreparationTaskAssignment"'
+    R-->>S:' "Optional<PreparationTaskAssignment>"'
 
     alt Assignment không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U2: Hiển thị lỗi "Assignment không tồn tại"
+        CT-->>C:' "404 Not Found"'
+        C-->>U2:' "Hiển thị lỗi "Assignment không tồn tại""'
     else Assignment tồn tại
         alt Assignee không phải người cập nhật
-            S-->>CT: throw ForbiddenException("Không có quyền cập nhật")
-            CT-->>C: 403 Forbidden
-            C-->>U2: Hiển thị lỗi "Không có quyền cập nhật"
+            S-->>CT:' throw ForbiddenException("Không có quyền cập nhật")'
+            CT-->>C:' "403 Forbidden"'
+            C-->>U2:' "Hiển thị lỗi "Không có quyền cập nhật""'
         else Quyền hợp lệ
             S->>S: validateStatusTransition(currentStatus, newStatus)
 
             alt Transition không hợp lệ (ví dụ: ASSIGNED → COMPLETED)
-                S-->>CT: throw BadRequestException("Transition không hợp lệ")
-                CT-->>C: 400 Bad Request
-                C-->>U2: Hiển thị lỗi "Không thể chuyển trạng thái này"
+                S-->>CT:' throw BadRequestException("Transition không hợp lệ")'
+                CT-->>C:' "400 Bad Request"'
+                C-->>U2:' "Hiển thị lỗi "Không thể chuyển trạng thái này""'
             else Transition hợp lệ
                 S->>S: pta.setStatus(newStatus) // IN_PROGRESS → COMPLETED
                 S->>S: pta.setUpdatedAt(now)
@@ -336,19 +336,19 @@ sequenceDiagram
 
                 S->>R: save(pta)
                 R->>DB: UPDATE preparation_task_assignment SET status = ?, updated_at = ? ...
-                DB-->>R: PreparationTaskAssignment
-                R-->>S: PreparationTaskAssignment
+                DB-->>R:' "PreparationTaskAssignment"'
+                R-->>S:' "PreparationTaskAssignment"'
 
                 alt newStatus == COMPLETED
                     S->>R: findTaskById(pta.taskId)
                     R->>DB: SELECT * FROM preparation_task WHERE id = ?
-                    DB-->>R: PreparationTask
-                    R-->>S: PreparationTask
+                    DB-->>R:' "PreparationTask"'
+                    R-->>S:' "PreparationTask"'
 
                     S->>R: findSupervisorsByActivityId(task.activityId)
                     R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ? AND role = 'PREP_SUPERVISOR'
-                    DB-->>R: List<ActivityOrganizer>
-                    R-->>S: List<ActivityOrganizer>
+                    DB-->>R:' "List<ActivityOrganizer>"'
+                    R-->>S:' "List<ActivityOrganizer>"'
 
                     loop Gửi yêu cầu review cho từng Supervisor
                         S->>NS: sendNotification(supervisorId, "Nhiệm vụ đã hoàn thành, cần review", assignmentId)
@@ -360,8 +360,8 @@ sequenceDiagram
                 NS-->>S: Notification sent
 
                 S-->>CT: PreparationTaskAssignmentDTO
-                CT-->>C: 200 OK + DTO
-                C-->>U2: Hiển thị "Cập nhật tiến độ thành công"
+                CT-->>C:' "200 OK + DTO"'
+                C-->>U2:' "Hiển thị "Cập nhật tiến độ thành công""'
             end
         end
     end
@@ -392,18 +392,18 @@ sequenceDiagram
 
     S->>R: findActivityById(activityId)
     R->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>R: Activity
-    R-->>S: Optional<Activity>
+    DB-->>R:' "Activity"'
+    R-->>S:' "Optional<Activity>"'
 
     alt Activity không tồn tại
-        S-->>CT: throw NotFoundException("Activity không tồn tại")
-        CT-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Activity không tồn tại"
+        S-->>CT:' throw NotFoundException("Activity không tồn tại")'
+        CT-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Activity không tồn tại""'
     else Activity tồn tại
         S->>R: findBudgetByActivityId(activityId)
         R->>DB: SELECT * FROM preparation_budget WHERE activity_id = ?
-        DB-->>R: PreparationBudget (nếu có)
-        R-->>S: Optional<PreparationBudget>
+        DB-->>R:' "PreparationBudget (nếu có)"'
+        R-->>S:' "Optional<PreparationBudget>"'
 
         alt Budget chưa tồn tại (POST)
             S->>S: create new PreparationBudget()
@@ -415,8 +415,8 @@ sequenceDiagram
             S->>S: pb.setCreatedAt(now)
             S->>R: save(pb)
             R->>DB: INSERT INTO preparation_budget ...
-            DB-->>R: PreparationBudget
-            R-->>S: PreparationBudget
+            DB-->>R:' "PreparationBudget"'
+            R-->>S:' "PreparationBudget"'
         else Budget đã tồn tại (PUT)
             S->>S: pb.setTotalAmount(budgetRequest.totalAmount)
             S->>S: pb.setCategories(budgetRequest.categories)
@@ -424,18 +424,18 @@ sequenceDiagram
             S->>S: pb.setUpdatedAt(now)
             S->>R: save(pb)
             R->>DB: UPDATE preparation_budget SET ...
-            DB-->>R: PreparationBudget
-            R-->>S: PreparationBudget
+            DB-->>R:' "PreparationBudget"'
+            R-->>S:' "PreparationBudget"'
         end
 
         S->>R: saveActivityBudgetReference(activityId, pb.id)
         R->>DB: UPDATE activity SET budget_id = ? WHERE id = ?
-        DB-->>R: Activity
-        R-->>S: Activity
+        DB-->>R:' "Activity"'
+        R-->>S:' "Activity"'
 
         S-->>CT: PreparationBudgetDTO
-        CT-->>C: 200/201 OK + DTO
-        C-->>U: Hiển thị "Lưu ngân sách thành công"
+        CT-->>C:' "200/201 OK + DTO"'
+        C-->>U:' "Hiển thị "Lưu ngân sách thành công""'
     end
 
     Note over U, DB: === LUỒNG 4B: PHÂN BỔ NGÂN SÁCH CHO TASK ===
@@ -446,55 +446,55 @@ sequenceDiagram
 
     S->>R: findTaskById(taskId)
     R->>DB: SELECT * FROM preparation_task WHERE id = ?
-    DB-->>R: PreparationTask
-    R-->>S: Optional<PreparationTask>
+    DB-->>R:' "PreparationTask"'
+    R-->>S:' "Optional<PreparationTask>"'
 
     alt Task không tồn tại
-        S-->>CT: throw NotFoundException("Task không tồn tại")
-        CT-->>C: 404 Not Found
-        C-->>U: Hiển thị lỗi "Task không tồn tại"
+        S-->>CT:' throw NotFoundException("Task không tồn tại")'
+        CT-->>C:' "404 Not Found"'
+        C-->>U:' "Hiển thị lỗi "Task không tồn tại""'
     else Task tồn tại
         S->>R: findBudgetByActivityId(task.activityId)
         R->>DB: SELECT * FROM preparation_budget WHERE activity_id = ?
-        DB-->>R: PreparationBudget
-        R-->>S: Optional<PreparationBudget>
+        DB-->>R:' "PreparationBudget"'
+        R-->>S:' "Optional<PreparationBudget>"'
 
         alt Budget không tồn tại
-            S-->>CT: throw NotFoundException("Budget chưa được tạo")
-            CT-->>C: 404 Not Found
-            C-->>U: Hiển thị lỗi "Chưa có ngân sách cho sự kiện này"
+            S-->>CT:' throw NotFoundException("Budget chưa được tạo")'
+            CT-->>C:' "404 Not Found"'
+            C-->>U:' "Hiển thị lỗi "Chưa có ngân sách cho sự kiện này""'
         else Budget tồn tại
             S->>S: calculateTotalAllocated(task.activityId)
             S->>R: sumAllocatedAmountByActivityId(task.activityId)
             R->>DB: SELECT SUM(allocated_amount) FROM preparation_task WHERE activity_id = ?
-            DB-->>R: BigDecimal (totalAllocated)
-            R-->>S: totalAllocated
+            DB-->>R:' "BigDecimal (totalAllocated)"'
+            R-->>S:' "totalAllocated"'
 
             S->>S: newTotalAllocated = totalAllocated - task.currentAllocatedAmount + allocatedAmount
             S->>S: validate newTotalAllocated <= budget.totalAmount
 
             alt Tổng phân bổ vượt quá ngân sách
-                S-->>CT: throw BadRequestException("Vượt quá ngân sách")
-                CT-->>C: 400 Bad Request
-                C-->>U: Hiển thị lỗi "Tổng phân bổ vượt quá ngân sách cho phép"
+                S-->>CT:' throw BadRequestException("Vượt quá ngân sách")'
+                CT-->>C:' "400 Bad Request"'
+                C-->>U:' "Hiển thị lỗi "Tổng phân bổ vượt quá ngân sách cho phép""'
             else Hợp lệ
                 S->>S: task.setAllocatedAmount(allocatedAmount)
                 S->>S: task.setUpdatedAt(now)
                 S->>R: save(task)
                 R->>DB: UPDATE preparation_task SET allocated_amount = ? ...
-                DB-->>R: PreparationTask
-                R-->>S: PreparationTask
+                DB-->>R:' "PreparationTask"'
+                R-->>S:' "PreparationTask"'
 
                 S->>S: updateBudgetRemaining(budget)
                 S->>S: budget.setRemainingAmount(budget.totalAmount - newTotalAllocated)
                 S->>R: save(budget)
                 R->>DB: UPDATE preparation_budget SET remaining_amount = ? ...
-                DB-->>R: PreparationBudget
-                R-->>S: PreparationBudget
+                DB-->>R:' "PreparationBudget"'
+                R-->>S:' "PreparationBudget"'
 
                 S-->>CT: PreparationTaskDTO
-                CT-->>C: 200 OK + DTO
-                C-->>U: Hiển thị "Phân bổ ngân sách thành công"
+                CT-->>C:' "200 OK + DTO"'
+                C-->>U:' "Hiển thị "Phân bổ ngân sách thành công""'
             end
         end
     end
@@ -527,28 +527,28 @@ sequenceDiagram
 
     S->>R: findActivityById(requestDTO.activityId)
     R->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>R: Activity
-    R-->>S: Optional<Activity>
+    DB-->>R:' "Activity"'
+    R-->>S:' "Optional<Activity>"'
 
     alt Activity không tồn tại hoặc không ở chế độ chuẩn bị
         S-->>CT: throw NotFoundException / BadRequestException
-        CT-->>C: 404 / 400 Error
-        C-->>U1: Hiển thị lỗi
+        CT-->>C:' "404 / 400 Error"'
+        C-->>U1:' "Hiển thị lỗi"'
     else Activity hợp lệ
         S->>R: findBudgetByActivityId(requestDTO.activityId)
         R->>DB: SELECT * FROM preparation_budget WHERE activity_id = ?
-        DB-->>R: PreparationBudget
-        R-->>S: Optional<PreparationBudget>
+        DB-->>R:' "PreparationBudget"'
+        R-->>S:' "Optional<PreparationBudget>"'
 
         alt Budget không tồn tại
-            S-->>CT: throw NotFoundException("Chưa có ngân sách")
-            CT-->>C: 404 Not Found
-            C-->>U1: Hiển thị lỗi "Chưa có ngân sách"
+            S-->>CT:' throw NotFoundException("Chưa có ngân sách")'
+            CT-->>C:' "404 Not Found"'
+            C-->>U1:' "Hiển thị lỗi "Chưa có ngân sách""'
         else Budget tồn tại
             alt requestAmount > budget.remainingAmount
-                S-->>CT: throw BadRequestException("Yêu cầu vượt quá ngân sách còn lại")
-                CT-->>C: 400 Bad Request
-                C-->>U1: Hiển thị lỗi "Số tiền tạm ứng vượt quá ngân sách còn lại"
+                S-->>CT:' throw BadRequestException("Yêu cầu vượt quá ngân sách còn lại")'
+                CT-->>C:' "400 Bad Request"'
+                C-->>U1:' "Hiển thị lỗi "Số tiền tạm ứng vượt quá ngân sách còn lại""'
             else Hợp lệ
                 S->>S: create new FundAdvanceRequest()
                 S->>S: far.setActivityId(requestDTO.activityId)
@@ -560,13 +560,13 @@ sequenceDiagram
                 S->>S: far.setRequestedAt(now)
                 S->>R: save(far)
                 R->>DB: INSERT INTO fund_advance_request ...
-                DB-->>R: FundAdvanceRequest
-                R-->>S: FundAdvanceRequest
+                DB-->>R:' "FundAdvanceRequest"'
+                R-->>S:' "FundAdvanceRequest"'
 
                 S->>R: findAdminsAndManagers()
                 R->>DB: SELECT * FROM user WHERE role IN ('ADMIN', 'MANAGER')
-                DB-->>R: List<User>
-                R-->>S: List<User>
+                DB-->>R:' "List<User>"'
+                R-->>S:' "List<User>"'
 
                 loop Gửi notification cho từng Admin/Manager
                     S->>NS: sendNotification(adminId, "Yêu cầu tạm ứng mới cần phê duyệt", far.id)
@@ -574,8 +574,8 @@ sequenceDiagram
                 end
 
                 S-->>CT: FundAdvanceRequestDTO
-                CT-->>C: 201 Created + DTO
-                C-->>U1: Hiển thị "Gửi yêu cầu tạm ứng thành công"
+                CT-->>C:' "201 Created + DTO"'
+                C-->>U1:' "Hiển thị "Gửi yêu cầu tạm ứng thành công""'
             end
         end
     end
@@ -588,18 +588,18 @@ sequenceDiagram
 
     S->>R: findFundAdvanceById(fundAdvanceId)
     R->>DB: SELECT * FROM fund_advance_request WHERE id = ?
-    DB-->>R: FundAdvanceRequest
-    R-->>S: Optional<FundAdvanceRequest>
+    DB-->>R:' "FundAdvanceRequest"'
+    R-->>S:' "Optional<FundAdvanceRequest>"'
 
     alt Request không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U2: Hiển thị lỗi "Yêu cầu không tồn tại"
+        CT-->>C:' "404 Not Found"'
+        C-->>U2:' "Hiển thị lỗi "Yêu cầu không tồn tại""'
     else Request tồn tại
         alt Request status != PENDING
-            S-->>CT: throw BadRequestException("Yêu cầu đã được xử lý")
-            CT-->>C: 400 Bad Request
-            C-->>U2: Hiển thị lỗi "Yêu cầu đã được xử lý trước đó"
+            S-->>CT:' throw BadRequestException("Yêu cầu đã được xử lý")'
+            CT-->>C:' "400 Bad Request"'
+            C-->>U2:' "Hiển thị lỗi "Yêu cầu đã được xử lý trước đó""'
         else Request đang PENDING
             S->>S: far.setStatus(decision) // APPROVED hoặc REJECTED
             S->>S: far.setApproverId(approverId)
@@ -607,36 +607,36 @@ sequenceDiagram
             S->>S: far.setApprovedAt(now)
             S->>R: save(far)
             R->>DB: UPDATE fund_advance_request SET status = ?, approver_id = ?, ...
-            DB-->>R: FundAdvanceRequest
-            R-->>S: FundAdvanceRequest
+            DB-->>R:' "FundAdvanceRequest"'
+            R-->>S:' "FundAdvanceRequest"'
 
             alt decision == APPROVED
                 S->>R: findBudgetByActivityId(far.activityId)
                 R->>DB: SELECT * FROM preparation_budget WHERE activity_id = ?
-                DB-->>R: PreparationBudget
-                R-->>S: PreparationBudget
+                DB-->>R:' "PreparationBudget"'
+                R-->>S:' "PreparationBudget"'
 
                 S->>S: budget.setUsedAmount(budget.usedAmount + far.amount)
                 S->>S: budget.setRemainingAmount(budget.totalAmount - budget.usedAmount)
                 S->>S: budget.setUpdatedAt(now)
                 S->>R: save(budget)
                 R->>DB: UPDATE preparation_budget SET used_amount = ?, remaining_amount = ? ...
-                DB-->>R: PreparationBudget
-                R-->>S: PreparationBudget
+                DB-->>R:' "PreparationBudget"'
+                R-->>S:' "PreparationBudget"'
 
                 S->>S: createFundAdvanceLedger(far) // Tạo bản ghi tạm ứng đã duyệt
                 S->>R: save(ledger)
                 R->>DB: INSERT INTO fund_advance_ledger ...
-                DB-->>R: FundAdvanceLedger
-                R-->>S: FundAdvanceLedger
+                DB-->>R:' "FundAdvanceLedger"'
+                R-->>S:' "FundAdvanceLedger"'
             end
 
             S->>NS: sendNotification(far.requesterId, "Yêu cầu tạm ứng " + decision, far.id)
             NS-->>S: Notification sent
 
             S-->>CT: FundAdvanceRequestDTO
-            CT-->>C: 200 OK + DTO
-            C-->>U2: Hiển thị "Phê duyệt thành công" / "Từ chối thành công"
+            CT-->>C:' "200 OK + DTO"'
+            C-->>U2:' "Hiển thị "Phê duyệt thành công" / "Từ chối thành công""'
         end
     end
 ```
@@ -670,24 +670,24 @@ sequenceDiagram
 
     S->>R: findActivityById(requestDTO.activityId)
     R->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>R: Activity
-    R-->>S: Optional<Activity>
+    DB-->>R:' "Activity"'
+    R-->>S:' "Optional<Activity>"'
 
     alt Activity không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U1: Hiển thị lỗi
+        CT-->>C:' "404 Not Found"'
+        C-->>U1:' "Hiển thị lỗi"'
     else Activity tồn tại
         alt requestDTO.fundAdvanceId != null
             S->>R: findFundAdvanceById(requestDTO.fundAdvanceId)
             R->>DB: SELECT * FROM fund_advance_request WHERE id = ?
-            DB-->>R: FundAdvanceRequest
-            R-->>S: Optional<FundAdvanceRequest>
+            DB-->>R:' "FundAdvanceRequest"'
+            R-->>S:' "Optional<FundAdvanceRequest>"'
 
             alt FundAdvance không tồn tại hoặc không APPROVED
                 S-->>CT: throw NotFoundException / BadRequestException
-                CT-->>C: 404 / 400 Error
-                C-->>U1: Hiển thị lỗi "Tạm ứng không hợp lệ"
+                CT-->>C:' "404 / 400 Error"'
+                C-->>U1:' "Hiển thị lỗi "Tạm ứng không hợp lệ""'
             else FundAdvance hợp lệ
                 S->>S: continue
             end
@@ -704,13 +704,13 @@ sequenceDiagram
         S->>S: exp.setCreatedAt(now)
         S->>R: save(exp)
         R->>DB: INSERT INTO expense ...
-        DB-->>R: Expense
-        R-->>S: Expense
+        DB-->>R:' "Expense"'
+        R-->>S:' "Expense"'
 
         S->>R: findSupervisorsByActivityId(requestDTO.activityId)
         R->>DB: SELECT * FROM activity_organizer WHERE activity_id = ? AND role = 'PREP_SUPERVISOR'
-        DB-->>R: List<ActivityOrganizer>
-        R-->>S: List<ActivityOrganizer>
+        DB-->>R:' "List<ActivityOrganizer>"'
+        R-->>S:' "List<ActivityOrganizer>"'
 
         loop Gửi cho Supervisor review
             S->>NS: sendNotification(supervisorId, "Chi tiêu mới cần review", exp.id)
@@ -718,8 +718,8 @@ sequenceDiagram
         end
 
         S-->>CT: ExpenseDTO
-        CT-->>C: 201 Created + DTO
-        C-->>U1: Hiển thị "Gửi chi tiêu thành công, chờ phê duyệt"
+        CT-->>C:' "201 Created + DTO"'
+        C-->>U1:' "Hiển thị "Gửi chi tiêu thành công, chờ phê duyệt""'
     end
 
     Note over U1, NS: === LUỒNG 6B: PHÊ DUYỆT CHI TIÊU ===
@@ -730,18 +730,18 @@ sequenceDiagram
 
     S->>R: findExpenseById(expenseId)
     R->>DB: SELECT * FROM expense WHERE id = ?
-    DB-->>R: Expense
-    R-->>S: Optional<Expense>
+    DB-->>R:' "Expense"'
+    R-->>S:' "Optional<Expense>"'
 
     alt Expense không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U2: Hiển thị lỗi
+        CT-->>C:' "404 Not Found"'
+        C-->>U2:' "Hiển thị lỗi"'
     else Expense tồn tại
         alt Expense status != PENDING
-            S-->>CT: throw BadRequestException("Chi tiêu đã được xử lý")
-            CT-->>C: 400 Bad Request
-            C-->>U2: Hiển thị lỗi "Chi tiêu đã được xử lý trước đó"
+            S-->>CT:' throw BadRequestException("Chi tiêu đã được xử lý")'
+            CT-->>C:' "400 Bad Request"'
+            C-->>U2:' "Hiển thị lỗi "Chi tiêu đã được xử lý trước đó""'
         else Expense đang PENDING
             S->>S: exp.setStatus(decision) // APPROVED / REJECTED
             S->>S: exp.setApproverId(approverId)
@@ -749,35 +749,35 @@ sequenceDiagram
             S->>S: exp.setApprovedAt(now)
             S->>R: save(exp)
             R->>DB: UPDATE expense SET status = ?, approver_id = ?, ...
-            DB-->>R: Expense
-            R-->>S: Expense
+            DB-->>R:' "Expense"'
+            R-->>S:' "Expense"'
 
             alt decision == APPROVED và exp.fundAdvanceId != null
                 S->>R: findFundAdvanceById(exp.fundAdvanceId)
                 R->>DB: SELECT * FROM fund_advance_request WHERE id = ?
-                DB-->>R: FundAdvanceRequest
-                R-->>S: FundAdvanceRequest
+                DB-->>R:' "FundAdvanceRequest"'
+                R-->>S:' "FundAdvanceRequest"'
 
                 S->>R: findFundAdvanceLedgerByRequestId(exp.fundAdvanceId)
                 R->>DB: SELECT * FROM fund_advance_ledger WHERE request_id = ?
-                DB-->>R: FundAdvanceLedger
-                R-->>S: FundAdvanceLedger
+                DB-->>R:' "FundAdvanceLedger"'
+                R-->>S:' "FundAdvanceLedger"'
 
                 S->>S: ledger.setRemainingAmount(ledger.remainingAmount - exp.amount)
                 S->>S: ledger.setUsedAmount(ledger.usedAmount + exp.amount)
                 S->>S: ledger.setUpdatedAt(now)
                 S->>R: save(ledger)
                 R->>DB: UPDATE fund_advance_ledger SET remaining_amount = ?, used_amount = ? ...
-                DB-->>R: FundAdvanceLedger
-                R-->>S: FundAdvanceLedger
+                DB-->>R:' "FundAdvanceLedger"'
+                R-->>S:' "FundAdvanceLedger"'
             end
 
             S->>NS: sendNotification(exp.reporterId, "Chi tiêu " + decision, exp.id)
             NS-->>S: Notification sent
 
             S-->>CT: ExpenseDTO
-            CT-->>C: 200 OK + DTO
-            C-->>U2: Hiển thị "Phê duyệt chi tiêu thành công"
+            CT-->>C:' "200 OK + DTO"'
+            C-->>U2:' "Hiển thị "Phê duyệt chi tiêu thành công""'
         end
     end
 
@@ -789,28 +789,28 @@ sequenceDiagram
 
     S->>R: findActivityById(activityId)
     R->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>R: Activity
-    R-->>S: Optional<Activity>
+    DB-->>R:' "Activity"'
+    R-->>S:' "Optional<Activity>"'
 
     alt Activity không tồn tại
         S-->>CT: throw NotFoundException
-        CT-->>C: 404 Not Found
-        C-->>U3: Hiển thị lỗi
+        CT-->>C:' "404 Not Found"'
+        C-->>U3:' "Hiển thị lỗi"'
     else Activity tồn tại
         S->>R: findBudgetByActivityId(activityId)
         R->>DB: SELECT * FROM preparation_budget WHERE activity_id = ?
-        DB-->>R: PreparationBudget
-        R-->>S: Optional<PreparationBudget>
+        DB-->>R:' "PreparationBudget"'
+        R-->>S:' "Optional<PreparationBudget>"'
 
         S->>R: findAllFundAdvancesByActivityId(activityId)
         R->>DB: SELECT * FROM fund_advance_request WHERE activity_id = ?
-        DB-->>R: List<FundAdvanceRequest>
-        R-->>S: List<FundAdvanceRequest>
+        DB-->>R:' "List<FundAdvanceRequest>"'
+        R-->>S:' "List<FundAdvanceRequest>"'
 
         S->>R: findAllExpensesByActivityId(activityId)
         R->>DB: SELECT * FROM expense WHERE activity_id = ?
-        DB-->>R: List<Expense>
-        R-->>S: List<Expense>
+        DB-->>R:' "List<Expense>"'
+        R-->>S:' "List<Expense>"'
 
         S->>S: calculateSummary()
         S->>S: totalBudget = budget.totalAmount
@@ -831,8 +831,8 @@ sequenceDiagram
         S->>S: report.setGeneratedAt(now)
 
         S-->>CT: FinancialReportDTO
-        CT-->>C: 200 OK + DTO
-        C-->>U3: Hiển thị báo cáo tài chính tổng hợp (Budget, Advances, Expenses, Remaining)
+        CT-->>C:' "200 OK + DTO"'
+        C-->>U3:' "Hiển thị báo cáo tài chính tổng hợp (Budget, Advances, Expenses, Remaining)"'
     end
 ```
 

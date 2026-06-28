@@ -36,12 +36,12 @@ sequenceDiagram
         ValSvc->>ValSvc: Kiểm tra studentCode không rỗng, không chứa khoảng trắng
         ValSvc->>StuRepo: existsByStudentCode(studentCode)
         StuRepo->>DB: SELECT * FROM students WHERE student_code = ?
-        DB-->>StuRepo: result (boolean)
-        StuRepo-->>ValSvc: exists (boolean)
+        DB-->>StuRepo:' "result (boolean)"'
+        StuRepo-->>ValSvc:' "exists (boolean)"'
         ValSvc->>StuRepo: existsByEmail(email)
         StuRepo->>DB: SELECT * FROM users WHERE email = ?
-        DB-->>StuRepo: result (boolean)
-        StuRepo-->>ValSvc: exists (boolean)
+        DB-->>StuRepo:' "result (boolean)"'
+        StuRepo-->>ValSvc:' "exists (boolean)"'
         alt Dữ liệu row hợp lệ
             ValSvc-->>ExcelSvc: valid = true
             ExcelSvc->>ExcelSvc: Thêm row vào validRows list
@@ -61,14 +61,14 @@ sequenceDiagram
         UserSvc->>UserSvc: Set role = STUDENT
         UserSvc->>UserRepo: save(User)
         UserRepo->>DB: INSERT INTO users (username, email, password, role, ...)
-        DB-->>UserRepo: User persisted (return userId)
+        DB-->>UserRepo:' "User persisted (return userId)"'
         UserRepo-->>UserSvc: User entity
         UserSvc-->>StuSvc: User entity
         StuSvc->>StuSvc: Tạo Student entity: userId, studentCode, fullName, classId,...
         StuSvc->>StuRepo: save(Student)
         StuRepo->>DB: INSERT INTO students (user_id, student_code, full_name, class_id, ...)
-        DB-->>StuRepo: Student persisted
-        StuRepo-->>StuSvc: Student entity
+        DB-->>StuRepo:' "Student persisted"'
+        StuRepo-->>StuSvc:' "Student entity"'
         StuSvc->>EmailSvc: queueEmail(username, randomPassword, email)
         EmailSvc->>EmailSvc: Tạo email nội dung thông tin đăng nhập
         EmailSvc->>EmailSvc: Gửi email bất đồng bộ (async)
@@ -81,7 +81,7 @@ sequenceDiagram
     Ctrl->>FileStorage: saveFile(file, "uploads/students/")
     FileStorage-->>Ctrl: filePath
     Ctrl->>DB: INSERT INTO upload_logs (file_name, file_path, success_count, fail_count, uploaded_by)
-    DB-->>Ctrl: log saved
+    DB-->>Ctrl:' "log saved"'
 ```
 
 ---
@@ -107,32 +107,32 @@ sequenceDiagram
     Ctrl->>ClassSvc: createClass(classDTO)
     ClassSvc->>DeptSvc: findById(departmentId)
     DeptSvc->>DB: SELECT * FROM departments WHERE id = ?
-    DB-->>DeptSvc: Department entity (hoặc null)
+    DB-->>DeptSvc:' "Department entity (hoặc null)"'
     alt Department không tồn tại
         DeptSvc-->>ClassSvc: throw DepartmentNotFoundException
         ClassSvc-->>Ctrl: Exception
-        Ctrl-->>Client: 404 Not Found + {error: "Department not found"}
-        Client-->>Admin: Hiển thị lỗi: "Khoa không tồn tại"
+        Ctrl-->>Client:' 404 Not Found + {error: "Department not found"}'
+        Client-->>Admin:' Hiển thị lỗi: "Khoa không tồn tại"'
     else Department tồn tại
         DeptSvc-->>ClassSvc: Department entity
         ClassSvc->>ClassRepo: existsByCode(code)
         ClassRepo->>DB: SELECT * FROM student_classes WHERE code = ?
-        DB-->>ClassRepo: true (đã tồn tại)
+        DB-->>ClassRepo:' "true (đã tồn tại)"'
         alt Class code đã tồn tại
             ClassRepo-->>ClassSvc: true
             ClassSvc-->>Ctrl: throw DuplicateCodeException
-            Ctrl-->>Client: 409 Conflict + {error: "Class code already exists"}
-            Client-->>Admin: Hiển thị lỗi: "Mã lớp đã tồn tại"
+            Ctrl-->>Client:' 409 Conflict + {error: "Class code already exists"}'
+            Client-->>Admin:' Hiển thị lỗi: "Mã lớp đã tồn tại"'
         else Class code chưa tồn tại
             ClassRepo-->>ClassSvc: false
             ClassSvc->>ClassSvc: Tạo StudentClass entity từ DTO
             ClassSvc->>ClassRepo: save(StudentClass)
             ClassRepo->>DB: INSERT INTO student_classes (name, code, department_id, year, ...)
-            DB-->>ClassRepo: StudentClass persisted (id generated)
+            DB-->>ClassRepo:' "StudentClass persisted (id generated)"'
             ClassRepo-->>ClassSvc: StudentClass entity
             ClassSvc-->>Ctrl: ClassResponseDTO
             Ctrl-->>Client: 201 Created + JSON ClassResponseDTO
-            Client-->>Admin: Hiển thị thông báo "Tạo lớp thành công", cập nhật danh sách lớp
+            Client-->>Admin:' Hiển thị thông báo "Tạo lớp thành công", cập nhật danh sách lớp'
         end
     end
 
@@ -143,36 +143,36 @@ sequenceDiagram
     Ctrl->>ClassSvc: updateClass(id, classDTO)
     ClassSvc->>ClassRepo: findById(id)
     ClassRepo->>DB: SELECT * FROM student_classes WHERE id = ?
-    DB-->>ClassRepo: StudentClass entity (hoặc null)
+    DB-->>ClassRepo:' "StudentClass entity (hoặc null)"'
     alt Class không tồn tại
         ClassRepo-->>ClassSvc: Optional.empty
         ClassSvc-->>Ctrl: throw ClassNotFoundException
-        Ctrl-->>Client: 404 Not Found + {error: "Class not found"}
-        Client-->>Admin: Hiển thị lỗi: "Lớp không tồn tại"
+        Ctrl-->>Client:' 404 Not Found + {error: "Class not found"}'
+        Client-->>Admin:' Hiển thị lỗi: "Lớp không tồn tại"'
     else Class tồn tại
         ClassRepo-->>ClassSvc: StudentClass entity
         ClassSvc->>ClassRepo: existsByCodeAndIdNot(code, id)
         ClassRepo->>DB: SELECT * FROM student_classes WHERE code = ? AND id != ?
-        DB-->>ClassRepo: true (code đã được lớp khác dùng)
+        DB-->>ClassRepo:' "true (code đã được lớp khác dùng)"'
         alt Code bị trùng với lớp khác
             ClassRepo-->>ClassSvc: true
             ClassSvc-->>Ctrl: throw DuplicateCodeException
-            Ctrl-->>Client: 409 Conflict + {error: "Code already used by another class"}
-            Client-->>Admin: Hiển thị lỗi: "Mã lớp đã được sử dụng"
+            Ctrl-->>Client:' 409 Conflict + {error: "Code already used by another class"}'
+            Client-->>Admin:' Hiển thị lỗi: "Mã lớp đã được sử dụng"'
         else Code hợp lệ
             ClassRepo-->>ClassSvc: false
             ClassSvc->>DeptSvc: findById(departmentId) (nếu departmentId thay đổi)
             DeptSvc->>DB: SELECT * FROM departments WHERE id = ?
-            DB-->>DeptSvc: Department entity
+            DB-->>DeptSvc:' "Department entity"'
             DeptSvc-->>ClassSvc: Department
             ClassSvc->>ClassSvc: Update entity: setName, setCode, setDepartmentId, setYear, setCapacity,...
             ClassSvc->>ClassRepo: save(StudentClass)
             ClassRepo->>DB: UPDATE student_classes SET name=?, code=?, department_id=?, year=?, updated_at=NOW() WHERE id=?
-            DB-->>ClassRepo: updated rows
+            DB-->>ClassRepo:' "updated rows"'
             ClassRepo-->>ClassSvc: StudentClass entity (updated)
             ClassSvc-->>Ctrl: ClassResponseDTO
             Ctrl-->>Client: 200 OK + JSON ClassResponseDTO
-            Client-->>Admin: Hiển thị thông báo "Cập nhật lớp thành công", refresh bảng
+            Client-->>Admin:' Hiển thị thông báo "Cập nhật lớp thành công", refresh bảng'
         end
     end
 
@@ -185,31 +185,31 @@ sequenceDiagram
     Ctrl->>ClassSvc: deleteClass(id)
     ClassSvc->>ClassRepo: findById(id)
     ClassRepo->>DB: SELECT * FROM student_classes WHERE id = ?
-    DB-->>ClassRepo: StudentClass entity (hoặc null)
+    DB-->>ClassRepo:' "StudentClass entity (hoặc null)"'
     alt Class không tồn tại
         ClassRepo-->>ClassSvc: Optional.empty
         ClassSvc-->>Ctrl: throw ClassNotFoundException
         Ctrl-->>Client: 404 Not Found
-        Client-->>Admin: Hiển thị lỗi: "Lớp không tồn tại"
+        Client-->>Admin:' Hiển thị lỗi: "Lớp không tồn tại"'
     else Class tồn tại
         ClassRepo-->>ClassSvc: StudentClass entity
         ClassSvc->>ClassRepo: countStudentsByClassId(id)
         ClassRepo->>DB: SELECT COUNT(*) FROM students WHERE class_id = ?
-        DB-->>ClassRepo: count (n)
+        DB-->>ClassRepo:' "count (n)"'
         alt Class có sinh viên (n > 0)
             ClassRepo-->>ClassSvc: n > 0
-            ClassSvc-->>Ctrl: throw ClassHasStudentsException("Lớp đang có sinh viên, không thể xóa")
-            Ctrl-->>Client: 409 Conflict + {error: "Class has students, cannot delete"}
-            Client-->>Admin: Hiển thị lỗi: "Lớp đang có sinh viên, không thể xóa. Vui lòng chuyển sinh viên sang lớp khác trước."
+            ClassSvc-->>Ctrl:' throw ClassHasStudentsException("Lớp đang có sinh viên, không thể xóa")'
+            Ctrl-->>Client:' 409 Conflict + {error: "Class has students, cannot delete"}'
+            Client-->>Admin:' Hiển thị lỗi: "Lớp đang có sinh viên, không thể xóa. Vui lòng chuyển sinh viên sang lớp khác trước."'
         else Class không có sinh viên (n = 0)
             ClassRepo-->>ClassSvc: n = 0
             ClassSvc->>ClassRepo: deleteById(id)
             ClassRepo->>DB: DELETE FROM student_classes WHERE id = ?
-            DB-->>ClassRepo: deleted rows
+            DB-->>ClassRepo:' "deleted rows"'
             ClassRepo-->>ClassSvc: void
             ClassSvc-->>Ctrl: void
-            Ctrl-->>Client: 204 No Content (hoặc 200 OK + {message: "Deleted"})
-            Client-->>Admin: Hiển thị thông báo "Xóa lớp thành công", remove khỏi bảng
+            Ctrl-->>Client:' 204 No Content (hoặc 200 OK + {message: "Deleted"})'
+            Client-->>Admin:' Hiển thị thông báo "Xóa lớp thành công", remove khỏi bảng'
         end
     end
 ```
@@ -237,51 +237,51 @@ sequenceDiagram
     Ctrl->>ClassSvc: addStudentToClass(classId, studentId)
     ClassSvc->>ClassRepo: findById(classId)
     ClassRepo->>DB: SELECT * FROM student_classes WHERE id = ?
-    DB-->>ClassRepo: StudentClass entity (hoặc null)
+    DB-->>ClassRepo:' "StudentClass entity (hoặc null)"'
     alt Class không tồn tại
         ClassRepo-->>ClassSvc: Optional.empty
         ClassSvc-->>Ctrl: throw ClassNotFoundException
-        Ctrl-->>Client: 404 Not Found + {error: "Class not found"}
-        Client-->>Admin: Hiển thị lỗi: "Lớp không tồn tại"
+        Ctrl-->>Client:' 404 Not Found + {error: "Class not found"}'
+        Client-->>Admin:' Hiển thị lỗi: "Lớp không tồn tại"'
     else Class tồn tại
         ClassRepo-->>ClassSvc: StudentClass entity
         ClassSvc->>StuSvc: findById(studentId)
         StuSvc->>StuRepo: findById(studentId)
         StuRepo->>DB: SELECT * FROM students WHERE id = ?
-        DB-->>StuRepo: Student entity (hoặc null)
+        DB-->>StuRepo:' "Student entity (hoặc null)"'
         alt Student không tồn tại
-            StuRepo-->>StuSvc: Optional.empty
+            StuRepo-->>StuSvc:' "Optional.empty"'
             StuSvc-->>ClassSvc: throw StudentNotFoundException
             ClassSvc-->>Ctrl: Exception
-            Ctrl-->>Client: 404 Not Found + {error: "Student not found"}
-            Client-->>Admin: Hiển thị lỗi: "Sinh viên không tồn tại"
+            Ctrl-->>Client:' 404 Not Found + {error: "Student not found"}'
+            Client-->>Admin:' Hiển thị lỗi: "Sinh viên không tồn tại"'
         else Student tồn tại
-            StuRepo-->>StuSvc: Student entity
+            StuRepo-->>StuSvc:' "Student entity"'
             StuSvc-->>ClassSvc: Student entity
             ClassSvc->>StuRepo: existsByClassIdAndStudentId(classId, studentId)
             StuRepo->>DB: SELECT * FROM students WHERE class_id = ? AND id = ?
-            DB-->>StuRepo: true (đã trong lớp)
+            DB-->>StuRepo:' "true (đã trong lớp)"'
             alt Student đã trong lớp
-                StuRepo-->>ClassSvc: true
+                StuRepo-->>ClassSvc:' "true"'
                 ClassSvc-->>Ctrl: throw DuplicateMembershipException
-                Ctrl-->>Client: 409 Conflict + {error: "Student already in class"}
-                Client-->>Admin: Hiển thị lỗi: "Sinh viên đã thuộc lớp này"
+                Ctrl-->>Client:' 409 Conflict + {error: "Student already in class"}'
+                Client-->>Admin:' Hiển thị lỗi: "Sinh viên đã thuộc lớp này"'
             else Student chưa trong lớp
-                StuRepo-->>ClassSvc: false
+                StuRepo-->>ClassSvc:' "false"'
                 ClassSvc->>StuSvc: assignClass(studentId, classId)
                 StuSvc->>StuRepo: findById(studentId)
                 StuRepo->>DB: SELECT * FROM students WHERE id = ? FOR UPDATE
-                DB-->>StuRepo: Student entity
-                StuRepo-->>StuSvc: Student entity
+                DB-->>StuRepo:' "Student entity"'
+                StuRepo-->>StuSvc:' "Student entity"'
                 StuSvc->>StuSvc: student.setClassId(classId)
                 StuSvc->>StuRepo: save(Student)
                 StuRepo->>DB: UPDATE students SET class_id = ?, updated_at = NOW() WHERE id = ?
-                DB-->>StuRepo: updated rows
-                StuRepo-->>StuSvc: Student entity (updated)
+                DB-->>StuRepo:' "updated rows"'
+                StuRepo-->>StuSvc:' "Student entity (updated)"'
                 StuSvc-->>ClassSvc: StudentResponseDTO
                 ClassSvc-->>Ctrl: Success result
-                Ctrl-->>Client: 200 OK + JSON {message: "Student added to class", student: {...}}
-                Client-->>Admin: Hiển thị thông báo "Thêm sinh viên vào lớp thành công", cập nhật danh sách lớp
+                Ctrl-->>Client:' 200 OK + JSON {message: "Student added to class", student: {...}}'
+                Client-->>Admin:' Hiển thị thông báo "Thêm sinh viên vào lớp thành công", cập nhật danh sách lớp'
             end
         end
     end
@@ -295,38 +295,38 @@ sequenceDiagram
     Ctrl->>ClassSvc: removeStudentFromClass(classId, studentId)
     ClassSvc->>ClassRepo: findById(classId)
     ClassRepo->>DB: SELECT * FROM student_classes WHERE id = ?
-    DB-->>ClassRepo: StudentClass entity (hoặc null)
+    DB-->>ClassRepo:' "StudentClass entity (hoặc null)"'
     alt Class không tồn tại
         ClassRepo-->>ClassSvc: Optional.empty
         ClassSvc-->>Ctrl: throw ClassNotFoundException
         Ctrl-->>Client: 404 Not Found
-        Client-->>Admin: Hiển thị lỗi: "Lớp không tồn tại"
+        Client-->>Admin:' Hiển thị lỗi: "Lớp không tồn tại"'
     else Class tồn tại
         ClassRepo-->>ClassSvc: StudentClass entity
         ClassSvc->>StuRepo: findByIdAndClassId(studentId, classId)
         StuRepo->>DB: SELECT * FROM students WHERE id = ? AND class_id = ?
-        DB-->>StuRepo: Student entity (hoặc null)
+        DB-->>StuRepo:' "Student entity (hoặc null)"'
         alt Student không thuộc lớp hoặc không tồn tại
-            StuRepo-->>ClassSvc: Optional.empty
+            StuRepo-->>ClassSvc:' "Optional.empty"'
             ClassSvc-->>Ctrl: throw StudentNotInClassException
-            Ctrl-->>Client: 404 Not Found + {error: "Student not found in this class"}
-            Client-->>Admin: Hiển thị lỗi: "Sinh viên không thuộc lớp này"
+            Ctrl-->>Client:' 404 Not Found + {error: "Student not found in this class"}'
+            Client-->>Admin:' Hiển thị lỗi: "Sinh viên không thuộc lớp này"'
         else Student thuộc lớp
-            StuRepo-->>ClassSvc: Student entity
+            StuRepo-->>ClassSvc:' "Student entity"'
             ClassSvc->>StuSvc: removeClassAssignment(studentId)
             StuSvc->>StuRepo: findById(studentId)
             StuRepo->>DB: SELECT * FROM students WHERE id = ? FOR UPDATE
-            DB-->>StuRepo: Student entity
-            StuRepo-->>StuSvc: Student entity
+            DB-->>StuRepo:' "Student entity"'
+            StuRepo-->>StuSvc:' "Student entity"'
             StuSvc->>StuSvc: student.setClassId(null)
             StuSvc->>StuRepo: save(Student)
             StuRepo->>DB: UPDATE students SET class_id = NULL, updated_at = NOW() WHERE id = ?
-            DB-->>StuRepo: updated rows
-            StuRepo-->>StuSvc: Student entity (updated)
+            DB-->>StuRepo:' "updated rows"'
+            StuRepo-->>StuSvc:' "Student entity (updated)"'
             StuSvc-->>ClassSvc: StudentResponseDTO
             ClassSvc-->>Ctrl: Success result
-            Ctrl-->>Client: 200 OK + JSON {message: "Student removed from class", student: {...}}
-            Client-->>Admin: Hiển thị thông báo "Xóa sinh viên khỏi lớp thành công", refresh danh sách lớp
+            Ctrl-->>Client:' 200 OK + JSON {message: "Student removed from class", student: {...}}'
+            Client-->>Admin:' Hiển thị thông báo "Xóa sinh viên khỏi lớp thành công", refresh danh sách lớp'
         end
     end
 ```
@@ -360,8 +360,8 @@ sequenceDiagram
         StuRepo->>DB: SELECT * FROM students WHERE<br/>LOWER(full_name) LIKE LOWER(?)<br/>OR LOWER(student_code) LIKE LOWER(?)<br/>OR LOWER(email) LIKE LOWER(?)<br/>ORDER BY ? LIMIT ? OFFSET ?
         Note right of DB: Search pattern: %keyword%
     end
-    DB-->>StuRepo: List<Student> + totalCount
-    StuRepo-->>StuSvc: Page<Student> entity
+    DB-->>StuRepo:' "List<Student> + totalCount"'
+    StuRepo-->>StuSvc:' "Page<Student> entity"'
     StuSvc->>StuSvc: Map từng Student -> StudentResponseDTO
     StuSvc->>StuSvc: Enrich DTO: className, departmentName, userInfo (email, username)
     StuSvc-->>Ctrl: Page<StudentResponseDTO> {content, totalElements, totalPages, number, size, first, last}
@@ -398,25 +398,25 @@ sequenceDiagram
     Ctrl->>StuSvc: findById(id)
     StuSvc->>StuRepo: findById(id)
     StuRepo->>DB: SELECT * FROM students WHERE id = ?
-    DB-->>StuRepo: Student entity (hoặc null)
+    DB-->>StuRepo:' "Student entity (hoặc null)"'
     alt Student không tồn tại
-        StuRepo-->>StuSvc: Optional.empty
+        StuRepo-->>StuSvc:' "Optional.empty"'
         StuSvc-->>Ctrl: throw StudentNotFoundException
-        Ctrl-->>Client: 404 Not Found + {error: "Student not found"}
-        Client-->>Admin: Hiển thị lỗi: "Sinh viên không tồn tại"
+        Ctrl-->>Client:' 404 Not Found + {error: "Student not found"}'
+        Client-->>Admin:' Hiển thị lỗi: "Sinh viên không tồn tại"'
     else Student tồn tại
-        StuRepo-->>StuSvc: Student entity
+        StuRepo-->>StuSvc:' "Student entity"'
         StuSvc->>StuSvc: Lấy userId từ Student
         StuSvc->>UserSvc: findById(userId)
         UserSvc->>UserRepo: findById(userId)
         UserRepo->>DB: SELECT * FROM users WHERE id = ?
-        DB-->>UserRepo: User entity (hoặc null)
+        DB-->>UserRepo:' "User entity (hoặc null)"'
         alt User không tồn tại hoặc bị vô hiệu hóa
             UserRepo-->>UserSvc: Optional.empty / User disabled
             UserSvc-->>StuSvc: throw UserNotFoundException / UserDisabledException
             StuSvc-->>Ctrl: Exception
-            Ctrl-->>Client: 404/403 + {error: "User account not found or disabled"}
-            Client-->>Admin: Hiển thị lỗi: "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa"
+            Ctrl-->>Client:' 404/403 + {error: "User account not found or disabled"}'
+            Client-->>Admin:' Hiển thị lỗi: "Tài khoản không tồn tại hoặc đã bị vô hiệu hóa"'
         else User tồn tại và active
             UserRepo-->>UserSvc: User entity
             UserSvc-->>StuSvc: User entity
@@ -429,7 +429,7 @@ sequenceDiagram
             StuSvc->>UserSvc: updatePassword(userId, encryptedPassword)
             UserSvc->>UserRepo: updatePassword(userId, encryptedPassword)
             UserRepo->>DB: UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?
-            DB-->>UserRepo: updated rows
+            DB-->>UserRepo:' "updated rows"'
             UserRepo-->>UserSvc: void
             UserSvc-->>StuSvc: void
             StuSvc->>StuSvc: Chuẩn bị dữ liệu email: username, plainPassword, fullName, email
@@ -438,15 +438,15 @@ sequenceDiagram
             EmailSvc->>MailProvider: send(emailMessage)
             MailProvider-->>EmailSvc: Email sent / queued successfully
             EmailSvc-->>StuSvc: void
-            StuSvc-->>Ctrl: SendCredentialResult{success: true, emailSentTo: email, message: "Credentials sent successfully"}
-            Ctrl-->>Client: 200 OK + JSON {success: true, message: "Thông tin đăng nhập đã được gửi qua email"}
+            StuSvc-->>Ctrl:' SendCredentialResult{success: true, emailSentTo: email, message: "Credentials sent successfully"}'
+            Ctrl-->>Client:' 200 OK + JSON {success: true, message: "Thông tin đăng nhập đã được gửi qua email"}'
             Client-->>Admin: Hiển thị thông báo thành công, có thể log lịch sử gửi
         end
     end
 
     Note over Admin, MailProvider: Luồng ghi log (Optional)
     StuSvc->>DB: INSERT INTO credential_logs (student_id, sent_by, sent_at, email, status)
-    DB-->>StuSvc: log saved
+    DB-->>StuSvc:' "log saved"'
 ```
 
 ---
@@ -472,37 +472,37 @@ sequenceDiagram
     Ctrl->>StuSvc: addOrUpdateAddress(id, addressDTO)
     StuSvc->>StuRepo: findById(id)
     StuRepo->>DB: SELECT * FROM students WHERE id = ?
-    DB-->>StuRepo: Student entity (hoặc null)
+    DB-->>StuRepo:' "Student entity (hoặc null)"'
     alt Student không tồn tại
-        StuRepo-->>StuSvc: Optional.empty
+        StuRepo-->>StuSvc:' "Optional.empty"'
         StuSvc-->>Ctrl: throw StudentNotFoundException
-        Ctrl-->>Client: 404 Not Found + {error: "Student not found"}
-        Client-->>Student: Hiển thị lỗi: "Không tìm thấy thông tin sinh viên"
+        Ctrl-->>Client:' 404 Not Found + {error: "Student not found"}'
+        Client-->>Student:' Hiển thị lỗi: "Không tìm thấy thông tin sinh viên"'
     else Student tồn tại
-        StuRepo-->>StuSvc: Student entity
+        StuRepo-->>StuSvc:' "Student entity"'
         alt Sinh viên đang cập nhật địa chỉ của chính mình (self-service)
             StuSvc->>StuSvc: Kiểm tra: student.userId == currentUser.id (Security check)
             alt Không có quyền (cố gắng sửa địa chỉ người khác)
                 StuSvc-->>Ctrl: throw AccessDeniedException
-                Ctrl-->>Client: 403 Forbidden + {error: "Access denied"}
-                Client-->>Student: Hiển thị lỗi: "Bạn không có quyền thực hiện thao tác này"
+                Ctrl-->>Client:' 403 Forbidden + {error: "Access denied"}'
+                Client-->>Student:' Hiển thị lỗi: "Bạn không có quyền thực hiện thao tác này"'
             else Có quyền
                 StuSvc->>StuSvc: Cập nhật các trường địa chỉ:<br/>setPermanentAddress(?)<br/>setTemporaryAddress(?)<br/>setHometown(?)<br/>setProvince(?)<br/>setDistrict(?)<br/>setWard(?)<br/>setStreet(?)<br/>setDetailAddress(?)
                 StuSvc->>StuRepo: save(Student)
                 StuRepo->>DB: UPDATE students SET<br/>permanent_address = ?,<br/>temporary_address = ?,<br/>hometown = ?,<br/>province = ?,<br/>district = ?,<br/>ward = ?,<br/>street = ?,<br/>detail_address = ?,<br/>updated_at = NOW()<br/>WHERE id = ?
-                DB-->>StuRepo: updated rows
-                StuRepo-->>StuSvc: Student entity (updated)
+                DB-->>StuRepo:' "updated rows"'
+                StuRepo-->>StuSvc:' "Student entity (updated)"'
                 StuSvc-->>Ctrl: StudentResponseDTO (bao gồm address info)
                 Ctrl-->>Client: 200 OK + JSON StudentResponseDTO
-                Client-->>Student: Hiển thị thông báo "Cập nhật địa chỉ thành công", refresh form
+                Client-->>Student:' Hiển thị thông báo "Cập nhật địa chỉ thành công", refresh form'
             end
         else Admin đang cập nhật địa chỉ cho sinh viên (admin override)
             Note right of StuSvc: Admin có role MANAGER/ADMIN, bỏ qua self-check
             StuSvc->>StuSvc: Cập nhật các trường địa chỉ tương tự
             StuSvc->>StuRepo: save(Student)
             StuRepo->>DB: UPDATE students SET ... WHERE id = ?
-            DB-->>StuRepo: updated rows
-            StuRepo-->>StuSvc: Student entity (updated)
+            DB-->>StuRepo:' "updated rows"'
+            StuRepo-->>StuSvc:' "Student entity (updated)"'
             StuSvc-->>Ctrl: StudentResponseDTO
             Ctrl-->>Client: 200 OK + JSON StudentResponseDTO
             Client-->>Student: Hiển thị thông báo thành công
@@ -518,14 +518,14 @@ sequenceDiagram
     Ctrl->>StuSvc: clearAddress(id, type)
     StuSvc->>StuRepo: findById(id)
     StuRepo->>DB: SELECT * FROM students WHERE id = ?
-    DB-->>StuRepo: Student entity (hoặc null)
+    DB-->>StuRepo:' "Student entity (hoặc null)"'
     alt Student không tồn tại
-        StuRepo-->>StuSvc: Optional.empty
+        StuRepo-->>StuSvc:' "Optional.empty"'
         StuSvc-->>Ctrl: throw StudentNotFoundException
         Ctrl-->>Client: 404 Not Found
-        Client-->>Student: Hiển thị lỗi: "Không tìm thấy sinh viên"
+        Client-->>Student:' Hiển thị lỗi: "Không tìm thấy sinh viên"'
     else Student tồn tại
-        StuRepo-->>StuSvc: Student entity
+        StuRepo-->>StuSvc:' "Student entity"'
         StuSvc->>StuSvc: Security check (self hoặc admin)
         alt type = "permanent"
             StuSvc->>StuSvc: student.setPermanentAddress(null)
@@ -538,11 +538,11 @@ sequenceDiagram
         end
         StuSvc->>StuRepo: save(Student)
         StuRepo->>DB: UPDATE students SET ... = NULL, updated_at = NOW() WHERE id = ?
-        DB-->>StuRepo: updated rows
-        StuRepo-->>StuSvc: Student entity (updated)
+        DB-->>StuRepo:' "updated rows"'
+        StuRepo-->>StuSvc:' "Student entity (updated)"'
         StuSvc-->>Ctrl: StudentResponseDTO
-        Ctrl-->>Client: 200 OK + JSON {message: "Address cleared successfully", student: {...}}
-        Client-->>Student: Hiển thị thông báo "Xóa địa chỉ thành công", clear form fields
+        Ctrl-->>Client:' 200 OK + JSON {message: "Address cleared successfully", student: {...}}'
+        Client-->>Student:' Hiển thị thông báo "Xóa địa chỉ thành công", clear form fields'
     end
 
     Note over Student, DB: Luồng 6C: Lấy thông tin địa chỉ (READ)
@@ -551,14 +551,14 @@ sequenceDiagram
     Ctrl->>StuSvc: getAddress(id)
     StuSvc->>StuRepo: findById(id)
     StuRepo->>DB: SELECT * FROM students WHERE id = ?
-    DB-->>StuRepo: Student entity (hoặc null)
+    DB-->>StuRepo:' "Student entity (hoặc null)"'
     alt Student không tồn tại
-        StuRepo-->>StuSvc: Optional.empty
+        StuRepo-->>StuSvc:' "Optional.empty"'
         StuSvc-->>Ctrl: throw StudentNotFoundException
         Ctrl-->>Client: 404 Not Found
         Client-->>Student: Hiển thị lỗi
     else Student tồn tại
-        StuRepo-->>StuSvc: Student entity
+        StuRepo-->>StuSvc:' "Student entity"'
         StuSvc->>StuSvc: Map address fields -> AddressDTO
         StuSvc-->>Ctrl: AddressResponseDTO
         Ctrl-->>Client: 200 OK + JSON AddressResponseDTO

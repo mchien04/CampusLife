@@ -34,7 +34,7 @@ sequenceDiagram
     MS->>AS: 5. validateActivityExists(activityId)
     AS->>MR: 6. findById(activityId) [hoặc ActivityRepository]
     MR->>DB: 7. SELECT * FROM activities WHERE id = ?
-    DB-->>MR: 8. Trả về Activity record
+    DB-->>MR:' "8. Trả về Activity record"'
     MR-->>AS: 9. Optional<Activity>
     AS-->>MS: 10. Activity exists / ActivityNotFoundException
 
@@ -43,7 +43,7 @@ sequenceDiagram
     MS->>MS: 11. Build Minigame entity<br/>(title, description, activityId,<br/>startTime, endTime, status=DRAFT)
     MS->>MR: 12. save(minigame)
     MR->>DB: 13. INSERT INTO minigames (...)
-    DB-->>MR: 14. Trả về minigame_id
+    DB-->>MR:' "14. Trả về minigame_id"'
     MR-->>MS: 15. Minigame (đã có ID)
 
     Note over MS, DB: ===== LUỒNG 4: Tạo danh sách Question =====
@@ -52,7 +52,7 @@ sequenceDiagram
         MS->>MS: 16a. Build Question entity<br/>(text, options[], correctAnswer,<br/>score, minigameId = savedMinigame.id)
         MS->>QR: 16b. save(question)
         QR->>DB: 16c. INSERT INTO questions (...)
-        DB-->>QR: 16d. Trả về question_id
+        DB-->>QR:' "16d. Trả về question_id"'
         QR-->>MS: 16e. Question (đã có ID)
     end
 
@@ -62,7 +62,7 @@ sequenceDiagram
 
     MS-->>AC: 18. MinigameResponseDTO<br/>(id, title, description, activityId,<br/>startTime, endTime, questions[])
     AC-->>Client: 19. ResponseEntity.ok(dto)<br/>HTTP 200 + JSON
-    Client-->>Admin: 20. Hiển thị thông báo<br/>"Tạo minigame thành công!"
+    Client-->>Admin:' 20. Hiển thị thông báo<br/>"Tạo minigame thành công!"'
 ```
 
 ---
@@ -96,7 +96,7 @@ sequenceDiagram
 
     MS->>MR: 7. findById(minigameId)
     MR->>DB: 8. SELECT * FROM minigames WHERE id = ?
-    DB-->>MR: 9. Minigame record
+    DB-->>MR:' "9. Minigame record"'
     MR-->>MS: 10. Optional<Minigame>
 
     alt Minigame không tồn tại
@@ -107,23 +107,23 @@ sequenceDiagram
     end
 
     alt Minigame chưa mở hoặc đã đóng
-        MS-->>MC: 11a. throw MinigameNotOpenException<br/>("Minigame chưa mở" / "Minigame đã kết thúc")
+        MS-->>MC:' 11a. throw MinigameNotOpenException<br/>("Minigame chưa mở" / "Minigame đã kết thúc")'
         MC-->>Client: 11b. HTTP 400 Bad Request
     else Minigame đang mở
         Note over MS, DB: ===== LUỒNG 3: Kiểm tra lượt chơi trước =====
 
         MS->>AR: 12. findByStudentIdAndMinigameId(studentId, minigameId)
         AR->>DB: 13. SELECT * FROM minigame_attempts<br/>WHERE student_id = ? AND minigame_id = ?<br/>ORDER BY start_time DESC LIMIT 1
-        DB-->>AR: 14. Attempt records (nếu có)
-        AR-->>MS: 15. List<MinigameAttempt>
+        DB-->>AR:' "14. Attempt records (nếu có)"'
+        AR-->>MS:' "15. List<MinigameAttempt>"'
 
         alt Student đã có attempt COMPLETED và minigame cho phép chơi lại (allowRetry=true)
             MS->>MS: 15a. Cho phép tạo attempt mới
         else Student đã có attempt IN_PROGRESS
-            MS-->>MC: 15b. throw AttemptInProgressException<br/>("Bạn đang có lượt chơi chưa hoàn thành")
+            MS-->>MC:' 15b. throw AttemptInProgressException<br/>("Bạn đang có lượt chơi chưa hoàn thành")'
             MC-->>Client: 15c. HTTP 409 Conflict
         else Student đã chơi và không cho phép chơi lại (allowRetry=false)
-            MS-->>MC: 15d. throw AlreadyPlayedException<br/>("Bạn đã hoàn thành quiz này")
+            MS-->>MC:' 15d. throw AlreadyPlayedException<br/>("Bạn đã hoàn thành quiz này")'
             MC-->>Client: 15e. HTTP 403 Forbidden
         end
 
@@ -132,14 +132,14 @@ sequenceDiagram
         MS->>MS: 16. Build MinigameAttempt:<br/>- studentId<br/>- minigameId<br/>- startTime = now()<br/>- status = IN_PROGRESS<br/>- score = 0<br/>- answers = []
         MS->>AR: 17. save(attempt)
         AR->>DB: 18. INSERT INTO minigame_attempts (...)
-        DB-->>AR: 19. attempt_id
-        AR-->>MS: 20. MinigameAttempt (đã có ID)
+        DB-->>AR:' "19. attempt_id"'
+        AR-->>MS:' "20. MinigameAttempt (đã có ID)"'
 
         Note over MS, DB: ===== LUỒNG 5: Chuẩn bị danh sách câu hỏi (ẩn correctAnswer) =====
 
         MS->>MR: 21. getQuestionsByMinigameId(minigameId)<br/>[hoặc QuestionRepository]
         MR->>DB: 22. SELECT id, text, options, score<br/>FROM questions WHERE minigame_id = ?<br/>(KHÔNG SELECT correctAnswer)
-        DB-->>MR: 23. Question records (ẩn đáp án đúng)
+        DB-->>MR:' "23. Question records (ẩn đáp án đúng)"'
         MR-->>MS: 24. List<QuestionDTO>
 
         MS->>MS: 25. Build StartQuizResponse:<br/>- attemptId<br/>- questions[] (id, text, options, score)<br/>- totalQuestions<br/>- timeLimit (nếu có)
@@ -184,8 +184,8 @@ sequenceDiagram
 
     MS->>AR: 8. findById(attemptId)
     AR->>DB: 9. SELECT * FROM minigame_attempts WHERE id = ?
-    DB-->>AR: 10. Attempt record
-    AR-->>MS: 11. Optional<MinigameAttempt>
+    DB-->>AR:' "10. Attempt record"'
+    AR-->>MS:' "11. Optional<MinigameAttempt>"'
 
     alt Attempt không tồn tại
         MS-->>MC: 11a. throw AttemptNotFoundException
@@ -198,7 +198,7 @@ sequenceDiagram
     end
 
     alt Status != IN_PROGRESS (đã nộp hoặc hủy)
-        MS-->>MC: 12a. throw InvalidAttemptStatusException<br/>("Lượt chơi đã kết thúc")
+        MS-->>MC:' 12a. throw InvalidAttemptStatusException<br/>("Lượt chơi đã kết thúc")'
         MC-->>Client: 12b. HTTP 400 Bad Request
     else Status = IN_PROGRESS
         Note over MS, DB: ===== LUỒNG 3: Kiểm tra thời gian =====
@@ -215,7 +215,7 @@ sequenceDiagram
 
         MS->>QR: 14. findAllByMinigameId(attempt.minigameId)<br/>(lấy tất cả questions + correctAnswer)
         QR->>DB: 15. SELECT * FROM questions WHERE minigame_id = ?
-        DB-->>QR: 16. Full Question records (có correctAnswer)
+        DB-->>QR:' "16. Full Question records (có correctAnswer)"'
         QR-->>MS: 17. List<Question> (đáp án đúng)
 
         MS->>MS: 18. Map questionsById để tra cứu nhanh
@@ -241,8 +241,8 @@ sequenceDiagram
         MS->>MS: 21. Build update Attempt:<br/>- answers = processedAnswers[]<br/>- score = totalScore<br/>- endTime = now()<br/>- status = COMPLETED<br/>- isTimeExpired (nếu có)
         MS->>AR: 22. save(attempt)
         AR->>DB: 23. UPDATE minigame_attempts<br/>SET score = ?, answers = ?,<br/>end_time = ?, status = 'COMPLETED'<br/>WHERE id = ?
-        DB-->>AR: 24. Update success
-        AR-->>MS: 25. Updated Attempt
+        DB-->>AR:' "24. Update success"'
+        AR-->>MS:' "25. Updated Attempt"'
 
         Note over MS, DB: ===== LUỒNG 6: Cộng điểm vào ScoreRecord (nếu đạt) =====
 
@@ -250,20 +250,20 @@ sequenceDiagram
             MS->>SS: 26. addScoreToStudent(studentId, minigameId, totalScore)
             SS->>SR: 27. findByStudentIdAndSource(studentId, "MINIGAME", minigameId)
             SR->>DB: 28. SELECT * FROM score_records<br/>WHERE student_id = ? AND source_type = 'MINIGAME'<br/>AND source_id = ?
-            DB-->>SR: 29. ScoreRecord (nếu đã tồn tại) / empty
+            DB-->>SR:' "29. ScoreRecord (nếu đã tồn tại) / empty"'
             SR-->>SS: 30. Optional<ScoreRecord>
 
             alt ScoreRecord chưa tồn tại (lần đầu hoàn thành)
                 SS->>SS: 30a. Build ScoreRecord:<br/>- studentId<br/>- score = totalScore<br/>- sourceType = "MINIGAME"<br/>- sourceId = minigameId<br/>- earnedAt = now()<br/>- description = "Hoàn thành quiz: {minigame.title}"
                 SS->>SR: 30b. save(scoreRecord)
                 SR->>DB: 30c. INSERT INTO score_records (...)
-                DB-->>SR: 30d. score_record_id
+                DB-->>SR:' "30d. score_record_id"'
                 SR-->>SS: 30e. ScoreRecord đã lưu
             else ScoreRecord đã tồn tại (chơi lại và điểm cao hơn)
                 SS->>SS: 30f. Chỉ cập nhật nếu totalScore > record.score<br/>(tùy policy)
                 SS->>SR: 30g. save(scoreRecord) [update]
                 SR->>DB: 30h. UPDATE score_records SET score = ? ...
-                DB-->>SR: 30i. Update success
+                DB-->>SR:' "30i. Update success"'
             end
             SS-->>MS: 31. ScoreRecord saved/updated
         else Không đạt điểm tối thiểu
@@ -276,7 +276,7 @@ sequenceDiagram
 
         MS-->>MC: 33. QuizResultResponseDTO
         MC-->>Client: 34. ResponseEntity.ok(dto)<br/>HTTP 200 + JSON
-        Client-->>Student: 35. Hiển thị kết quả:<br/>"Điểm: 8/10 - Đạt!" + chi tiết từng câu
+        Client-->>Student:' 35. Hiển thị kết quả:<br/>"Điểm: 8/10 - Đạt!" + chi tiết từng câu'
     end
 ```
 
@@ -310,8 +310,8 @@ sequenceDiagram
 
     MS->>AR: 7. findByStudentIdAndMinigameId(studentId, minigameId)<br/>[hoặc findByStudentIdAndMinigameIdOrderByStartTimeDesc]
     AR->>DB: 8. SELECT id, score, start_time, end_time, status<br/>FROM minigame_attempts<br/>WHERE student_id = ? AND minigame_id = ?<br/>ORDER BY start_time DESC
-    DB-->>AR: 9. List<Attempt> records
-    AR-->>MS: 10. List<MinigameAttempt>
+    DB-->>AR:' "9. List<Attempt> records"'
+    AR-->>MS:' "10. List<MinigameAttempt>"'
 
     alt Không có lịch sử chơi
         MS->>MS: 10a. Trả về empty list []
@@ -323,7 +323,7 @@ sequenceDiagram
 
     MS-->>MC: 12. List<AttemptHistoryDTO>
     MC-->>Client: 13. ResponseEntity.ok(list)<br/>HTTP 200 + JSON
-    Client-->>Student: 14. Hiển thị bảng lịch sử:<br/>| Lần | Điểm | Thời gian | Trạng thái |<br/>có thể có nút "Xem chi tiết"
+    Client-->>Student:' 14. Hiển thị bảng lịch sử:<br/>| Lần | Điểm | Thời gian | Trạng thái |<br/>có thể có nút "Xem chi tiết"'
 ```
 
 ---

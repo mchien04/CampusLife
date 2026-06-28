@@ -35,21 +35,21 @@ sequenceDiagram
     S->>R: findTargetUsers(targetType, targetIds)
     Note over R: targetType ∈ {ACTIVITY_REGISTRANTS, CLASS, DEPARTMENT, ALL}
     R->>DB: SELECT u.id FROM users u JOIN ... WHERE condition = ?
-    DB-->>R: List<userId>
-    R-->>S: List<User>
+    DB-->>R:' "List<userId>"'
+    R-->>S:' "List<User>"'
 
     Note over S,DB: Luồng 1c — Tạo và lưu Notification
     S->>S: for each user<br/>create Notification(<br/>userId, title, message,<br/>type=REMINDER,<br/>activityId, isRead=false<br/>)
     S->>R: saveAll(notifications)
     R->>DB: INSERT INTO notifications ...
-    DB-->>R: List<Notification> (saved)
-    R-->>S: return saved list
+    DB-->>R:' "List<Notification> (saved)"'
+    R-->>S:' "return saved list"'
 
     Note over S,FCM: Luồng 1d — Gửi FCM Push (nếu có device token)
     S->>R: findDeviceTokensByUserIds(userIds)
     R->>DB: SELECT token FROM device_tokens WHERE user_id IN (...)
-    DB-->>R: List<(userId, token, platform)>
-    R-->>S: return tokens
+    DB-->>R:' "List<(userId, token, platform)>"'
+    R-->>S:' "return tokens"'
 
     loop For each (userId, token)
         S->>FCM: sendPush(token, title, message, payload={activityId})
@@ -60,15 +60,15 @@ sequenceDiagram
         Note over S,ES: Luồng 1e — Gửi email kèm theo
         S->>R: findEmailsByUserIds(userIds)
         R->>DB: SELECT email FROM users WHERE id IN (...)
-        DB-->>R: List<email>
-        R-->>S: return emails
+        DB-->>R:' "List<email>"'
+        R-->>S:' "return emails"'
         S->>ES: sendBulkEmails(emails, title, message, templateId)
-        ES-->>S: success / fail
+        ES-->>S:' "success / fail"'
     end
 
     S-->>CT: return ReminderResult(count, fcmCount, emailCount)
-    CT-->>C: 200 OK + JSON result
-    C-->>U: Hiển thị "Đã tạo N nhắc nhở"
+    CT-->>C:' "200 OK + JSON result"'
+    C-->>U:' "Hiển thị "Đã tạo N nhắc nhở""'
 ```
 
 ### Mô tả chi tiết
@@ -106,12 +106,12 @@ sequenceDiagram
     S->>S: extractUserIdFromJWT(token)
     S->>R: findByUserIdOrderByCreatedAtDesc(userId, pageable)
     R->>DB: SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?
-    DB-->>R: Page<Notification>
-    R-->>S: return Page
+    DB-->>R:' "Page<Notification>"'
+    R-->>S:' "return Page"'
     S->>S: map to NotificationDTO(title, message, type, isRead, createdAt, activityId)
     S-->>CT: return Page<NotificationDTO>
-    CT-->>C: 200 OK + JSON
-    C-->>U: Hiển thị danh sách thông báo (mới nhất trước, badge số chưa đọc)
+    CT-->>C:' "200 OK + JSON"'
+    C-->>U:' "Hiển thị danh sách thông báo (mới nhất trước, badge số chưa đọc)"'
 
     Note over U,CT: Luồng 2b — Đánh dấu 1 thông báo đã đọc
     U->>C: Click "Đánh dấu đã đọc" trên 1 notification
@@ -119,17 +119,17 @@ sequenceDiagram
     CT->>S: markAsRead(notificationId, authUserId)
     S->>R: findById(notificationId)
     R->>DB: SELECT * FROM notifications WHERE id = ?
-    DB-->>R: Notification
-    R-->>S: Optional<Notification>
+    DB-->>R:' "Notification"'
+    R-->>S:' "Optional<Notification>"'
     S->>S: validate notification.userId == authUserId (403 nếu không khớp)
     S->>S: notification.setIsRead(true)
     S->>R: save(notification)
     R->>DB: UPDATE notifications SET is_read = true WHERE id = ?
-    DB-->>R: updated row
-    R-->>S: Notification (updated)
+    DB-->>R:' "updated row"'
+    R-->>S:' "Notification (updated)"'
     S-->>CT: return success
-    CT-->>C: 200 OK
-    C-->>U: Cập nhật UI (badge -1, gạch chân/đổi màu)
+    CT-->>C:' "200 OK"'
+    C-->>U:' "Cập nhật UI (badge -1, gạch chân/đổi màu)"'
 
     Note over U,CT: Luồng 2c — Đánh dấu tất cả đã đọc
     U->>C: Click "Đánh dấu tất cả đã đọc"
@@ -137,11 +137,11 @@ sequenceDiagram
     CT->>S: markAllAsRead(authUserId)
     S->>R: updateIsReadByUserId(userId, true)
     R->>DB: UPDATE notifications SET is_read = true WHERE user_id = ? AND is_read = false
-    DB-->>R: updatedCount
-    R-->>S: return count
+    DB-->>R:' "updatedCount"'
+    R-->>S:' "return count"'
     S-->>CT: return {updatedCount: N}
-    CT-->>C: 200 OK
-    C-->>U: Ẩn badge, đánh dấu tất cả item đã đọc
+    CT-->>C:' "200 OK"'
+    C-->>U:' "Ẩn badge, đánh dấu tất cả item đã đọc"'
 ```
 
 ### Mô tả chi tiết
@@ -177,16 +177,16 @@ sequenceDiagram
     S->>S: validateTargets(dto.targets)
     alt Targets không hợp lệ
         S-->>CT: throw ValidationException
-        CT-->>C: 400 Bad Request
-        C-->>U: Hiển thị lỗi validate
+        CT-->>C:' "400 Bad Request"'
+        C-->>U:' "Hiển thị lỗi validate"'
     end
 
     Note over S,DB: Luồng 3b — Resolve target users
     S->>R: resolveTargetUsers(dto.targetType, dto.targetIds)
     Note over R: Ví dụ:<br/>BY_DEPARTMENT → JOIN users u JOIN departments d<br/>BY_CLASS → JOIN users u JOIN classes c<br/>BY_ACTIVITY_REGISTRANTS → JOIN activity_registrations ar
     R->>DB: SELECT DISTINCT u.id FROM users u ... WHERE condition = ?
-    DB-->>R: List<userId>
-    R-->>S: List<User>
+    DB-->>R:' "List<userId>"'
+    R-->>S:' "List<User>"'
 
     Note over S,DB: Luồng 3c — Batch tạo Notification
     S->>S: List<Notification> notifications = new ArrayList<>()
@@ -194,15 +194,15 @@ sequenceDiagram
         S->>S: create Notification(userId, title, message, type, isRead=false)
         S->>R: saveAll(batch)
         R->>DB: INSERT INTO notifications ...
-        DB-->>R: saved batch
-        R-->>S: return
+        DB-->>R:' "saved batch"'
+        R-->>S:' "return"'
     end
 
     Note over S,FCM: Luồng 3d — Gửi FCM push async
     S->>R: findDeviceTokensByUserIds(userIds)
     R->>DB: SELECT user_id, token, platform FROM device_tokens WHERE user_id IN (...)
-    DB-->>R: List<DeviceToken>
-    R-->>S: return tokens
+    DB-->>R:' "List<DeviceToken>"'
+    R-->>S:' "return tokens"'
 
     par Async FCM Push
         loop For each token
@@ -213,20 +213,20 @@ sequenceDiagram
         opt Nếu admin chọn gửi email
             S->>R: findEmailsByUserIds(userIds)
             R->>DB: SELECT email FROM users WHERE id IN (...)
-            DB-->>R: List<email>
-            R-->>S: return emails
+            DB-->>R:' "List<email>"'
+            R-->>S:' "return emails"'
             S->>ES: sendBulkEmailsAsync(emails, subject, body, templateId)
-            ES-->>S: success / fail
+            ES-->>S:' "success / fail"'
         end
     end
 
     S->>R: saveBulkNotificationLog(adminId, targetType, title, message, userCount, sentAt)
     R->>DB: INSERT INTO notification_logs ...
-    DB-->>R: saved
+    DB-->>R:' "saved"'
 
     S-->>CT: return BulkResult {sentCount: N, fcmCount: M, emailCount: K}
-    CT-->>C: 200 OK + JSON result
-    C-->>U: Hiển thị "Đã gửi N thông báo đến M người"
+    CT-->>C:' "200 OK + JSON result"'
+    C-->>U:' "Hiển thị "Đã gửi N thông báo đến M người""'
 ```
 
 ### Mô tả chi tiết
@@ -263,8 +263,8 @@ sequenceDiagram
     S->>S: validateEmails(dto.toEmails)
     alt Email không hợp lệ
         S-->>CT: throw ValidationException
-        CT-->>C: 400 Bad Request
-        C-->>U: Hiển thị lỗi email
+        CT-->>C:' "400 Bad Request"'
+        C-->>U:' "Hiển thị lỗi email"'
     end
 
     S->>S: loadTemplate(dto.templateId) nếu có
@@ -274,24 +274,24 @@ sequenceDiagram
         loop For each toEmail in dto.toEmails
             S->>ES: send(email, subject, renderedBody, attachments)
             Note over ES: JavaMailSender / SendGrid / AWS SES<br/>sendMimeMessage
-            ES-->>S: success / fail
+            ES-->>S:' "success / fail"'
             S->>R: saveEmailLog(to=email, subject, status=SENT/FAILED, sentAt=now, errorMsg)
             R->>DB: INSERT INTO email_logs ...
-            DB-->>R: saved
+            DB-->>R:' "saved"'
         end
     else Chế độ BCC (gửi 1 lần, nhiều người nhận BCC)
         Note over S,ES: Luồng 4c — Gửi BCC bulk
         S->>ES: sendBCC(dto.toEmails, subject, renderedBody, attachments)
         Note over ES: Tạo 1 message với To=admin@campus.edu<br/>BCC = [email1, email2, ...]
-        ES-->>S: success / fail
+        ES-->>S:' "success / fail"'
         S->>R: saveEmailLog(to="BCC_LIST", subject, status, sentAt, recipientCount)
         R->>DB: INSERT INTO email_logs ...
-        DB-->>R: saved
+        DB-->>R:' "saved"'
     end
 
     S-->>CT: return EmailSendResult {total, successCount, failCount, logs}
-    CT-->>C: 200 OK + JSON result
-    C-->>U: Hiển thị "Gửi thành công X/Y email"
+    CT-->>C:' "200 OK + JSON result"'
+    C-->>U:' "Hiển thị "Gửi thành công X/Y email""'
 ```
 
 ### Mô tả chi tiết
@@ -332,28 +332,28 @@ sequenceDiagram
     CT->>S: registerDeviceToken(userId, token, platform)
     S->>R: findByToken(token)
     R->>DB: SELECT * FROM device_tokens WHERE token = ?
-    DB-->>R: Optional<DeviceToken>
+    DB-->>R:' "Optional<DeviceToken>"'
 
     alt Token chưa tồn tại trong DB
-        R-->>S: Optional.empty
+        R-->>S:' "Optional.empty"'
         S->>S: create DeviceToken(<br/>userId, token, platform,<br/>createdAt=now, updatedAt=now<br/>)
         S->>R: save(deviceToken)
         R->>DB: INSERT INTO device_tokens ...
-        DB-->>R: DeviceToken (saved)
-        R-->>S: return entity
-        S-->>CT: return {success: true, action: "CREATED"}
+        DB-->>R:' "DeviceToken (saved)"'
+        R-->>S:' "return entity"'
+        S-->>CT:' return {success: true, action: "CREATED"}'
     else Token đã tồn tại
-        R-->>S: Optional<DeviceToken>
+        R-->>S:' "Optional<DeviceToken>"'
         S->>S: Nếu userId khác hoặc platform khác<br/>→ cập nhật lại thông tin<br/>(tránh duplicate token giữa các user)
         S->>R: save(existingToken)
         R->>DB: UPDATE device_tokens SET user_id = ?, platform = ?, updated_at = now WHERE token = ?
-        DB-->>R: updated row
-        R-->>S: DeviceToken (updated)
-        S-->>CT: return {success: true, action: "UPDATED"}
+        DB-->>R:' "updated row"'
+        R-->>S:' "DeviceToken (updated)"'
+        S-->>CT:' return {success: true, action: "UPDATED"}'
     end
 
-    CT-->>C: 200 OK
-    C-->>U: Device token đã đăng ký (ẩn dưới nền, user không cần thao tác)
+    CT-->>C:' "200 OK"'
+    C-->>U:' "Device token đã đăng ký (ẩn dưới nền, user không cần thao tác)"'
 ```
 
 ### Mô tả chi tiết

@@ -32,64 +32,64 @@ sequenceDiagram
     Note over SS,DB: 1.2 Tìm và kiểm tra Submission
     SS->>SR: findById(id)
     SR->>DB: SELECT * FROM submission WHERE id = ?
-    DB-->>SR: Submission record
+    DB-->>SR:' "Submission record"'
     SR-->>SS: Optional<Submission>
     alt Submission không tồn tại
         SS-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>AM: Hiển thị thông báo lỗi
+        CTL-->>C:' "404 Not Found"'
+        C-->>AM:' "Hiển thị thông báo lỗi"'
     else Submission đã được chấm điểm
-        SS-->>CTL: throw BusinessException("Already graded")
-        CTL-->>C: 409 Conflict
-        C-->>AM: Hiển thị thông báo lỗi
+        SS-->>CTL:' throw BusinessException("Already graded")'
+        CTL-->>C:' "409 Conflict"'
+        C-->>AM:' "Hiển thị thông báo lỗi"'
     else Hợp lệ
         Note over SS,DB: 1.3 Cập nhật Submission
         SS->>SS: submission.setStatus(GRADED)<br/>submission.setScore(score)<br/>submission.setFeedback(feedback)<br/>submission.setGradedAt(now)
         SS->>SR: save(submission)
         SR->>DB: UPDATE submission SET ... WHERE id = ?
-        DB-->>SR: Updated submission
+        DB-->>SR:' "Updated submission"'
         SR-->>SS: Submission đã cập nhật
 
         Note over SRS,DB: 1.4 Tạo ScoreRecord
         SS->>SRS: createScoreRecord(studentId, activityId, score, SUBMISSION, semesterId)
         SRS->>SCR: save(scoreRecord)
         SCR->>DB: INSERT INTO score_record VALUES (...)
-        DB-->>SCR: ScoreRecord record
-        SCR-->>SRS: ScoreRecord đã lưu
+        DB-->>SCR:' "ScoreRecord record"'
+        SCR-->>SRS:' "ScoreRecord đã lưu"'
         SRS-->>SS: ScoreRecord
 
         Note over SSS,DB: 1.5 Cập nhật tổng điểm StudentSemesterScore
         SS->>SSS: updateTotalScore(studentId, semesterId)
         SSS->>SCR: findAllByStudentIdAndSemesterId(studentId, semesterId)
         SCR->>DB: SELECT * FROM score_record WHERE student_id = ? AND semester_id = ?
-        DB-->>SCR: List<ScoreRecord>
-        SCR-->>SSS: List<ScoreRecord>
+        DB-->>SCR:' "List<ScoreRecord>"'
+        SCR-->>SSS:' "List<ScoreRecord>"'
         SSS->>SSS: totalScore = sum(score)<br/>activityCount = count(records)
         SSS->>SSR: findByStudentIdAndSemesterId(studentId, semesterId)
         SSR->>DB: SELECT * FROM student_semester_score WHERE student_id = ? AND semester_id = ?
-        DB-->>SSR: StudentSemesterScore record
-        SSR-->>SSS: Optional<StudentSemesterScore>
+        DB-->>SSR:' "StudentSemesterScore record"'
+        SSR-->>SSS:' "Optional<StudentSemesterScore>"'
         alt Chưa có bản ghi
             SSS->>SSS: Tạo mới StudentSemesterScore
         end
         SSS->>SSS: sss.setTotalScore(totalScore)<br/>sss.setActivityCount(activityCount)<br/>sss.setUpdatedAt(now)
         SSS->>SSR: save(sss)
         SSR->>DB: UPDATE/INSERT student_semester_score SET ...
-        DB-->>SSR: StudentSemesterScore đã lưu
-        SSR-->>SSS: StudentSemesterScore
+        DB-->>SSR:' "StudentSemesterScore đã lưu"'
+        SSR-->>SSS:' "StudentSemesterScore"'
         SSS-->>SS: StudentSemesterScore đã cập nhật
 
         Note over NS,DB: 1.6 Gửi notification cho sinh viên
         SS->>AR: findById(activityId)
         AR->>DB: SELECT * FROM activity WHERE id = ?
-        DB-->>AR: Activity record
-        AR-->>SS: Activity
+        DB-->>AR:' "Activity record"'
+        AR-->>SS:' "Activity"'
         SS->>NS: sendNotification(studentId, "Bài nộp đã được chấm điểm",<br/>"Activity: " + activityName + " - Điểm: " + score)
         NS-->>SS: Notification sent
 
         SS-->>CTL: SubmissionDTO (graded)
-        CTL-->>C: 200 OK + SubmissionDTO
-        C-->>AM: Hiển thị thông báo chấm điểm thành công
+        CTL-->>C:' "200 OK + SubmissionDTO"'
+        C-->>AM:' "Hiển thị thông báo chấm điểm thành công"'
     end
 ```
 
@@ -121,21 +121,21 @@ sequenceDiagram
     SS->>AS: findById(activityId)
     AS->>AR: findById(activityId)
     AR->>DB: SELECT * FROM activity WHERE id = ?
-    DB-->>AR: Activity record
-    AR-->>AS: Optional<Activity>
+    DB-->>AR:' "Activity record"'
+    AR-->>AS:' "Optional<Activity>"'
     AS-->>SS: Optional<Activity>
     alt Activity không tồn tại
         SS-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>S: Hiển thị lỗi
+        CTL-->>C:' "404 Not Found"'
+        C-->>S:' "Hiển thị lỗi"'
     else Activity không yêu cầu nộp bài
-        SS-->>CTL: throw BusinessException("Activity không yêu cầu nộp bài")
-        CTL-->>C: 400 Bad Request
-        C-->>S: Hiển thị lỗi
+        SS-->>CTL:' throw BusinessException("Activity không yêu cầu nộp bài")'
+        CTL-->>C:' "400 Bad Request"'
+        C-->>S:' "Hiển thị lỗi"'
     else Đã quá hạn nộp bài
-        SS-->>CTL: throw BusinessException("Đã quá hạn nộp bài")
-        CTL-->>C: 400 Bad Request
-        C-->>S: Hiển thị lỗi
+        SS-->>CTL:' throw BusinessException("Đã quá hạn nộp bài")'
+        CTL-->>C:' "400 Bad Request"'
+        C-->>S:' "Hiển thị lỗi"'
     else Hợp lệ
         Note over FS,DB: 2.3 Upload file
         SS->>FS: storeFile(file, "submissions/")
@@ -146,28 +146,28 @@ sequenceDiagram
         SS->>SS: submission = new Submission()<br/>submission.setActivityId(activityId)<br/>submission.setStudentId(studentId)<br/>submission.setFileUrl(fileUrl)<br/>submission.setStatus(SUBMITTED)<br/>submission.setSubmittedAt(now)
         SS->>SR: save(submission)
         SR->>DB: INSERT INTO submission VALUES (...)
-        DB-->>SR: Submission record
+        DB-->>SR:' "Submission record"'
         SR-->>SS: Submission đã lưu
 
         Note over NS,DB: 2.5 Gửi notification cho Admin/Manager
         SS->>AS: getActivityManagers(activityId)
         AS->>AR: findById(activityId)
         AR->>DB: SELECT * FROM activity WHERE id = ?
-        DB-->>AR: Activity (with managerIds)
-        AR-->>AS: Activity
+        DB-->>AR:' "Activity (with managerIds)"'
+        AR-->>AS:' "Activity"'
         AS-->>SS: List<managerIds>
         loop Với mỗi manager
             SS->>NS: sendNotification(managerId,<br/>"Có bài nộp mới",<br/>"Sinh viên " + studentName + " đã nộp bài cho activity: " + activityName)
             NS->>NR: save(notification)
             NR->>DB: INSERT INTO notification VALUES (...)
-            DB-->>NR: Notification record
-            NR-->>NS: Notification đã lưu
+            DB-->>NR:' "Notification record"'
+            NR-->>NS:' "Notification đã lưu"'
             NS-->>SS: Notification sent
         end
 
         SS-->>CTL: SubmissionDTO
-        CTL-->>C: 201 Created + SubmissionDTO
-        C-->>S: Hiển thị thông báo nộp bài thành công
+        CTL-->>C:' "201 Created + SubmissionDTO"'
+        C-->>S:' "Hiển thị thông báo nộp bài thành công"'
     end
 ```
 
@@ -198,20 +198,20 @@ sequenceDiagram
     Note over SS,DB: 3.2 Tìm và kiểm tra Submission
     SS->>SR: findById(id)
     SR->>DB: SELECT * FROM submission WHERE id = ?
-    DB-->>SR: Submission record
+    DB-->>SR:' "Submission record"'
     SR-->>SS: Optional<Submission>
     alt Submission không tồn tại
         SS-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>S: Hiển thị lỗi
+        CTL-->>C:' "404 Not Found"'
+        C-->>S:' "Hiển thị lỗi"'
     else Không phải bài của student này
         SS-->>CTL: throw AccessDeniedException
-        CTL-->>C: 403 Forbidden
-        C-->>S: Hiển thị lỗi
+        CTL-->>C:' "403 Forbidden"'
+        C-->>S:' "Hiển thị lỗi"'
     else Đã được chấm điểm
-        SS-->>CTL: throw BusinessException("Bài đã được chấm điểm, không thể sửa")
-        CTL-->>C: 409 Conflict
-        C-->>S: Hiển thị lỗi
+        SS-->>CTL:' throw BusinessException("Bài đã được chấm điểm, không thể sửa")'
+        CTL-->>C:' "409 Conflict"'
+        C-->>S:' "Hiển thị lỗi"'
     else Hợp lệ
         Note over FS,DB: 3.3 Xóa file cũ (nếu có)
         alt fileUrl cũ != null
@@ -229,28 +229,28 @@ sequenceDiagram
         SS->>SS: submission.setFileUrl(newFileUrl)<br/>submission.setStatus(RESUBMITTED)<br/>submission.setUpdatedAt(now)
         SS->>SR: save(submission)
         SR->>DB: UPDATE submission SET file_url = ?, status = ?, updated_at = ? WHERE id = ?
-        DB-->>SR: Updated submission
+        DB-->>SR:' "Updated submission"'
         SR-->>SS: Submission đã cập nhật
 
         Note over NS,DB: 3.6 Gửi notification cho Admin/Manager
         SS->>AS: getActivityManagers(activityId)
         AS->>AR: findById(activityId)
         AR->>DB: SELECT * FROM activity WHERE id = ?
-        DB-->>AR: Activity (with managerIds)
-        AR-->>AS: Activity
+        DB-->>AR:' "Activity (with managerIds)"'
+        AR-->>AS:' "Activity"'
         AS-->>SS: List<managerIds>
         loop Với mỗi manager
             SS->>NS: sendNotification(managerId,<br/>"Bài nộp đã được cập nhật",<br/>"Sinh viên " + studentName + " đã cập nhật bài nộp cho activity: " + activityName)
             NS->>NR: save(notification)
             NR->>DB: INSERT INTO notification VALUES (...)
-            DB-->>NR: Notification record
-            NR-->>NS: Notification đã lưu
+            DB-->>NR:' "Notification record"'
+            NR-->>NS:' "Notification đã lưu"'
             NS-->>SS: Notification sent
         end
 
         SS-->>CTL: SubmissionDTO
-        CTL-->>C: 200 OK + SubmissionDTO
-        C-->>S: Hiển thị thông báo cập nhật thành công
+        CTL-->>C:' "200 OK + SubmissionDTO"'
+        C-->>S:' "Hiển thị thông báo cập nhật thành công"'
     end
 ```
 
@@ -280,21 +280,21 @@ sequenceDiagram
     Note over SRS,DB: 4.3 Tìm tất cả ScoreRecord
     SRS->>SCR: findAllByStudentIdAndSemesterId(studentId, semesterId)
     SCR->>DB: SELECT * FROM score_record WHERE student_id = ? AND semester_id = ? ORDER BY scored_at DESC
-    DB-->>SCR: List<ScoreRecord>
-    SCR-->>SRS: List<ScoreRecord>
+    DB-->>SCR:' "List<ScoreRecord>"'
+    SCR-->>SRS:' "List<ScoreRecord>"'
 
     Note over SRS,DB: 4.4 Lấy thông tin Activity cho từng record
     loop Với mỗi ScoreRecord
         SRS->>AR: findById(record.getActivityId())
         AR->>DB: SELECT * FROM activity WHERE id = ?
-        DB-->>AR: Activity record
-        AR-->>SRS: Optional<Activity>
+        DB-->>AR:' "Activity record"'
+        AR-->>SRS:' "Optional<Activity>"'
         SRS->>SRS: Build ScoreDetailDTO<br/>(activityName, score, sourceType, scoredAt, feedback)
     end
 
     SRS-->>CTL: List<ScoreDetailDTO>
-    CTL-->>C: 200 OK + List<ScoreDetailDTO>
-    C-->>S: Hiển thị bảng điểm chi tiết<br/>(activityName, score, sourceType, scoredAt, feedback)
+    CTL-->>C:' "200 OK + List<ScoreDetailDTO>"'
+    C-->>S:' "Hiển thị bảng điểm chi tiết<br/>(activityName, score, sourceType, scoredAt, feedback)"'
 ```
 
 ---
@@ -323,8 +323,8 @@ sequenceDiagram
     Note over SSS,DB: 5.3 Tìm StudentSemesterScore
     SSS->>SSR: findByStudentIdAndSemesterId(studentId, semesterId)
     SSR->>DB: SELECT * FROM student_semester_score WHERE student_id = ? AND semester_id = ?
-    DB-->>SSR: StudentSemesterScore record
-    SSR-->>SSS: Optional<StudentSemesterScore>
+    DB-->>SSR:' "StudentSemesterScore record"'
+    SSR-->>SSS:' "Optional<StudentSemesterScore>"'
 
     alt Không có bản ghi
         SSS->>SSS: Tạo StudentSemesterScoreDTO<br/>totalScore = 0<br/>rank = "-"<br/>semesterName = getSemesterName(semesterId)
@@ -332,18 +332,18 @@ sequenceDiagram
         Note over SSS,DB: 5.4 Lấy tên semester và tính rank
         SSS->>SR: findById(semesterId)
         SR->>DB: SELECT * FROM semester WHERE id = ?
-        DB-->>SR: Semester record
+        DB-->>SR:' "Semester record"'
         SR-->>SSS: Semester
         SSS->>SSR: countStudentsWithHigherScore(studentId, semesterId, totalScore)
         SSR->>DB: SELECT COUNT(*) FROM student_semester_score WHERE semester_id = ? AND total_score > ?
-        DB-->>SSR: count
-        SSR-->>SSS: rank = count + 1
+        DB-->>SSR:' "count"'
+        SSR-->>SSS:' "rank = count + 1"'
         SSS->>SSS: Build StudentSemesterScoreDTO<br/>(totalScore, rank, semesterName, activityCount)
     end
 
     SSS-->>CTL: StudentSemesterScoreDTO
-    CTL-->>C: 200 OK + StudentSemesterScoreDTO
-    C-->>S: Hiển thị tổng điểm, xếp hạng, tên học kỳ
+    CTL-->>C:' "200 OK + StudentSemesterScoreDTO"'
+    C-->>S:' "Hiển thị tổng điểm, xếp hạng, tên học kỳ"'
 ```
 
 ---
@@ -375,8 +375,8 @@ sequenceDiagram
     Note over SSS,DB: 6.3 Lấy danh sách xếp hạng
     SSS->>SSR: findAllBySemesterIdOrderByTotalScoreDesc(semesterId, pageable)
     SSR->>DB: SELECT sss.*, u.full_name, u.student_code, u.class_name<br/>FROM student_semester_score sss<br/>JOIN users u ON sss.student_id = u.id<br/>WHERE sss.semester_id = ?<br/>ORDER BY sss.total_score DESC<br/>LIMIT ? OFFSET ?
-    DB-->>SSR: Page<StudentSemesterScore> (with user info)
-    SSR-->>SSS: Page<StudentSemesterScore>
+    DB-->>SSR:' "Page<StudentSemesterScore> (with user info)"'
+    SSR-->>SSS:' "Page<StudentSemesterScore>"'
 
     Note over SSS,DB: 6.4 Build RankingDTO với rank
     SSS->>SSS: startRank = page * size + 1<br/>rank = startRank + index
@@ -385,8 +385,8 @@ sequenceDiagram
     end
 
     SSS-->>CTL: Page<RankingDTO>
-    CTL-->>C: 200 OK + Page<RankingDTO>
-    C-->>U: Hiển thị bảng xếp hạng<br/>(rank, studentName, studentCode, className, totalScore, activityCount)
+    CTL-->>C:' "200 OK + Page<RankingDTO>"'
+    C-->>U:' "Hiển thị bảng xếp hạng<br/>(rank, studentName, studentCode, className, totalScore, activityCount)"'
 ```
 
 ---
@@ -416,13 +416,13 @@ sequenceDiagram
     SRS->>SS: findById(studentId)
     SS->>UR: findById(studentId)
     UR->>DB: SELECT * FROM users WHERE id = ? AND role = 'STUDENT'
-    DB-->>UR: User record
+    DB-->>UR:' "User record"'
     UR-->>SS: Optional<User>
     SS-->>SRS: Optional<User>
     alt Sinh viên không tồn tại
         SRS-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>A: Hiển thị lỗi
+        CTL-->>C:' "404 Not Found"'
+        C-->>A:' "Hiển thị lỗi"'
     else Hợp lệ
         Note over SRS,DB: 7.3 Lấy tất cả ScoreRecord của sinh viên
         alt semesterId có giá trị
@@ -432,25 +432,25 @@ sequenceDiagram
             SRS->>SCR: findAllByStudentId(studentId)
             SCR->>DB: SELECT * FROM score_record WHERE student_id = ? ORDER BY scored_at DESC
         end
-        DB-->>SCR: List<ScoreRecord>
-        SCR-->>SRS: List<ScoreRecord>
+        DB-->>SCR:' "List<ScoreRecord>"'
+        SCR-->>SRS:' "List<ScoreRecord>"'
 
         Note over SRS,DB: 7.4 Lấy thông tin bổ sung cho từng record
         loop Với mỗi ScoreRecord
             SRS->>AR: findById(record.getActivityId())
             AR->>DB: SELECT * FROM activity WHERE id = ?
-            DB-->>AR: Activity record
-            AR-->>SRS: Optional<Activity>
+            DB-->>AR:' "Activity record"'
+            AR-->>SRS:' "Optional<Activity>"'
             SRS->>SR: findById(record.getSemesterId())
             SR->>DB: SELECT * FROM semester WHERE id = ?
-            DB-->>SR: Semester record
+            DB-->>SR:' "Semester record"'
             SR-->>SRS: Semester
             SRS->>SRS: Build ScoreHistoryDTO<br/>(activityName, score, sourceType, scoredAt, feedback, semesterName, gradedBy)
         end
 
         SRS-->>CTL: List<ScoreHistoryDTO>
-        CTL-->>C: 200 OK + List<ScoreHistoryDTO>
-        C-->>A: Hiển thị lịch sử điểm chi tiết<br/>(có thể filter theo học kỳ)
+        CTL-->>C:' "200 OK + List<ScoreHistoryDTO>"'
+        C-->>A:' "Hiển thị lịch sử điểm chi tiết<br/>(có thể filter theo học kỳ)"'
     end
 ```
 
@@ -479,26 +479,26 @@ sequenceDiagram
     Note over SSS,DB: 8.2 Kiểm tra semester
     SSS->>SR: findById(semesterId)
     SR->>DB: SELECT * FROM semester WHERE id = ?
-    DB-->>SR: Semester record
+    DB-->>SR:' "Semester record"'
     SR-->>SSS: Optional<Semester>
     alt Semester không tồn tại
         SSS-->>CTL: throw ResourceNotFoundException
-        CTL-->>C: 404 Not Found
-        C-->>A: Hiển thị lỗi
+        CTL-->>C:' "404 Not Found"'
+        C-->>A:' "Hiển thị lỗi"'
     else Hợp lệ
         Note over SSS,DB: 8.3 Lấy tất cả StudentSemesterScore trong semester
         SSS->>SSR: findAllBySemesterId(semesterId)
         SSR->>DB: SELECT * FROM student_semester_score WHERE semester_id = ?
-        DB-->>SSR: List<StudentSemesterScore>
-        SSR-->>SSS: List<StudentSemesterScore>
+        DB-->>SSR:' "List<StudentSemesterScore>"'
+        SSR-->>SSS:' "List<StudentSemesterScore>"'
 
         Note over SSS,DB: 8.4 Tính lại điểm cho từng sinh viên
         SSS->>SSS: recalculatedCount = 0
         loop Với mỗi StudentSemesterScore
             SSS->>SCR: findAllByStudentIdAndSemesterId(studentId, semesterId)
             SCR->>DB: SELECT * FROM score_record WHERE student_id = ? AND semester_id = ?
-            DB-->>SCR: List<ScoreRecord>
-            SCR-->>SSS: List<ScoreRecord>
+            DB-->>SCR:' "List<ScoreRecord>"'
+            SCR-->>SSS:' "List<ScoreRecord>"'
 
             SSS->>SSS: totalScore = sum(score for each record)<br/>activityCount = records.size()
             SSS->>SSS: sss.setTotalScore(totalScore)<br/>sss.setActivityCount(activityCount)<br/>sss.setUpdatedAt(now)<br/>sss.setRecalculatedAt(now)
@@ -508,12 +508,12 @@ sequenceDiagram
         Note over SSS,DB: 8.5 Lưu tất cả (batch update)
         SSS->>SSR: saveAll(list)
         SSR->>DB: BEGIN TRANSACTION<br/>UPDATE student_semester_score SET ...<br/>COMMIT
-        DB-->>SSR: Batch updated
-        SSR-->>SSS: List<StudentSemesterScore> đã lưu
+        DB-->>SSR:' "Batch updated"'
+        SSR-->>SSS:' "List<StudentSemesterScore> đã lưu"'
 
         SSS-->>CTL: RecalculateResultDTO<br/>(recalculatedCount, semesterName, timestamp)
-        CTL-->>C: 200 OK + RecalculateResultDTO
-        C-->>A: Hiển thị thông báo<br/>"Đã tính lại điểm cho X sinh viên"
+        CTL-->>C:' "200 OK + RecalculateResultDTO"'
+        C-->>A:' "Hiển thị thông báo<br/>"Đã tính lại điểm cho X sinh viên""'
     end
 ```
 
@@ -552,7 +552,7 @@ sequenceDiagram
         SS->>SR: findAllByOrderBySubmittedAtDesc(pageable)
         SR->>DB: SELECT ... ORDER BY s.submitted_at DESC ...
     end
-    DB-->>SR: Page<Submission> (with joins)
+    DB-->>SR:' "Page<Submission> (with joins)"'
     SR-->>SS: Page<Submission>
 
     Note over SS,DB: 9.3 Build SubmissionAdminDTO
@@ -561,8 +561,8 @@ sequenceDiagram
     end
 
     SS-->>CTL: Page<SubmissionAdminDTO>
-    CTL-->>C: 200 OK + Page<SubmissionAdminDTO>
-    C-->>A: Hiển thị danh sách bài nộp<br/>(studentName, activityName, fileUrl, status, submittedAt, score)<br/>với pagination và filter
+    CTL-->>C:' "200 OK + Page<SubmissionAdminDTO>"'
+    C-->>A:' "Hiển thị danh sách bài nộp<br/>(studentName, activityName, fileUrl, status, submittedAt, score)<br/>với pagination và filter"'
 ```
 
 ---
