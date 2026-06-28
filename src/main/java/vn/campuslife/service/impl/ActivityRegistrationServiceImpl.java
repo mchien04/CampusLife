@@ -87,6 +87,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 return new Response(false, "Already registered for this activity", null);
             }
 
+            // 5b) Đã từng huỷ đăng ký trước đó?
+            if (registrationRepository.existsCancelledByActivityIdAndStudentId(request.getActivityId(), studentId)) {
+                return new Response(false, "Bạn đã huỷ đăng ký trước đó, không thể đăng ký lại.", null);
+            }
+
             // 6) Thời gian mở/đóng đăng ký
             if (activity.getRegistrationDeadline() != null &&
                     LocalDateTime.now().isAfter(activity.getRegistrationDeadline())) {
@@ -187,20 +192,32 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             ActivityRegistration registration = registrationOpt.get();
+            Activity activity = registration.getActivity();
 
-            // Check if can cancel (only PENDING can be cancelled, APPROVED cannot be
-            // cancelled)
             if (registration.getStatus() == RegistrationStatus.CANCELLED) {
                 return new Response(false, "Registration already cancelled", null);
             }
 
             if (registration.getStatus() == RegistrationStatus.APPROVED) {
-                return new Response(false,
-                        "Cannot cancel approved registration. This is an auto-approved registration.", null);
+                if (activity.isRequiresApproval()) {
+                    return new Response(false,
+                            "Cannot cancel approved registration. Admin has approved this registration.", null);
+                }
+                if (registration.isHasCancelledBefore()) {
+                    return new Response(false, "Bạn đã huỷ 1 lần trước đó, không thể huỷ lại.", null);
+                }
+                if (activity.getRegistrationDeadline() != null
+                        && LocalDateTime.now().isAfter(activity.getRegistrationDeadline().minusDays(1))) {
+                    return new Response(false,
+                            "Chỉ được huỷ trước hạn đăng ký 1 ngày.", null);
+                }
+                registration.setHasCancelledBefore(true);
             }
 
             registration.setStatus(RegistrationStatus.CANCELLED);
             registrationRepository.save(registration);
+
+            promoteWaitlist(activityId);
 
             return new Response(true, "Registration cancelled successfully", null);
         } catch (Exception e) {
@@ -996,6 +1013,51 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
     }
 
+    @Override
+    @Transactional
+    public void promoteWaitlist(Long activityId) {
+        Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+        if (activityOpt.isEmpty()) return;
+        Activity activity = activityOpt.get();
+
+        while (hasRemainingSlots(activityId, activity.getTicketQuantity())) {
+            Optional<ActivityRegistration> nextOpt = registrationRepository
+                    .findFirstByActivityIdAndStatusOrderByRegisteredDateAsc(activityId, RegistrationStatus.WAITLIST);
+            if (nextOpt.isEmpty()) break;
+
+            ActivityRegistration waitlistReg = nextOpt.get();
+            if (activity.isRequiresApproval()) {
+                waitlistReg.setStatus(RegistrationStatus.PENDING);
+            } else {
+                waitlistReg.setStatus(RegistrationStatus.APPROVED);
+            }
+            registrationRepository.save(waitlistReg);
+
+            try {
+                reminderScheduleService.createEventRemindersForApprovedRegistration(waitlistReg);
+            } catch (Exception e) {
+                logger.error("Failed to create reminders for promoted waitlist entry {}: {}",
+                        waitlistReg.getId(), e.getMessage(), e);
+            }
+
+            try {
+                Student student = waitlistReg.getStudent();
+                Long userId = student.getUser().getId();
+                String title = "Đăng ký từ danh sách chờ";
+                String content = String.format("Bạn đã được chuyển từ danh sách chờ vào đăng ký chính thức cho sự kiện: %s",
+                        activity.getName());
+                Map<String, Object> metadata = new HashMap<>();
+                metadata.put("activityId", activity.getId());
+                metadata.put("activityName", activity.getName());
+                metadata.put("registrationId", waitlistReg.getId());
+                notificationService.sendNotification(userId, title, content,
+                        NotificationType.ACTIVITY_REGISTRATION, null, metadata);
+            } catch (Exception e) {
+                logger.error("Failed to send waitlist promotion notification: {}", e.getMessage(), e);
+            }
+        }
+    }
+
     private boolean hasRemainingSlots(Long activityId, Integer ticketQuantity) {
         if (ticketQuantity == null) {
             return true;
@@ -1146,6 +1208,50 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
         activitySeriesRepository.findById(seriesId)
                 .ifPresent(series -> reminderScheduleService.syncSeriesMinimumRequirementReminder(series, student));
+    }
+
+    @Override
+    @Transactional
+    public Response cancelSeriesRegistration(Long seriesId, Long studentId) {
+        try {
+            Optional<ActivitySeries> seriesOpt = activitySeriesRepository.findById(seriesId);
+            if (seriesOpt.isEmpty()) {
+                return new Response(false, "Series not found", null);
+            }
+            ActivitySeries series = seriesOpt.get();
+
+            if (series.isImportant()) {
+                return new Response(false, "Không thể huỷ đăng ký chuỗi sự kiện quan trọng.", null);
+            }
+            if (series.isMandatoryForFacultyStudents()) {
+                return new Response(false, "Không thể huỷ đăng ký chuỗi bắt buộc cho sinh viên khoa.", null);
+            }
+
+            List<ActivityRegistration> seriesRegs = registrationRepository.findBySeriesIdAndStudentId(seriesId, studentId);
+            if (seriesRegs.isEmpty()) {
+                return new Response(false, "Bạn chưa đăng ký chuỗi sự kiện này.", null);
+            }
+
+            for (ActivityRegistration reg : seriesRegs) {
+                if (reg.getStatus() == RegistrationStatus.ATTENDED) {
+                    return new Response(false,
+                            "Không thể huỷ vì bạn đã tham gia sự kiện '" + reg.getActivity().getName() + "'.", null);
+                }
+            }
+
+            for (ActivityRegistration reg : seriesRegs) {
+                if (reg.getStatus() != RegistrationStatus.CANCELLED) {
+                    reg.setStatus(RegistrationStatus.CANCELLED);
+                    registrationRepository.save(reg);
+                    promoteWaitlist(reg.getActivity().getId());
+                }
+            }
+
+            return new Response(true, "Đã huỷ đăng ký chuỗi sự kiện và tất cả sự kiện con.", null);
+        } catch (Exception e) {
+            logger.error("Failed to cancel series registration: {}", e.getMessage(), e);
+            return new Response(false, "Failed to cancel series registration", null);
+        }
     }
 
 }

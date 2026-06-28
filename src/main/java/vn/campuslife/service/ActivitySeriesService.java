@@ -42,6 +42,8 @@ public interface ActivitySeriesService {
          */
         Response registerForSeries(Long seriesId, Long studentId);
 
+        Response registerForSeriesWaitlist(Long seriesId, Long studentId);
+
         /**
          * Cập nhật tiến độ sinh viên khi check-in activity thuộc chuỗi
          */

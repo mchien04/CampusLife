@@ -13,6 +13,7 @@ import vn.campuslife.model.activity.series.CreateSeriesRequest;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
 import vn.campuslife.model.activity.series.UpdateSeriesRequest;
+import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.ScorePresetService;
 
@@ -26,6 +27,7 @@ public class ActivitySeriesController {
     private static final Logger logger = LoggerFactory.getLogger(ActivitySeriesController.class);
 
     private final ActivitySeriesService seriesService;
+    private final ActivityRegistrationService activityRegistrationService;
     private final vn.campuslife.service.StudentService studentService;
     private final ScorePresetService scorePresetService;
     private final ObjectMapper objectMapper;
@@ -182,6 +184,46 @@ public class ActivitySeriesController {
             logger.error("Failed to register for series: {}", e.getMessage(), e);
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to register for series: " + e.getMessage(), null));
+        }
+    }
+
+    @PostMapping("/{seriesId}/waitlist")
+    public ResponseEntity<Response> registerForSeriesWaitlist(
+            @PathVariable Long seriesId,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            Long studentId = studentService.getStudentIdByUsername(username);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+            Response response = seriesService.registerForSeriesWaitlist(seriesId, studentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to join series waitlist: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to join series waitlist: " + e.getMessage(), null));
+        }
+    }
+
+    @DeleteMapping("/{seriesId}/register")
+    public ResponseEntity<Response> cancelSeriesRegistration(
+            @PathVariable Long seriesId,
+            org.springframework.security.core.Authentication authentication) {
+        try {
+            String username = authentication.getName();
+            Long studentId = studentService.getStudentIdByUsername(username);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+            Response response = activityRegistrationService.cancelSeriesRegistration(seriesId, studentId);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Failed to cancel series registration: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to cancel series registration: " + e.getMessage(), null));
         }
     }
 

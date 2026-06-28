@@ -60,6 +60,10 @@ public interface ActivityRegistrationService {
      */
     Response registerForWaitlist(Long activityId, Long studentId);
 
+    Response cancelSeriesRegistration(Long seriesId, Long studentId);
+
+    void promoteWaitlist(Long activityId);
+
     /**
      * Check-in tham gia sự kiện qua ticketCode
      */

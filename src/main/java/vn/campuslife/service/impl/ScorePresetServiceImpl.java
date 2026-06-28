@@ -112,7 +112,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         response.setPresetCode(presetCode);
         response.setActivityType(resolveActivityType(presetCode, activityType));
         response.setRequiresSubmission(
-                resolveRequiresSubmission(presetCode, request != null ? request.getRequiresSubmission() : null));
+                resolveRequiresSubmission(presetCode, config, request != null ? request.getRequiresSubmission() : null));
         response.setScoreRules(
                 buildActivityRules(presetCode, config, response.getActivityType(), response.isRequiresSubmission()));
         response.setNotes(
@@ -390,8 +390,13 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         };
     }
 
-    private boolean resolveRequiresSubmission(ActivityPresetCode presetCode, Boolean requested) {
+    private boolean resolveRequiresSubmission(ActivityPresetCode presetCode, ActivityPresetConfig config, Boolean requested) {
         if (presetCode == ActivityPresetCode.EVENT_WITH_SUBMISSION) {
+            return true;
+        }
+        if ((presetCode == ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC
+                || presetCode == ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS)
+                && config != null && Boolean.TRUE.equals(config.getSubmissionEnabled())) {
             return true;
         }
         return Boolean.TRUE.equals(requested);
@@ -440,42 +445,106 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                     }
                 }
             }
-            case ENTERPRISE_SEMINAR_BASIC -> rules.add(buildRule(
-                    primaryScoreType,
-                    ScoreRuleTrigger.PARTICIPATION_COMPLETED,
-                    ScoreRuleCalculation.COUNT_COMPLETION,
-                    merged.getParticipationPoints(),
-                    merged.getParticipationFailPoints(),
-                    merged));
-            case ENTERPRISE_SEMINAR_WITH_BONUS -> {
-                rules.add(buildRule(
-                        primaryScoreType,
-                        ScoreRuleTrigger.PARTICIPATION_COMPLETED,
-                        ScoreRuleCalculation.COUNT_COMPLETION,
-                        merged.getParticipationPoints(),
-                        merged.getParticipationFailPoints(),
-                        merged));
-                if (merged.getBonusPoints().compareTo(BigDecimal.ZERO) != 0) {
-                    ActivityScoreRuleRequest bonusRule = buildRule(
-                            merged.getBonusScoreType(),
+            case ENTERPRISE_SEMINAR_BASIC -> {
+                boolean submissionEnabled = merged.getSubmissionEnabled() != null && merged.getSubmissionEnabled();
+                if (submissionEnabled) {
+                    rules.add(buildRule(
+                            primaryScoreType,
+                            ScoreRuleTrigger.SUBMISSION_GRADED,
+                            ScoreRuleCalculation.PASS_FAIL_POINTS,
+                            merged.getSubmissionPassPoints(),
+                            merged.getSubmissionFailPoints(),
+                            merged));
+                    if (merged.getTaskOverduePenaltyPoints().compareTo(BigDecimal.ZERO) != 0) {
+                        rules.add(buildRule(
+                                primaryScoreType,
+                                ScoreRuleTrigger.TASK_OVERDUE,
+                                ScoreRuleCalculation.PENALTY_POINTS,
+                                BigDecimal.ZERO,
+                                merged.getTaskOverduePenaltyPoints(),
+                                merged));
+                    }
+                } else {
+                    rules.add(buildRule(
+                            primaryScoreType,
                             ScoreRuleTrigger.PARTICIPATION_COMPLETED,
-                            ScoreRuleCalculation.FIXED_POINTS,
-                            merged.getBonusPoints(),
-                            BigDecimal.ZERO,
-                            merged);
-                    if (merged.getBonusAudience() != null) {
-                        bonusRule.setAudience(merged.getBonusAudience());
+                            ScoreRuleCalculation.COUNT_COMPLETION,
+                            merged.getParticipationPoints(),
+                            merged.getParticipationFailPoints(),
+                            merged));
+                }
+            }
+            case ENTERPRISE_SEMINAR_WITH_BONUS -> {
+                boolean submissionEnabled = merged.getSubmissionEnabled() != null && merged.getSubmissionEnabled();
+                if (submissionEnabled) {
+                    rules.add(buildRule(
+                            primaryScoreType,
+                            ScoreRuleTrigger.SUBMISSION_GRADED,
+                            ScoreRuleCalculation.PASS_FAIL_POINTS,
+                            merged.getSubmissionPassPoints(),
+                            merged.getSubmissionFailPoints(),
+                            merged));
+                    if (merged.getTaskOverduePenaltyPoints().compareTo(BigDecimal.ZERO) != 0) {
+                        rules.add(buildRule(
+                                primaryScoreType,
+                                ScoreRuleTrigger.TASK_OVERDUE,
+                                ScoreRuleCalculation.PENALTY_POINTS,
+                                BigDecimal.ZERO,
+                                merged.getTaskOverduePenaltyPoints(),
+                                merged));
                     }
-                    if (merged.getBonusSemesterPolicy() != null) {
-                        bonusRule.setSemesterPolicy(merged.getBonusSemesterPolicy());
+                    if (merged.getBonusPoints().compareTo(BigDecimal.ZERO) != 0) {
+                        ActivityScoreRuleRequest bonusRule = buildRule(
+                                merged.getBonusScoreType(),
+                                ScoreRuleTrigger.PARTICIPATION_COMPLETED,
+                                ScoreRuleCalculation.FIXED_POINTS,
+                                merged.getBonusPoints(),
+                                BigDecimal.ZERO,
+                                merged);
+                        if (merged.getBonusAudience() != null) {
+                            bonusRule.setAudience(merged.getBonusAudience());
+                        }
+                        if (merged.getBonusSemesterPolicy() != null) {
+                            bonusRule.setSemesterPolicy(merged.getBonusSemesterPolicy());
+                        }
+                        if (merged.getBonusExplicitSemesterId() != null) {
+                            bonusRule.setExplicitSemesterId(merged.getBonusExplicitSemesterId());
+                        }
+                        if (merged.getBonusDepartmentIds() != null) {
+                            bonusRule.setDepartmentIds(merged.getBonusDepartmentIds());
+                        }
+                        rules.add(bonusRule);
                     }
-                    if (merged.getBonusExplicitSemesterId() != null) {
-                        bonusRule.setExplicitSemesterId(merged.getBonusExplicitSemesterId());
+                } else {
+                    rules.add(buildRule(
+                            primaryScoreType,
+                            ScoreRuleTrigger.PARTICIPATION_COMPLETED,
+                            ScoreRuleCalculation.COUNT_COMPLETION,
+                            merged.getParticipationPoints(),
+                            merged.getParticipationFailPoints(),
+                            merged));
+                    if (merged.getBonusPoints().compareTo(BigDecimal.ZERO) != 0) {
+                        ActivityScoreRuleRequest bonusRule = buildRule(
+                                merged.getBonusScoreType(),
+                                ScoreRuleTrigger.PARTICIPATION_COMPLETED,
+                                ScoreRuleCalculation.FIXED_POINTS,
+                                merged.getBonusPoints(),
+                                BigDecimal.ZERO,
+                                merged);
+                        if (merged.getBonusAudience() != null) {
+                            bonusRule.setAudience(merged.getBonusAudience());
+                        }
+                        if (merged.getBonusSemesterPolicy() != null) {
+                            bonusRule.setSemesterPolicy(merged.getBonusSemesterPolicy());
+                        }
+                        if (merged.getBonusExplicitSemesterId() != null) {
+                            bonusRule.setExplicitSemesterId(merged.getBonusExplicitSemesterId());
+                        }
+                        if (merged.getBonusDepartmentIds() != null) {
+                            bonusRule.setDepartmentIds(merged.getBonusDepartmentIds());
+                        }
+                        rules.add(bonusRule);
                     }
-                    if (merged.getBonusDepartmentIds() != null) {
-                        bonusRule.setDepartmentIds(merged.getBonusDepartmentIds());
-                    }
-                    rules.add(bonusRule);
                 }
             }
             case MINIGAME_PASS_ONLY -> {
@@ -536,6 +605,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                 || presetCode == ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS) {
             notes.add(
                     "Diem CHUYEN_DE co the duoc cau hinh nhu diem tich luy so buoi thong qua rule tham gia hoan thanh.");
+            notes.add(
+                    "Neu bat SUBMISSION_GRADED (cham bai thu hoach), rule PARTICIPATION_COMPLETED se tu tat de tranh cong diem trung check-in/check-out.");
         }
         return notes;
     }
@@ -724,6 +795,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         merged.setMinigameExhaustedExplicitSemesterId(incoming.getMinigameExhaustedExplicitSemesterId() != null ? incoming.getMinigameExhaustedExplicitSemesterId() : defaults.getMinigameExhaustedExplicitSemesterId());
         merged.setMinigameExhaustedDepartmentIds(incoming.getMinigameExhaustedDepartmentIds() != null ? incoming.getMinigameExhaustedDepartmentIds() : defaults.getMinigameExhaustedDepartmentIds());
 
+        merged.setSubmissionEnabled(incoming.getSubmissionEnabled() != null ? incoming.getSubmissionEnabled() : defaults.getSubmissionEnabled());
+
         return merged;
     }
 
@@ -781,6 +854,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         target.setMinigameExhaustedSemesterPolicy(source.getMinigameExhaustedSemesterPolicy());
         target.setMinigameExhaustedExplicitSemesterId(source.getMinigameExhaustedExplicitSemesterId());
         target.setMinigameExhaustedDepartmentIds(source.getMinigameExhaustedDepartmentIds() != null ? new ArrayList<>(source.getMinigameExhaustedDepartmentIds()) : null);
+
+        target.setSubmissionEnabled(source.getSubmissionEnabled());
     }
 
     private ActivityPresetConfig getDefaultActivityConfig(ActivityPresetCode presetCode, ActivityType activityType) {
@@ -808,11 +883,17 @@ public class ScorePresetServiceImpl implements ScorePresetService {
             }
             case ENTERPRISE_SEMINAR_BASIC -> {
                 defaults.setParticipationPoints(BigDecimal.ONE);
+                defaults.setSubmissionPassPoints(BigDecimal.valueOf(5));
+                defaults.setSubmissionFailPoints(BigDecimal.ZERO);
+                defaults.setTaskOverduePenaltyPoints(BigDecimal.ZERO);
                 defaults.setNoShowPenaltyEnabled(false);
                 defaults.setNoShowPenaltyScoreType(ScoreType.REN_LUYEN);
             }
             case ENTERPRISE_SEMINAR_WITH_BONUS -> {
                 defaults.setParticipationPoints(BigDecimal.ONE);
+                defaults.setSubmissionPassPoints(BigDecimal.valueOf(5));
+                defaults.setSubmissionFailPoints(BigDecimal.ZERO);
+                defaults.setTaskOverduePenaltyPoints(BigDecimal.ZERO);
                 defaults.setBonusScoreType(ScoreType.REN_LUYEN);
                 defaults.setBonusPoints(BigDecimal.valueOf(2));
                 defaults.setNoShowPenaltyEnabled(false);
@@ -820,6 +901,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
             }
             case MINIGAME_PASS_ONLY -> {
                 defaults.setMinigameExhaustedPenaltyPoints(BigDecimal.ZERO);
+                defaults.setNoShowPenaltyEnabled(false);
             }
             case CUSTOM -> {
                 defaults.setParticipationPoints(null);
@@ -925,21 +1007,51 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case ENTERPRISE_SEMINAR_BASIC -> {
-                rules.add(participationCompletedDescriptor(defaults).build());
+                rules.add(participationCompletedDescriptor(defaults)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.NO_SHOW))
+                        .conflictsWith(List.of("SUBMISSION_GRADED"))
+                        .build());
+                rules.add(submissionGradedDescriptor(defaults)
+                        .required(false)
+                        .enabledByDefault(false)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.TASK_OVERDUE, ScoreRuleTrigger.NO_SHOW))
+                        .conflictsWith(List.of("PARTICIPATION_COMPLETED"))
+                        .build());
+                rules.add(taskOverdueDescriptor(defaults)
+                        .required(false)
+                        .enabledByDefault(false)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.SUBMISSION_GRADED, ScoreRuleTrigger.NO_SHOW))
+                        .build());
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case ENTERPRISE_SEMINAR_WITH_BONUS -> {
-                rules.add(participationCompletedDescriptor(defaults).build());
-                rules.add(bonusPointsDescriptor(defaults).build());
+                rules.add(participationCompletedDescriptor(defaults)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.NO_SHOW))
+                        .conflictsWith(List.of("SUBMISSION_GRADED"))
+                        .build());
+                rules.add(bonusPointsDescriptor(defaults)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED))
+                        .build());
+                rules.add(submissionGradedDescriptor(defaults)
+                        .required(false)
+                        .enabledByDefault(false)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.TASK_OVERDUE, ScoreRuleTrigger.NO_SHOW))
+                        .conflictsWith(List.of("PARTICIPATION_COMPLETED"))
+                        .build());
+                rules.add(taskOverdueDescriptor(defaults)
+                        .required(false)
+                        .enabledByDefault(false)
+                        .suggestedCombinations(List.of(ScoreRuleTrigger.SUBMISSION_GRADED, ScoreRuleTrigger.NO_SHOW))
+                        .build());
                 rules.add(buildNoShowDescriptor(defaults));
             }
             case MINIGAME_PASS_ONLY -> {
                 rules.add(minigamePassedDescriptor(defaults).build());
                 rules.add(minigameExhaustedDescriptor(defaults).build());
+                rules.add(buildNoShowDescriptor(defaults));
             }
         }
 
-        rules.add(buildActivityAudienceDescriptor(defaults));
         return rules;
     }
 
@@ -969,7 +1081,6 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         rules.add(minigamePassedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS, ScoreRuleTrigger.NO_SHOW)).build());
         rules.add(minigameExhaustedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED)).build());
         rules.add(bonusPointsDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED)).build());
-        rules.add(buildActivityAudienceDescriptor(empty));
         return rules;
     }
 
@@ -996,7 +1107,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                         .fieldName("participationFailPoints")
                         .label("Điểm trừ khi đánh giá không đạt (mặc định)")
                         .inputType("NUMBER")
-                        .required(true)
+                        .required(false)
                         .defaultValue(defaults.getParticipationFailPoints())
                         .visibility("ALWAYS")
                         .build()
@@ -1205,52 +1316,6 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                         .visibility("semester_policy_explicit")
                         .build()
         );
-    }
-
-    private PresetRuleDescriptor buildActivityAudienceDescriptor(ActivityPresetConfig defaults) {
-        return PresetRuleDescriptor.builder()
-                .ruleKey("ACTIVITY_AUDIENCE")
-                .label("Giới hạn đối tượng nhận điểm")
-                .description("Kiểm soát việc student thuộc khoa nào sẽ được cộng/trừ điểm từ sự kiện này.")
-                .required(false)
-                .enabledByDefault(false)
-                .fieldDefinitions(List.of(
-                        FieldDefinition.builder()
-                                .fieldName("audience")
-                                .label("Đối tượng áp dụng")
-                                .inputType("SELECT")
-                                .required(true)
-                                .defaultValue(defaults.getAudience() != null ? defaults.getAudience().name() : "ALL_PARTICIPANTS")
-                                .visibility("ALWAYS")
-                                .options(List.of("ALL_PARTICIPANTS", "DEPARTMENT_ONLY", "OUTSIDE_DEPARTMENTS_ONLY"))
-                                .build(),
-                        FieldDefinition.builder()
-                                .fieldName("departmentIds")
-                                .label("Danh sách Khoa")
-                                .inputType("MULTI_SELECT")
-                                .required(false)
-                                .defaultValue(defaults.getDepartmentIds())
-                                .visibility("audience_department_scoped")
-                                .build(),
-                        FieldDefinition.builder()
-                                .fieldName("semesterPolicy")
-                                .label("Học kỳ cộng điểm")
-                                .inputType("SELECT")
-                                .required(true)
-                                .defaultValue(defaults.getSemesterPolicy() != null ? defaults.getSemesterPolicy().name() : "ACTIVITY_SEMESTER")
-                                .visibility("ALWAYS")
-                                .options(List.of("ACTIVITY_SEMESTER", "EXPLICIT_SEMESTER"))
-                                .build(),
-                        FieldDefinition.builder()
-                                .fieldName("explicitSemesterId")
-                                .label("Học kỳ chỉ định")
-                                .inputType("SELECT")
-                                .required(false)
-                                .defaultValue(defaults.getExplicitSemesterId())
-                                .visibility("semester_policy_explicit")
-                                .build()
-                ))
-                .build();
     }
 
     private PresetRuleDescriptor buildNoShowDescriptor(ActivityPresetConfig defaults) {

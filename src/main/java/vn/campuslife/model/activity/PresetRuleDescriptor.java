@@ -23,4 +23,6 @@ public class PresetRuleDescriptor {
     private List<FieldDefinition> fieldDefinitions = new ArrayList<>();
     @Builder.Default
     private List<ScoreRuleTrigger> suggestedCombinations = new ArrayList<>();
+    @Builder.Default
+    private List<String> conflictsWith = new ArrayList<>();
 }

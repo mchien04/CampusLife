@@ -1,7 +1,7 @@
 # FE Backend Handoff Spec
 
-> **Version:** 5.2.2 (Series isDraft + Per-rule audience config + Bug Fixes)  
-> **Baseline:** Post v5.0 → Current HEAD (series `isDraft`, per-rule audience/semesterPolicy/departmentIds on `ActivityPresetConfig`)  
+> **Version:** 6.0 (Score Preset Adjustments + Registration Cancel Policies)  
+> **Baseline:** Post v5.3 → Current HEAD (ACTIVITY_AUDIENCE removed, Enterprise SUBMISSION_GRADED, mutual exclusion, cancel 1-day-before policy, series cancel, waitlist auto-promote)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
 ## 1. Mục Đích
@@ -42,14 +42,24 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
 | **Type-lock + Standard update có type (P4)** | `StandardActivityUpdateRequest` giờ có field `type` (cho phép đổi type khi update). BE từ chối đổi type nếu activity có ACTIVE score entries và non-draft. | - Form edit Standard Activity: bỏ disable dropdown type.<br>- Hiển thị lỗi "Cannot change type..." nếu activity đã có entries. | **Cao** |
 | **ActivityResponse/SeriesResponse có presetCode (P4)** | Response trả về `presetCode` (enum). `presetConfig` hiện để `null` (chưa lưu full config vào DB). | - Màn hình edit: dùng `presetCode` để pre-select preset.<br>- Dùng `scoreRules` hiện tại để reconstruct `presetConfig` nếu cần. | **Trung bình** |
 | **Series update fixes (P4)** | `targetSemesterId` không còn bị kẹt trong `minimumPenaltyPoints`. `scoreType` không còn bắt buộc khi update series. | - FE không cần thay đổi logic. Partial update Series hoạt động đúng. | **Thấp** |
-| **Series auto-register flags (P5)** | `ActivitySeries` có thêm `isImportant` (boolean, default `false`) và `mandatoryForFacultyStudents` (boolean, default `false`). Khi tạo/sửa Series non-draft, BE auto-register toàn bộ sinh viên active (nếu `isImportant=true`) và/或 sinh viên thuộc các khoa tổ chức (nếu `mandatoryForFacultyStudents=true`). Cờ này nằm **ở mức Series**, áp dụng cho main activity VÀ mỗi child activity mới được thêm vào chuỗi (khi non-draft). | - Form tạo/sửa Series: thêm 2 toggle "Sự kiện quan trọng" (`isImportant`) và "Bắt buộc với sinh viên khoa tổ chức" (`mandatoryForFacultyStudents`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có 2 field bool này.<br>- Child activity tạo qua `POST /api/series/{seriesId}/activities` **không** gửi 2 flag này (luôn `false` ở mức activity); auto-register cho child dùng flag của Series. | **Cao** |
+| **Series auto-register flags (P5)** | `ActivitySeries` có thêm `isImportant` (boolean, default `false`) và `mandatoryForFacultyStudents` (boolean, default `false`). Khi tạo/sửa Series non-draft, BE auto-register toàn bộ sinh viên active (nếu `isImportant=true`) và/ hoặc sinh viên thuộc các khoa tổ chức (nếu `mandatoryForFacultyStudents=true`). Cờ này nằm **ở mức Series**, áp dụng cho main activity VÀ mỗi child activity mới được thêm vào chuỗi (khi non-draft). | - Form tạo/sửa Series: thêm 2 toggle "Sự kiện quan trọng" (`isImportant`) và "Bắt buộc với sinh viên khoa tổ chức" (`mandatoryForFacultyStudents`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có 2 field bool này.<br>- Child activity tạo qua `POST /api/series/{seriesId}/activities` **không** gửi 2 flag này (luôn `false` ở mức activity); auto-register cho child dùng flag của Series. | **Cao** |
 | **Auto-register service extraction (P5)** | Auto-register logic được trích thành service chung `ActivityRegistrationAutoService`, dùng chung cho Standard, Minigame, Legacy activity create/update, và Series create/update. Auto-register **không bao giờ throw** — lỗi bị swallow nội bộ, không làm fail create/update. | - FE không có thay đổi API contract. Behavior auto-register nhất quán trên mọi type (Standard/Minigame/Legacy/Series).<br>- Nếu sinh viên đã có registration thì skip (idempotent). | **Thấp** |
 | **Series isDraft (P5)** | `ActivitySeries` có thêm `isDraft` (boolean, default `true`). Auto-register chỉ chạy khi Series **non-draft** (`isDraft=false`). | - Form tạo/sửa Series: thêm toggle "Bản nháp" (`isDraft`).<br>- `CreateSeriesRequest`, `UpdateSeriesRequest`, `SeriesResponse` đều có field `isDraft`. | **Cao** |
 | **Per-rule audience config (P5)** | `ActivityPresetConfig` thêm per-trigger override fields: `submissionAudience`, `noShowAudience`, `participationAudience`, `taskOverdueAudience`, `bonusAudience`, `minigamePassedAudience`, `minigameExhaustedAudience` (kèm `*SemesterPolicy`, `*ExplicitSemesterId`, `*DepartmentIds`). `buildRule()` ưu tiên per-rule override, fallback về top-level `audience`. | - Form preset config: thêm section cho phép cấu hình audience riêng theo từng trigger.<br>- Nếu không set per-rule, BE dùng `audience` top-level như cũ (backward compatible). | **Cao** |
 | **CUSTOM preset `suggestedCombinations` (P5)** | `GET /api/activities/presets` với CUSTOM preset giờ trả về **tất cả** rule descriptors (không còn empty). Mỗi descriptor có thêm field `suggestedCombinations: ScoreRuleTrigger[]` — danh sách các rule có thể kết hợp. | - FE khi render CUSTOM mode: dùng `suggestedCombinations` để hiển thị gợi ý "Có thể kết hợp với: ..." khi user chọn 1 rule.<br>- VD: chọn `SUBMISSION_GRADED` → gợi ý `TASK_OVERDUE`, `NO_SHOW`. | **Trung bình** |
 | **Minigame dual-creation modes (P5)** | Có 2 cách tạo Minigame: (1) **All-at-once** qua `POST /api/activities/minigame` với `MinigameActivityCreateRequest` (shell + `quiz`) — backend tạo trọn Activity→MiniGame→Quiz→Questions→Options trong 1 call. (2) **Activity-first** — tạo activity trước (Standard hoặc Legacy `POST /api/activities`), rồi gắn quiz qua `POST /api/minigames` với `CreateMiniGameRequest` (chứa `activityId`). | - Flow (1): gửi `quiz` object đầy đủ; KHÔNG cần gọi thêm `POST /api/minigames`.<br>- Flow (2): tạo activity (type `MINIGAME` hoặc khác), lấy `id`, rồi gọi `POST /api/minigames` với `activityId` + quiz config.<br>- Cả 2 flow đều hợp lệ; chọn theo UX (form 1 bước vs 2 bước). | **Trung bình** |
-| **MINIGAME_PASS_ONLY + NO_SHOW (P5)** | Preset `MINIGAME_PASS_ONLY` giờ có sẵn rule `NO_SHOW` (mặc định bật, `noShowPenaltyEnabled=true`). `noShowPenaltyPoints` mặc định = `participationPoints` (5). FE nhập điểm dương, BE tự negate qua `PENALTY_POINTS`. | - Form MINIGAME_PASS_ONLY: hiển thị toggle NO_SHOW + input điểm phạt.<br>- Nếu không set custom `noShowPenaltyPoints`, BE fallback về `participationPoints`.<br>- Có thể tắt NO_SHOW bằng `presetConfig.noShowPenaltyEnabled = false`. | **Trung bình** |
+| **MINIGAME_PASS_ONLY (v5.3)** | Fix bug thiếu NO_SHOW descriptor ở preset `MINIGAME_PASS_ONLY` & update default `noShowPenaltyEnabled = false`. | - Form MINIGAME_PASS_ONLY: hiển thị toggle NO_SHOW + input điểm phạt.<br>- Nếu không set custom `noShowPenaltyPoints`, BE fallback về `participationPoints`.<br>- Có thể tắt NO_SHOW bằng `presetConfig.noShowPenaltyEnabled = false`. | **Trung bình** |
 | **Minigame preset support (P5)** | `MinigameActivityCreateRequest` giờ có `presetCode`/`presetConfig`. `POST /api/activities/minigame` hỗ trợ preset (như Standard/Legacy). Policy A vẫn áp dụng: từ chối gửi `scoreRules` kèm non-CUSTOM `presetCode`. `MinigameActivityResponse` trả về `presetCode`. | - Mode 1 minigame: FE gửi `presetCode` + `presetConfig` thay vì `scoreRules` thủ công.<br>- `MinigameActivityMapper` tự động lưu `presetCode` vào Activity entity.<br>- Response GET trả về `presetCode` để FE biết preset hiện tại. | **Trung bình** |
+| **Bỏ ACTIVITY_AUDIENCE (P6)** | `GET /api/activities/presets` không còn trả về ruleKey `ACTIVITY_AUDIENCE` ở bất kỳ preset nào (kể cả CUSTOM). Audience giờ cấu hình per-rule trong từng descriptor. | - Xoá UI section `ACTIVITY_AUDIENCE` render từ supportedRules.<br>- Per-rule audience fields hiển thị trong từng rule descriptor riêng. | **Cao** |
+| **participationFailPoints optional (P6)** | Field `participationFailPoints` trong `PARTICIPATION_COMPLETED` descriptor có `required: false`. Áp dụng cho EVENT_BASIC, ENTERPRISE_SEMINAR_BASIC, ENTERPRISE_SEMINAR_WITH_BONUS, CUSTOM. | - Form dynamic dựa trên `FieldDefinition.required` — không bắt buộc nhập failPoints cho Participation rule. | **Trung bình** |
+| **Enterprise hỗ trợ SUBMISSION_GRADED (P6)** | `ENTERPRISE_SEMINAR_BASIC` và `ENTERPRISE_SEMINAR_WITH_BONUS` có thêm 2 rule trong `supportedRules`: `SUBMISSION_GRADED` (required=false, enabledByDefault=false, submissionFailPoints required=true) và `TASK_OVERDUE` (required=false, enabledByDefault=false). | - Form enterprise seminar: hiển thị thêm toggle SUBMISSION_GRADED và TASK_OVERDUE.<br>- Khi bật SUBMISSION_GRADED, field submissionFailPoints là bắt buộc. | **Cao** |
+| **Mutual exclusion + conflictsWith (P6)** | `PresetRuleDescriptor` có thêm `conflictsWith: string[]`. Enterprise preset: `PARTICIPATION_COMPLETED` conflicts với `SUBMISSION_GRADED`, và ngược lại. `ActivityPresetConfig` có thêm `submissionEnabled: boolean` (default false). | - FE render: khi toggle 1 rule ON, dùng `conflictsWith` để tự tắt rule conflict.<br>- Gửi `presetConfig.submissionEnabled = true` khi chọn submission mode.<br>- Preview API sẽ không trả về PARTICIPATION_COMPLETED khi `submissionEnabled=true`. | **Cao** |
+| **Lock preset on edit (P6)** | `PUT /api/activities/standard/{id}` từ chối đổi `presetCode` nếu activity đã có preset (khác null). Lỗi: `"Cannot change preset code from X to Y on update"`. | - Form edit: disable dropdown presetCode, chỉ cho sửa presetConfig.<br>- Hiển thị lỗi nếu FE cố gửi presetCode khác. | **Cao** |
+| **Cancel policy mới (P7)** | `DELETE /api/registrations/activity/{activityId}`: `requiresApproval=false` (auto-approved) → cho huỷ 1 lần, trước registrationDeadline 1 ngày. `requiresApproval=true` (admin-approved) → không cho huỷ. PENDING/WAITLIST → cho huỷ. Sau huỷ không cho đăng ký lại. | - Nút "Huỷ đăng ký" hiển thị dựa trên `canCancel` flag từ `checkRegistrationStatus`.<br>- "Không cho đăng ký lại" → FE ẩn nút đăng ký nếu đã có CANCELLED record. | **Cao** |
+| **Huỷ series + huỷ activity con (P7)** | `DELETE /api/series/{seriesId}/register`: huỷ series registration + tất cả activity con (trừ ATTENDED). Chặn nếu series `isImportant` hoặc `mandatoryForFacultyStudents`, hoặc có activity con đã ATTENDED. | - Nút "Huỷ đăng ký series" với confirm dialog.<br>- Hiển thị lỗi nếu không được phép huỷ. | **Cao** |
+| **Waitlist series (P7)** | `POST /api/series/{seriesId}/waitlist`: đăng ký chờ khi series full (APPROVED count >= ticketQuantity). Tạo WAITLIST registrations cho tất cả activity con. | - Form series: hiển thị nút "Đăng ký chờ" khi series full. | **Cao** |
+| **Waitlist auto-promote (P7)** | Khi có slot trống (do huỷ), BE tự động promote WAITLIST đầu tiên (FIFO) lên APPROVED/PENDING. Có notification. | - FE không cần làm gì thêm. Student nhận notification khi được promote. | **Thấp** |
+| **Series quantity APPROVED-only (P7)** | Series `ticketQuantity` giờ chỉ đếm APPROVED distinct student (không đếm PENDING/REJECTED/CANCELLED). Đồng bộ với activity. | - Hiển thị slot còn lại dựa trên APPROVED count, giống activity. | **Trung bình** |
 
 ### 2.2 Các thay đổi về Endpoint API
 
@@ -70,6 +80,8 @@ Tài liệu này đóng vai trò là **Source of Truth duy nhất** cho team Fro
   - `GET /api/scores/recalculate/status/{jobId}`: Lấy trạng thái job recalculation (progress %, error count).
   - `POST /api/scores/recalculate/retry/{jobId}`: Retry job recalculation bị FAILED/TIMEOUT.
   - `GET /api/statistics/scores/breakdown`: Phân tích điểm theo `sourceType` (ACTIVITY_PARTICIPATION, MINIGAME_ATTEMPT, ...).
+  - `DELETE /api/series/{seriesId}/register`: Student huỷ đăng ký series + tất cả activity con.
+  - `POST /api/series/{seriesId}/waitlist`: Student đăng ký chờ series khi full.
 - **Endpoint Thay Đổi Contract (`MODIFIED`):**
   - `POST /api/series` & `PUT /api/series/{seriesId}`: Request body hỗ trợ các trường cấu hình phạt tối thiểu (`minimumRequirementEnabled`, `minimumRequiredEvents`, `minimumPenaltyPoints`) và `targetSemesterId`.
   - `POST /api/activities/standard` & `PUT /api/activities/standard/{id}`: Endpoint mới cho Standard Activity.
@@ -285,6 +297,8 @@ export interface ActivityPresetConfig {
   minigameExhaustedSemesterPolicy?: ScoreSemesterPolicy | null;
   minigameExhaustedExplicitSemesterId?: number | null;
   minigameExhaustedDepartmentIds?: number[] | null;
+
+  submissionEnabled?: boolean | null; // P6: toggle Participation ↔ Submission mode cho enterprise preset (default false)
 }
 
 export interface CreateActivityRequest {
@@ -643,6 +657,7 @@ export interface PresetRuleDescriptor {
   enabledByDefault: boolean;
   fieldDefinitions: FieldDefinition[];
   suggestedCombinations?: ScoreRuleTrigger[];  // P5.2: các rule có thể kết hợp (chỉ có ý nghĩa với CUSTOM preset)
+  conflictsWith?: string[];                // P6: ruleKey của các rule xung khắc (mutual exclusion). Khi toggle ON rule này, FE phải tắt các rule trong conflictsWith
 }
 
 export interface ActivityPresetDefinitionResponse {
@@ -1499,6 +1514,62 @@ export interface AttemptDetailResponse {
 
 ---
 
+### 5.7 Nhóm API Huỷ Đăng Ký & Waitlist Series (P7)
+
+#### 1. Huỷ đăng ký series + tất cả activity con
+- **Method:** `DELETE`
+- **Path:** `/api/series/{seriesId}/register`
+- **Authentication:** Required (Student)
+- **Response:** `ApiResponse<null>`
+- **Error cases:**
+  - `"Series not found"` (404)
+  - `"Không thể huỷ đăng ký chuỗi sự kiện quan trọng."` (400 — series `isImportant=true`)
+  - `"Không thể huỷ đăng ký chuỗi bắt buộc cho sinh viên khoa."` (400 — series `mandatoryForFacultyStudents=true`)
+  - `"Bạn chưa đăng ký chuỗi sự kiện này."` (400)
+  - `"Không thể huỷ vì bạn đã tham gia sự kiện '...'."` (400 — có activity con ATTENDED)
+
+#### 2. Đăng ký chờ series
+- **Method:** `POST`
+- **Path:** `/api/series/{seriesId}/waitlist`
+- **Authentication:** Required (Student)
+- **Response:** `ApiResponse<RegistrationResponse[]>`
+- **Error cases:**
+  - `"Series not found"` (404)
+  - `"Registration deadline has passed"` (400)
+  - `"Already registered or in waitlist for this series"` (400)
+  - `"Series still has slots. Please register normally."` (400 — còn slot thì phải đăng ký thường)
+  - `"Series has unlimited slots. Please register normally."` (400 — không giới hạn vé)
+
+#### 3. Huỷ đăng ký activity — policy mới
+- **Method:** `DELETE`
+- **Path:** `/api/registrations/activity/{activityId}`
+- **Authentication:** Required (Student)
+- **Response:** `ApiResponse<null>`
+- **Error cases (mới):**
+  - `"Cannot cancel approved registration. Admin has approved this registration."` (requiresApproval=true + APPROVED)
+  - `"Bạn đã huỷ 1 lần trước đó, không thể huỷ lại."` (auto-approved + hasCancelledBefore=true)
+  - `"Chỉ được huỷ trước hạn đăng ký 1 ngày."` (auto-approved + after registrationDeadline - 1 day)
+
+#### 4. Đăng ký activity — chặn re-register
+- **Method:** `POST`
+- **Path:** `/api/registrations/activity`
+- **Request:** `ActivityRegistrationRequest`
+- **Lỗi mới:** `"Bạn đã huỷ đăng ký trước đó, không thể đăng ký lại."` (có CANCELLED record trước đó)
+
+#### 5. Kiểm tra trạng thái đăng ký — canCancel flag mới
+- **Method:** `GET`
+- **Path:** `/api/registrations/activity/{activityId}/status`
+- **Response:** `ApiResponse<{ registrationId, status, registeredDate, canCancel }>`
+- **canCancel logic mới:**
+  - `CANCELLED` → `false`
+  - `APPROVED` + `requiresApproval=true` → `false`
+  - `APPROVED` + `requiresApproval=false` + `hasCancelledBefore` → `false`
+  - `APPROVED` + `requiresApproval=false` + after `registrationDeadline - 1 day` → `false`
+  - `APPROVED` + `requiresApproval=false` + before deadline-1day + `!hasCancelledBefore` → `true`
+  - `PENDING`/`WAITLIST` → `true`
+
+---
+
 ## 6. Lời Khuyên Cấu Trúc Code Frontend
 
 Team Frontend nên phân chia các file TypeScript theo hướng module hóa để dễ quản lý và cập nhật:
@@ -1712,6 +1783,15 @@ export interface CreateMiniGameRequest {
 14. **Score history filter params**: `GET /api/scores/history/student/{studentId}` hỗ trợ thêm `startDate`, `endDate` (ISO datetime string), `keyword` (tìm kiếm theo tên hoạt động).
 15. **Minigame Quiz delete-recreate**: Khi update minigame (`PATCH /api/activities/minigame/{id}`) với `quiz.questions[]`, backend **xóa-tạo lại** toàn bộ quiz (gồm cả answers của student). FE phải gửi đầy đủ danh sách questions, không chỉ questions cần sửa.
 16. **Unified minigame creation**: `POST /api/activities/minigame` giờ tạo đầy đủ quiz hierarchy (Activity → MiniGame → MiniGameQuiz → Questions → Options). Không cần gọi thêm `POST /api/minigames`. Nếu `quiz = null`, chỉ tạo activity shell (Mode 2 partial) — FE cần gọi `POST /api/minigames` sau để gắn quiz.
----
+17. **Bỏ ACTIVITY_AUDIENCE (P6)**: `GET /api/activities/presets` không còn trả về ruleKey `ACTIVITY_AUDIENCE`. FE xoá UI section render từ ruleKey này.
+18. **Preset lock on edit (P6)**: `PUT /api/activities/standard/{id}` từ chối đổi `presetCode`. FE disable dropdown presetCode khi edit, chỉ cho sửa `presetConfig`.
+19. **conflictsWith (P6)**: Khi toggle 1 rule ON, FE đọc `conflictsWith` để tự tắt rule xung khắc. Enterprise: PARTICIPATION_COMPLETED ↔ SUBMISSION_GRADED.
+20. **submissionEnabled (P6)**: Gửi `presetConfig.submissionEnabled = true` khi admin chọn submission mode cho enterprise. Preview API sẽ không trả về PARTICIPATION_COMPLETED rules.
+21. **Cancel policy (P7)**: `requiresApproval=false` → cho huỷ 1 lần, trước deadline 1 ngày. Sau huỷ không đăng ký lại. `requiresApproval=true` → chỉ huỷ được khi PENDING.
+22. **Series cancel (P7)**: `DELETE /api/series/{seriesId}/register` huỷ series + tất cả activity con (trừ ATTENDED).
+23. **Series waitlist (P7)**: `POST /api/series/{seriesId}/waitlist` khi series full.
+24. **Waitlist auto-promote (P7)**: BE tự promote WAITLIST→APPROVED/PENDING khi có slot trống. FE chỉ cần hiển thị notification.
+25. **Series quantity (P7)**: Giờ đếm APPROVED distinct student, giống activity. PENDING không còn chiếm slot series.
+26. **Registration exists check (P7)**: `existsByActivityIdAndStudentId` giờ exclude CANCELLED status — SV đã huỷ có thể thấy nút đăng ký nhưng sẽ bị chặn bởi re-register block.---
 
 *End of FE_BACKEND_HANDOFF_SPEC.md*

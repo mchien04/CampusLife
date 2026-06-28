@@ -62,4 +62,6 @@ public class ActivityPresetConfig {
     private ScoreSemesterPolicy minigameExhaustedSemesterPolicy;
     private Long minigameExhaustedExplicitSemesterId;
     private List<Long> minigameExhaustedDepartmentIds;
+
+    private Boolean submissionEnabled = false;
 }
