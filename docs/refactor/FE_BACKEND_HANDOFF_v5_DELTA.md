@@ -406,3 +406,18 @@ Sau quá trình kiểm thử, các lỗi sau đã được fix trên backend đ�
 ---
 
 *End of v5.2.1 Delta Spec*
+
+---
+
+## 10. Cập nhật Bug Fixes (v5.2.2)
+
+1. **Preset Per-rule Audience Field Definitions (`ScorePresetServiceImpl`)**:
+   - **Vấn đề**: API `GET /api/activities/presets` trả về cấu trúc mới có chứa `audience`, `semesterPolicy`... theo từng rule (ví dụ: `submissionAudience`, `participationSemesterPolicy`). Tuy nhiên, `fieldDefinitions` của các rules (như `SUBMISSION_GRADED`, `PARTICIPATION_COMPLETED`) chưa trả về thông tin cấu hình này để FE render form động theo `visibility`.
+   - **Giải pháp**:
+     - Bổ sung helper `buildPerRuleAudienceFields` để sinh ra 4 fields: `[prefix]Audience`, `[prefix]DepartmentIds`, `[prefix]SemesterPolicy`, và `[prefix]ExplicitSemesterId` cho mỗi trigger rule.
+     - Cập nhật các rule descriptors (`participationCompletedDescriptor`, `submissionGradedDescriptor`, `taskOverdueDescriptor`, `bonusPointsDescriptor`, `minigamePassedDescriptor`, `minigameExhaustedDescriptor`, và `buildNoShowDescriptor`) để include thêm 4 fields này.
+     - Đồng bộ logic hiển thị (`visibility`) theo chuẩn: `audience_department_scoped` và `semester_policy_explicit` như spec frontend mong đợi.
+
+---
+
+*End of v5.2.2 Delta Spec*

@@ -1,6 +1,6 @@
 # FE Backend Handoff Spec
 
-> **Version:** 5.1 (Series isDraft + Per-rule audience config)  
+> **Version:** 5.2.2 (Series isDraft + Per-rule audience config + Bug Fixes)  
 > **Baseline:** Post v5.0 → Current HEAD (series `isDraft`, per-rule audience/semesterPolicy/departmentIds on `ActivityPresetConfig`)  
 > **Source of truth:** Java backend implementation (controllers, DTOs, mappers, services, validators)
 
