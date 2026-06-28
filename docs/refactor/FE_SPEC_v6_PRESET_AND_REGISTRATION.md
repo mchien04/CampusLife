@@ -370,3 +370,34 @@ Mới: chỉ đếm `APPROVED` distinct student — **đồng bộ với activit
 
 - [ ] `DELETE /api/series/{seriesId}/register` — huỷ series
 - [ ] `POST /api/series/{seriesId}/waitlist` — đăng ký chờ series
+
+---
+
+## 15. Chống Double Penalty: NO_SHOW + TASK_OVERDUE (P7.1)
+
+### Vấn đề cũ
+
+Task assignment được tạo cho **tất cả** SV đã đăng ký (không filter theo attendance). SV không tham gia (no-show) vẫn có TaskAssignment → khi deadline qua, `TASK_OVERDUE` vẫn bị apply → SV bị phạt cả `NO_SHOW` lẫn `TASK_OVERDUE` (double penalty).
+
+### Fix (BE-only, FE không cần thay đổi)
+
+BE thêm attendance guard tại 3 vị trí:
+
+| Vị trí | Guard |
+|---|---|
+| `ScoreRuleEngineImpl.applyTaskOverdue` | `hasAttended()` — nếu registration != ATTENDED → skip, log |
+| `ReminderDispatchService.isTaskOverdueReminderCancelled` | Nếu student không ATTENDED → cancel reminder |
+| `ActivityTaskServiceImpl.checkAndUpdateOverdueAssignments` | Skip assignment nếu student không ATTENDED |
+
+### Behavior mới
+
+| Kịch bản | NO_SHOW | TASK_OVERDUE |
+|---|---|---|
+| Không tham gia, không nộp bài | Có (nếu bật) | **Không** |
+| Có tham gia, không nộp bài | Không | Có (nếu bật) |
+| Có tham gia, có nộp bài | Không | Không |
+| Không tham gia, không có task | Có (nếu bật) | Không |
+
+### FE action
+
+Không cần thay đổi gì. BE tự guard ở engine level.

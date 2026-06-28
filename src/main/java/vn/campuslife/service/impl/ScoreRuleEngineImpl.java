@@ -18,6 +18,7 @@ import vn.campuslife.entity.StudentSeriesProgress;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.TaskSubmission;
 import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreRuleAudience;
 import vn.campuslife.enumeration.ScoreRuleCalculation;
@@ -25,6 +26,7 @@ import vn.campuslife.enumeration.ScoreRuleTrigger;
 import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.model.score.ScoreEntryCommand;
 import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.SemesterRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivityScoreRuleService;
@@ -53,6 +55,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
     private final ScoreSemesterResolver semesterResolver;
     private final StudentSeriesProgressRepository progressRepository;
     private final ActivityRepository activityRepository;
+    private final ActivityRegistrationRepository registrationRepository;
     private final SemesterHelperService semesterHelperService;
     private final SemesterRepository semesterRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -214,6 +217,15 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         }
 
         Student student = assignment.getStudent();
+
+        // If student did not attend, skip TASK_OVERDUE — they are a no-show and will get NO_SHOW penalty instead.
+        // Prevents double-penalty: no-show student getting both NO_SHOW + TASK_OVERDUE.
+        if (!hasAttended(activity.getId(), student.getId())) {
+            log.info("Skipping task overdue penalty for student {} on activity {} — did not attend", student.getId(),
+                    activity.getId());
+            return;
+        }
+
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.TASK_OVERDUE);
 
         for (ActivityScoreRule rule : rules) {
@@ -472,6 +484,12 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 .filter(Semester::isOpen)
                 .findFirst()
                 .orElseGet(() -> semesterRepository.findAll().stream().findFirst().orElse(null));
+    }
+
+    private boolean hasAttended(Long activityId, Long studentId) {
+        return registrationRepository.findByActivityIdAndStudentId(activityId, studentId)
+                .map(reg -> reg.getStatus() == RegistrationStatus.ATTENDED)
+                .orElse(false);
     }
 
     private boolean isEligible(ActivityScoreRule rule, Student student) {

@@ -183,9 +183,19 @@ Logic auto-register được trích từ `ActivityServiceImpl` thành service ch
 
 ---
 
-## 5. Per-Rule Audience Config trên Preset
+## 5. Cập nhật Bug Fix (v5.3)
+### 5.1. Cập nhật rule NO_SHOW cho MINIGAME_PASS_ONLY
+- **Vấn đề trước đây**: ActivityPreset `MINIGAME_PASS_ONLY` thiếu form config cho `NO_SHOW` trong API get definitions mặc dù có thể hỗ trợ trigger này.
+- **Thay đổi hiện tại**: 
+  - BE đã bổ sung logic trả về rule descriptor `NO_SHOW` cho preset này.
+  - Tuy nhiên, **giá trị mặc định `noShowPenaltyEnabled` được đổi thành `false`** (tắt mặc định).
+- **Tác động tới FE**: FE khi fetch `GET /api/activities/presets` sẽ nhận được rule descriptor `NO_SHOW` cho `MINIGAME_PASS_ONLY` với `defaultValue = false`. FE sẽ render form toggle tắt theo mặc định, nhưng người dùng (admin) **hoàn toàn có thể chủ động bật lên (`true`)** và gửi về BE để lưu phạt vắng mặt cho minigame nếu muốn.
 
-### 5.1 Mô tả
+---
+
+## 6. Per-Rule Audience Config trên Preset
+
+### 6.1 Mô tả
 
 Cho phép FE cấu hình `audience`, `semesterPolicy`, `explicitSemesterId`, `departmentIds` riêng cho **từng trigger** trong preset, thay vì dùng chung 1 giá trị cho tất cả rules. Nếu không set per-rule, BE fallback về top-level `audience`/`semesterPolicy`/`departmentIds` như cũ.
 
