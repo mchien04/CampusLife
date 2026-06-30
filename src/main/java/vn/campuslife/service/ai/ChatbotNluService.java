@@ -75,6 +75,7 @@ public class ChatbotNluService {
                   - intent=SUMMARIZE_ARTICLE khi hỏi "tóm tắt bài viết"
                 - Nếu đang ở GLOBAL và người dùng nhắc tên sự kiện, đặt activityQuery là cụm từ quan trọng để tìm event.
                 - Nếu người dùng hỏi danh sách theo loại điểm, intent=LIST_BY_SCORETYPE và scoreType là 1 trong: REN_LUYEN, CONG_TAC_XA_HOI, CHUYEN_DE.
+                - Nếu ngưới dùng hỏi về điểm, quy tắc tính điểm, cộng/trừ điểm, preset, no-show, phạt vắng mặt, quá hạn nộp bài (task overdue), milestone hoặc chuỗi sự kiện → intent=POINTS.
                 - Nếu không rõ thì intent=UNKNOWN.
 
                 Ngữ cảnh:

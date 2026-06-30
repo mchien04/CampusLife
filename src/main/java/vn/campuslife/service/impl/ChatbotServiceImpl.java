@@ -16,17 +16,21 @@ import vn.campuslife.enumeration.ChatbotIntent;
 import vn.campuslife.enumeration.ChatbotPageContext;
 import vn.campuslife.enumeration.ChatbotMessageRole;
 import vn.campuslife.enumeration.RegistrationStatus;
+import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.ScoreRuleTrigger;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.ChatbotActivityOptionResponse;
 import vn.campuslife.model.ChatbotMessageRequest;
 import vn.campuslife.model.ChatbotMessageResponse;
 import vn.campuslife.model.ChatbotResolvedActivityResponse;
+import vn.campuslife.model.score.ActivityScoreRuleResponse;
 import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ChatbotConversationRepository;
 import vn.campuslife.repository.ChatbotMessageRepository;
 import vn.campuslife.repository.EventArticleRepository;
 import vn.campuslife.repository.UserRepository;
+import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.RagService;
 import vn.campuslife.service.ai.ChatbotNluResult;
 import vn.campuslife.service.ai.ChatbotNluService;
@@ -68,6 +72,7 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
     private final EventArticleRepository eventArticleRepository;
     private final GeminiApiClient geminiApiClient;
     private final RagService ragService;
+    private final ActivityScoreRuleService activityScoreRuleService;
     @Override
     @Transactional
     public ChatbotMessageResponse chat(String username, ChatbotMessageRequest request) {
@@ -759,8 +764,100 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         return "Yêu cầu tham gia:\n" + a.getRequirements();
     }
 
-    private String formatPointsAnswer(Activity a) {
-        return "Điểm được tính theo quy tắc điểm danh mới. Chi tiết vui lòng xem trong sự kiện.";
+    String formatPointsAnswer(Activity a) {
+        if (a.getSeriesId() != null) {
+            return "Sự kiện \"" + a.getName() + "\" thuộc chuỗi sự kiện, nên **không cộng điểm riêng lẻ**. "
+                    + "Điểm chỉ được cộng theo mốc hoàn thành chuỗi (Series Milestone) và có thể bị phạt nếu không đạt số sự kiện tối thiểu. "
+                    + "Bạn có thể hỏi thêm về tiến độ chuỗi nếu cần.";
+        }
+
+        List<ActivityScoreRuleResponse> rules = activityScoreRuleService.getRuleResponses(a.getId());
+        if (rules == null || rules.isEmpty()) {
+            return "Sự kiện \"" + a.getName() + "\" chưa có quy tắc tính điểm nào được bật.";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Quy tắc tính điểm của sự kiện \"").append(a.getName()).append("\"");
+        if (a.getPresetCode() != null) {
+            sb.append(" (preset: ").append(a.getPresetCode()).append(")");
+        }
+        sb.append(":");
+
+        for (ActivityScoreRuleResponse rule : rules) {
+            sb.append("\n- ").append(formatRuleDescription(rule));
+        }
+
+        if (a.isRequiresSubmission()) {
+            sb.append("\n\nLưu ý: Sự kiện yêu cầu nộp minh chứng. Điểm chỉ được cộng đầy đủ khi sinh viên **đã điểm danh (ATTENDED)** và **đã được chấm bài (GRADED)**. "
+                    + "Nếu chỉ điểm danh mà chưa nộp/chưa chấm bài, điểm sẽ bị treo cho đến khi đủ điều kiện.");
+        } else {
+            sb.append("\n\nLưu ý: Sự kiện không bắt buộc nộp minh chứng, điểm được cộng khi hoàn thành điểm danh.");
+        }
+
+        return sb.toString();
+    }
+
+    String formatRuleDescription(ActivityScoreRuleResponse rule) {
+        ScoreRuleTrigger trigger = rule.getTriggerType();
+        ScoreType scoreType = rule.getScoreType();
+        ScoreType failScoreType = rule.getFailScoreType();
+        String points = formatDecimal(rule.getPoints());
+        String failPoints = rule.getFailPoints() == null ? null : formatDecimal(rule.getFailPoints());
+        String typeName = formatScoreType(scoreType);
+        String failTypeName = failScoreType != null ? formatScoreType(failScoreType) : typeName;
+        String audience = formatAudience(rule.getAudience(), rule.getTargetDepartmentIds());
+
+        switch (trigger) {
+            case PARTICIPATION_COMPLETED:
+                return "Khi điểm danh thành công: +" + points + " " + typeName + " (" + audience + ").";
+            case NO_SHOW:
+                String noShowPts = failPoints != null ? failPoints : points;
+                return "Nếu đăng ký nhưng không tham gia (no-show): -" + noShowPts + " " + failTypeName + " (" + audience + ").";
+            case SUBMISSION_GRADED:
+                String pass = "+" + points + " " + typeName;
+                String fail = failPoints != null && !"0".equals(failPoints)
+                        ? "; trượt/quá hạn: -" + failPoints + " " + failTypeName
+                        : "";
+                return "Khi nộp bài và được chấm đạt: " + pass + fail + " (" + audience + ").";
+            case TASK_OVERDUE:
+                String overduePts = failPoints != null ? failPoints : points;
+                return "Nếu quá hạn nộp bài: -" + overduePts + " " + failTypeName + " (" + audience + ").";
+            case MINIGAME_PASSED:
+                return "Khi vượt qua minigame: +" + points + " " + typeName + " (" + audience + ").";
+            case MINIGAME_EXHAUSTED_ATTEMPTS:
+                String exhaustPts = failPoints != null ? failPoints : points;
+                return "Nếu hết lượt chơi mà không vượt qua: -" + exhaustPts + " " + failTypeName + " (" + audience + ").";
+            case SERIES_MILESTONE_REACHED:
+                return "Khi đạt mốc chuỗi sự kiện: +" + points + " " + typeName + " (" + audience + ").";
+            default:
+                return trigger + ": " + points + " " + typeName + " (" + audience + ").";
+        }
+    }
+
+    String formatScoreType(ScoreType type) {
+        if (type == null) {
+            return "điểm";
+        }
+        return switch (type) {
+            case REN_LUYEN -> "điểm rèn luyện";
+            case CONG_TAC_XA_HOI -> "điểm công tác xã hội";
+            case CHUYEN_DE -> "điểm chuyên đề";
+            default -> type.name();
+        };
+    }
+
+    String formatAudience(ScoreRuleAudience audience, List<Long> departmentIds) {
+        if (audience == null) {
+            return "áp dụng: tất cả sinh viên";
+        }
+        return switch (audience) {
+            case ALL_PARTICIPANTS -> "áp dụng: tất cả sinh viên";
+            case DEPARTMENT_ONLY -> "chỉ áp dụng sinh viên thuộc khoa đã chọn"
+                    + (departmentIds == null || departmentIds.isEmpty() ? "" : " (" + departmentIds.size() + " khoa)");
+            case OUTSIDE_DEPARTMENTS_ONLY -> "chỉ áp dụng sinh viên ngoài các khoa đã chọn"
+                    + (departmentIds == null || departmentIds.isEmpty() ? "" : " (" + departmentIds.size() + " khoa)");
+            default -> "áp dụng: " + audience.name().toLowerCase();
+        };
     }
 
     private String formatRegistrationAnswer(String username, Activity a) {
@@ -934,8 +1031,20 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         return containsAny(s, "quyen loi", "quyền lợi", "duoc gi", "được gì", "loi ich", "lợi ích", "qua", "quà");
     }
 
-    private static boolean isAskingPoints(String s) {
-        return containsAny(s, "diem", "điểm", "toi da", "tối đa", "tru diem", "trừ điểm", "phat", "phạt");
+    static boolean isAskingPoints(String s) {
+        return containsAny(s,
+                "diem", "điểm",
+                "toi da", "tối đa",
+                "tru diem", "trừ điểm",
+                "phat", "phạt",
+                "no-show", "no show", "vang mat", "vắng mặt",
+                "quy tac", "quy tắc", "preset",
+                "milestone", "moc", "mốc",
+                "quá hạn nộp", "qua han nop", "task overdue", "overdue",
+                "cong diem", "cộng điểm",
+                "loai diem", "loại điểm",
+                "chuoi", "chuoi su kien", "chuỗi sự kiện",
+                "phat vang mat", "phat vangs mat", "phạt vắng mặt");
     }
 
     private static boolean isAskingContact(String s) {
