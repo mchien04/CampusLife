@@ -1,13 +1,15 @@
 package vn.campuslife.service;
 
 import vn.campuslife.entity.*;
+import vn.campuslife.model.score.AppliedScoreAward;
+import java.util.List;
 
 public interface ScoreRuleEngine {
-    void applyActivityCompleted(ActivityParticipation participation, User actor);
+    List<AppliedScoreAward> applyActivityCompleted(ActivityParticipation participation, User actor);
 
     void applyNoShowPenalty(ActivityRegistration registration, User actor);
 
-    void applySubmissionGraded(TaskSubmission submission, User actor);
+    List<AppliedScoreAward> applySubmissionGraded(TaskSubmission submission, User actor);
 
     void applyTaskOverdue(TaskAssignment assignment, User actor);
 

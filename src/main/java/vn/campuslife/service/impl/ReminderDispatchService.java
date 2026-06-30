@@ -300,6 +300,15 @@ public class ReminderDispatchService {
         }
 
         Activity activity = assignmentOpt.get().getTask().getActivity();
+
+        // Cancel reminder if student did not attend — they are a no-show and TASK_OVERDUE does not apply.
+        // NO_SHOW penalty handles the no-show case; this prevents double-penalty.
+        Optional<ActivityRegistration> registrationOpt = activityRegistrationRepository
+                .findByActivityIdAndStudentId(activity.getId(), studentOpt.get().getId());
+        if (registrationOpt.isPresent() && registrationOpt.get().getStatus() != RegistrationStatus.ATTENDED) {
+            return true;
+        }
+
         return !activity.isRequiresSubmission() || activity.getSeriesId() != null;
     }
 

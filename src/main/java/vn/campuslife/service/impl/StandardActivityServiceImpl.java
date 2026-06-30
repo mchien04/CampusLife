@@ -7,11 +7,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.Department;
+import vn.campuslife.enumeration.ActivityType;
+import vn.campuslife.enumeration.ScoreEntryStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.StandardActivityCreateRequest;
 import vn.campuslife.model.activity.StandardActivityUpdateRequest;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
+import vn.campuslife.repository.ScoreEntryRepository;
+import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
@@ -34,19 +38,12 @@ public class StandardActivityServiceImpl implements StandardActivityService {
 
     private final ActivityRepository activityRepository;
     private final DepartmentRepository departmentRepository;
+    private final ScoreEntryRepository scoreEntryRepository;
     private final ScorePresetService scorePresetService;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ReminderScheduleService reminderScheduleService;
-    
-    // We reuse the auto-register from ActivityServiceImpl via dependency or just by not duplicating it here.
-    // Wait, autoRegisterStudents is a private method in ActivityServiceImpl.
-    // Since StandardActivityServiceImpl handles create/update, it might need autoRegister.
-    // In ActivityServiceImpl it's autoRegisterStudents(Activity).
-    // It's probably better to inject ActivityServiceImpl or extract auto-registration logic.
-    // For now, I will extract auto-registration from ActivityServiceImpl if needed, or we can use it if we extract it.
-    // Let's inject ActivityServiceImpl to call autoRegisterStudents... but wait, it's private.
-    // I should extract autoRegisterStudents into a shared component or just leave a comment and implement it correctly.
-    
+    private final ActivityRegistrationAutoService autoRegisterService;
+
     private final StandardActivityValidator validator;
     private final StandardActivityMapper mapper;
 
@@ -76,9 +73,8 @@ public class StandardActivityServiceImpl implements StandardActivityService {
                 activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
             }
 
-            // Note: auto-registration logic needs to be run if the activity is not draft.
-            // Ideally we should extract autoRegisterStudents to a separate service (e.g., ActivityRegistrationService)
-            // or we could trigger an event. For now, we will add a TODO or duplicate it simply if needed.
+            autoRegisterService.autoRegisterStudents(saved);
+            reminderScheduleService.syncEventRemindersForActivity(saved);
 
             return Response.success("Activity created successfully", mapper.toResponse(saved));
         } catch (IllegalArgumentException e) {
@@ -94,16 +90,32 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     @Transactional
     public Response updateActivity(Long id, StandardActivityUpdateRequest request) {
         try {
-            scorePresetService.applyActivityPreset(request);
-            // Validation: optional fields. We might need a slightly different validate for update,
-            // or just use manual validation for update. StandardActivityValidator validates all required.
-            // But Update request has optional fields. We can skip validator or write an update validator.
-
             Optional<Activity> opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty()) {
                 return Response.error("Activity not found");
             }
             Activity existing = opt.get();
+
+            if (request.getPresetCode() != null && existing.getPresetCode() != null
+                    && request.getPresetCode() != existing.getPresetCode()) {
+                return Response.error("Cannot change preset code from " + existing.getPresetCode()
+                        + " to " + request.getPresetCode() + " on update. "
+                        + "You can only customize score rules within the current preset.");
+            }
+
+            ActivityType effectiveType = request.getType() != null ? request.getType() : existing.getType();
+
+            if (request.getType() != null && request.getType() != existing.getType()) {
+                long activeEntries = scoreEntryRepository.countByActivityIdAndStatus(id, ScoreEntryStatus.ACTIVE);
+                if (activeEntries > 0 && !existing.isDraft()) {
+                    return Response.error(
+                            "Cannot change type when activity has " + activeEntries
+                            + " active score entries and is not draft. "
+                            + "Unpublish the activity first.");
+                }
+            }
+
+            scorePresetService.applyActivityPreset(request, effectiveType);
 
             mapper.applyUpdate(existing, request);
 
@@ -117,8 +129,13 @@ public class StandardActivityServiceImpl implements StandardActivityService {
                 activityScoreRuleService.replaceRules(saved.getId(), request.getScoreRules());
             }
 
+            autoRegisterService.autoRegisterStudents(saved);
+
             return Response.success("Activity updated successfully", mapper.toResponse(saved));
         } catch (IllegalArgumentException e) {
+            return Response.error(e.getMessage());
+        } catch (IllegalStateException e) {
+            logger.warn("Cannot modify score rules for activity {}: {}", id, e.getMessage());
             return Response.error(e.getMessage());
         } catch (Exception e) {
             logger.error("Failed to update standard activity: {}", e.getMessage(), e);

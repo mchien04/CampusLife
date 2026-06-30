@@ -38,6 +38,7 @@ public class MinigameActivityUpdateRequest {
     @AllArgsConstructor
     public static class QuizConfigRequest {
         private String title;
+        private String description;
         private Integer questionCount;
         private Integer timeLimit;
         private Integer requiredCorrectAnswers;

@@ -17,9 +17,9 @@ import vn.campuslife.entity.TaskSubmission;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.enumeration.ParticipationType;
-import vn.campuslife.enumeration.SubmissionStatus;
-import vn.campuslife.enumeration.ParticipationType;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.TaskStatus;
+import vn.campuslife.model.score.AppliedScoreAward;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ReminderScheduleService;
@@ -76,6 +76,30 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             if (taskOpt.isEmpty()) {
                 return new Response(false, "Task not found", null);
             }
+            ActivityTask task = taskOpt.get();
+            Activity activity = task.getActivity();
+
+            if (activity == null || activity.isDeleted()) {
+                return new Response(false, "Activity not found or deleted", null);
+            }
+            if (activity.isDraft()) {
+                return new Response(false, "Activity is not published yet", null);
+            }
+
+            LocalDateTime now = LocalDateTime.now();
+            if (task.getDeadline() != null && now.isAfter(task.getDeadline())) {
+                return new Response(false, "Submission deadline has passed", null);
+            }
+
+            Optional<ActivityRegistration> regOpt = activityRegistrationRepository
+                    .findByActivityIdAndStudentId(activity.getId(), studentId);
+            if (regOpt.isEmpty()) {
+                return new Response(false, "Student is not registered for this activity", null);
+            }
+            ActivityRegistration registration = regOpt.get();
+            if (registration.getStatus() != RegistrationStatus.APPROVED && registration.getStatus() != RegistrationStatus.ATTENDED) {
+                return new Response(false, "Registration is not approved or attended", null);
+            }
 
             // Validate student exists
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
@@ -103,6 +127,15 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             taskSubmissionRepository.save(submission);
+
+            // Auto-grade check: If auto-graded immediately during submit
+            if (submission.getStatus() == SubmissionStatus.GRADED) {
+                try {
+                    finalizeSubmissionResultIfEligible(submission, studentOpt.get().getUser());
+                } catch (Exception ex) {
+                    logger.warn("Auto-finalize submission result failed: {}", ex.getMessage());
+                }
+            }
 
             // Cập nhật TaskAssignment status sang ASSIGNED khi sinh viên nộp bài
             try {
@@ -144,6 +177,27 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             TaskSubmission submission = submissionOpt.get();
             if (!submission.getStudent().getId().equals(studentId)) {
                 return new Response(false, "Unauthorized to update this submission", null);
+            }
+
+            ActivityTask task = submission.getTask();
+            if (task == null) {
+                return new Response(false, "Task not found", null);
+            }
+            Activity activity = task.getActivity();
+            if (activity == null || activity.isDeleted()) {
+                return new Response(false, "Activity not found or deleted", null);
+            }
+            if (activity.isDraft()) {
+                return new Response(false, "Activity is not published yet", null);
+            }
+
+            LocalDateTime now = LocalDateTime.now();
+            if (task.getDeadline() != null && now.isAfter(task.getDeadline())) {
+                return new Response(false, "Submission deadline has passed", null);
+            }
+
+            if (submission.getStatus() == vn.campuslife.enumeration.SubmissionStatus.GRADED) {
+                return new Response(false, "Cannot update a graded submission", null);
             }
 
             submission.setContent(content);
@@ -425,21 +479,21 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
         }
 
         ActivityRegistration registration = regOpt.get();
-        if (registration.getStatus() != vn.campuslife.enumeration.RegistrationStatus.ATTENDED) {
+        if (registration.getStatus() != RegistrationStatus.ATTENDED) {
             logger.info("Submission {} graded before attendance is confirmed for registration {}",
                     submission.getId(), registration.getId());
             return;
         }
 
-        activityParticipationRepository.findByRegistration(registration)
-                .ifPresent(participation -> {
-                    participation.setIsCompleted(submission.getIsCompleted());
-                    participation.setPointsEarned(BigDecimal.ZERO);
-                    participation.setParticipationType(ParticipationType.COMPLETED);
-                    activityParticipationRepository.save(participation);
-                });
-
         if (activity.getSeriesId() != null) {
+            activityParticipationRepository.findByRegistration(registration)
+                    .ifPresent(participation -> {
+                        participation.setIsCompleted(submission.getIsCompleted());
+                        participation.setPointsEarned(BigDecimal.ZERO);
+                        participation.setParticipationType(ParticipationType.COMPLETED);
+                        activityParticipationRepository.save(participation);
+                    });
+
             if (Boolean.TRUE.equals(submission.getIsCompleted())) {
                 try {
                     activitySeriesService.updateStudentProgress(student.getId(), activity.getId());
@@ -452,7 +506,18 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             return;
         }
 
-        scoreRuleEngine.applySubmissionGraded(submission, actor);
+        List<AppliedScoreAward> awards = scoreRuleEngine.applySubmissionGraded(submission, actor);
+        BigDecimal totalPoints = awards != null ? awards.stream()
+                .map(AppliedScoreAward::getPoints)
+                .reduce(BigDecimal.ZERO, BigDecimal::add) : BigDecimal.ZERO;
+
+        activityParticipationRepository.findByRegistration(registration)
+                .ifPresent(participation -> {
+                    participation.setIsCompleted(submission.getIsCompleted());
+                    participation.setPointsEarned(totalPoints);
+                    participation.setParticipationType(ParticipationType.COMPLETED);
+                    activityParticipationRepository.save(participation);
+                });
     }
 
 }

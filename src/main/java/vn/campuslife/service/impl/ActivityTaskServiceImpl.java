@@ -10,6 +10,7 @@ import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.task.ActivityTaskResponse;
@@ -32,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -199,6 +201,23 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             ActivityTask task = taskOpt.get();
+
+            // Validate owning activity is valid
+            Activity owningActivity = task.getActivity();
+            if (owningActivity == null || owningActivity.isDeleted()) {
+                return new Response(false, "Task's owning activity is invalid", null);
+            }
+
+            // Validate students are registered for this activity
+            Set<Long> registeredStudentIds = activityRegistrationRepository
+                    .findStudentIdsByActivityId(owningActivity.getId());
+            List<Long> unregisteredIds = request.getStudentIds().stream()
+                    .filter(sid -> !registeredStudentIds.contains(sid))
+                    .toList();
+            if (!unregisteredIds.isEmpty()) {
+                return new Response(false,
+                        "Students not registered for activity: " + unregisteredIds, null);
+            }
 
             // Validate students exist
             List<Student> students = studentRepository.findAllById(request.getStudentIds());
@@ -548,6 +567,15 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
                         && assignment.getTask().getDeadline() != null
                         && assignment.getTask().getDeadline().isBefore(now)
                         && assignment.getStatus() != TaskStatus.COMPLETED) {
+                    // Skip if student did not attend — they are a no-show, TASK_OVERDUE does not apply.
+                    // NO_SHOW penalty handles the no-show case; this prevents double-penalty.
+                    Optional<ActivityRegistration> regOpt = activityRegistrationRepository
+                            .findByActivityIdAndStudentId(
+                                    assignment.getTask().getActivity().getId(),
+                                    assignment.getStudent().getId());
+                    if (regOpt.isPresent() && regOpt.get().getStatus() != RegistrationStatus.ATTENDED) {
+                        continue;
+                    }
                     assignment.setStatus(TaskStatus.OVERDUE);
                     taskAssignmentRepository.save(assignment);
                     try {

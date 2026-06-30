@@ -18,13 +18,16 @@ import vn.campuslife.entity.StudentSeriesProgress;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.TaskSubmission;
 import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreRuleAudience;
 import vn.campuslife.enumeration.ScoreRuleCalculation;
 import vn.campuslife.enumeration.ScoreRuleTrigger;
+import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.model.score.ScoreEntryCommand;
 import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.SemesterRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivityScoreRuleService;
@@ -35,9 +38,13 @@ import vn.campuslife.service.SemesterHelperService;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import vn.campuslife.entity.ScoreEntry;
+import vn.campuslife.model.score.AppliedScoreAward;
 
 @Slf4j
 @Service
@@ -49,18 +56,19 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
     private final ScoreSemesterResolver semesterResolver;
     private final StudentSeriesProgressRepository progressRepository;
     private final ActivityRepository activityRepository;
+    private final ActivityRegistrationRepository registrationRepository;
     private final SemesterHelperService semesterHelperService;
     private final SemesterRepository semesterRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     @Transactional
-    public void applyActivityCompleted(ActivityParticipation participation, User actor) {
+    public List<AppliedScoreAward> applyActivityCompleted(ActivityParticipation participation, User actor) {
         Activity activity = participation.getRegistration().getActivity();
         if (activity.getSeriesId() != null) {
             log.info("Skipping individual completion points for activity {} belonging to series {}", activity.getId(),
                     activity.getSeriesId());
-            return;
+            return Collections.emptyList();
         }
 
         Student student = participation.getRegistration().getStudent();
@@ -68,29 +76,41 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(),
                 ScoreRuleTrigger.PARTICIPATION_COMPLETED);
 
+        List<AppliedScoreAward> awards = new ArrayList<>();
+
         for (ActivityScoreRule rule : rules) {
             if (!isEligible(rule, student))
                 continue;
 
-            BigDecimal points = Boolean.TRUE.equals(participation.getIsCompleted())
+            boolean isSuccess = Boolean.TRUE.equals(participation.getIsCompleted());
+            BigDecimal points = isSuccess
                     ? rule.getPoints()
                     : rule.getFailPoints();
 
+            ScoreType actualScoreType = isSuccess
+                    ? rule.getScoreType()
+                    : (rule.getFailScoreType() != null ? rule.getFailScoreType() : rule.getScoreType());
+
             Semester semester = semesterResolver.resolveSemester(activity, rule, participation.getDate());
 
-            scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
+            ScoreEntry entry = scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
                     .studentId(student.getId())
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
                     .semesterId(semester.getId())
-                    .scoreType(rule.getScoreType())
+                    .scoreType(actualScoreType)
                     .sourceType(ScoreEntrySourceType.ACTIVITY_PARTICIPATION)
                     .sourceId(participation.getId())
                     .points(points)
                     .reason("Completed activity: " + activity.getName())
                     .actor(actor)
                     .build());
+
+            if (entry != null) {
+                awards.add(AppliedScoreAward.fromEntry(entry));
+            }
         }
+        return awards;
     }
 
     @Override
@@ -171,6 +191,8 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 continue;
             }
 
+            ScoreType actualScoreType = rule.getFailScoreType() != null ? rule.getFailScoreType() : rule.getScoreType();
+
             LocalDateTime occurredAt = attempt.getSubmittedAt() != null ? attempt.getSubmittedAt() : LocalDateTime.now();
             Semester semester = semesterResolver.resolveSemester(activity, rule, occurredAt);
 
@@ -179,7 +201,7 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
                     .semesterId(semester.getId())
-                    .scoreType(rule.getScoreType())
+                    .scoreType(actualScoreType)
                     .sourceType(ScoreEntrySourceType.MINIGAME_ATTEMPT)
                     .sourceId(attempt.getId())
                     .points(points)
@@ -203,6 +225,15 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         }
 
         Student student = assignment.getStudent();
+
+        // If student did not attend, skip TASK_OVERDUE — they are a no-show and will get NO_SHOW penalty instead.
+        // Prevents double-penalty: no-show student getting both NO_SHOW + TASK_OVERDUE.
+        if (!hasAttended(activity.getId(), student.getId())) {
+            log.info("Skipping task overdue penalty for student {} on activity {} — did not attend", student.getId(),
+                    activity.getId());
+            return;
+        }
+
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.TASK_OVERDUE);
 
         for (ActivityScoreRule rule : rules) {
@@ -233,12 +264,12 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
 
     @Override
     @Transactional
-    public void applySubmissionGraded(TaskSubmission submission, User actor) {
+    public List<AppliedScoreAward> applySubmissionGraded(TaskSubmission submission, User actor) {
         Activity activity = submission.getTask().getActivity();
         if (activity != null && activity.getSeriesId() != null) {
             log.info("Skipping individual submission points for activity {} belonging to series {}", activity.getId(),
                     activity.getSeriesId());
-            return;
+            return Collections.emptyList();
         }
 
         Student student = submission.getStudent();
@@ -246,33 +277,45 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(),
                 ScoreRuleTrigger.SUBMISSION_GRADED);
 
+        List<AppliedScoreAward> awards = new ArrayList<>();
+
         for (ActivityScoreRule rule : rules) {
             if (!isEligible(rule, student))
                 continue;
 
+            boolean isSuccess = vn.campuslife.enumeration.SubmissionStatus.GRADED.equals(submission.getStatus())
+                    && Boolean.TRUE.equals(submission.getIsCompleted());
             BigDecimal points;
-            if (vn.campuslife.enumeration.SubmissionStatus.GRADED.equals(submission.getStatus())
-                    && Boolean.TRUE.equals(submission.getIsCompleted())) {
+            if (isSuccess) {
                 points = applySignForSuccess(rule, rule.getPoints());
             } else {
                 points = applySignForFailure(rule, rule.getFailPoints());
             }
 
+            ScoreType actualScoreType = isSuccess
+                    ? rule.getScoreType()
+                    : (rule.getFailScoreType() != null ? rule.getFailScoreType() : rule.getScoreType());
+
             Semester semester = semesterResolver.resolveSemester(activity, rule, submission.getSubmittedAt());
 
-            scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
+            ScoreEntry entry = scoreEntryService.upsertEntry(ScoreEntryCommand.builder()
                     .studentId(student.getId())
                     .activityId(activity.getId())
                     .ruleId(rule.getId())
                     .semesterId(semester.getId())
-                    .scoreType(rule.getScoreType())
+                    .scoreType(actualScoreType)
                     .sourceType(ScoreEntrySourceType.TASK_SUBMISSION)
                     .sourceId(submission.getId())
                     .points(points)
                     .reason("Graded submission for activity: " + activity.getName())
                     .actor(actor)
                     .build());
+
+            if (entry != null) {
+                awards.add(AppliedScoreAward.fromEntry(entry));
+            }
         }
+        return awards;
     }
 
     @Override
@@ -324,6 +367,10 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
 
         ActivitySeries series = progress.getSeries();
         if (series.getMilestonePoints() == null || series.getMilestonePoints().isBlank()) {
+            return;
+        }
+
+        if (!isEligibleBySeriesAudience(series, progress.getStudent())) {
             return;
         }
 
@@ -398,6 +445,10 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             return;
         }
 
+        if (!isEligibleBySeriesAudience(series, student)) {
+            return;
+        }
+
         Semester semester = resolveSeriesSemester(series);
         if (semester == null) {
             log.warn("No semester resolved for series minimum requirement {}", series.getId());
@@ -448,6 +499,12 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
                 .orElseGet(() -> semesterRepository.findAll().stream().findFirst().orElse(null));
     }
 
+    private boolean hasAttended(Long activityId, Long studentId) {
+        return registrationRepository.findByActivityIdAndStudentId(activityId, studentId)
+                .map(reg -> reg.getStatus() == RegistrationStatus.ATTENDED)
+                .orElse(false);
+    }
+
     private boolean isEligible(ActivityScoreRule rule, Student student) {
         if (rule.getAudience() == ScoreRuleAudience.ALL_PARTICIPANTS)
             return true;
@@ -458,6 +515,23 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
             return inDepartment;
         if (rule.getAudience() == ScoreRuleAudience.OUTSIDE_DEPARTMENTS_ONLY)
             return !inDepartment;
+
+        return false;
+    }
+
+    private boolean isEligibleBySeriesAudience(ActivitySeries series, Student student) {
+        if (series.getAudience() == null || series.getAudience() == ScoreRuleAudience.ALL_PARTICIPANTS) {
+            return true;
+        }
+
+        boolean inDepartment = series.getTargetDepartments().contains(student.getDepartment());
+
+        if (series.getAudience() == ScoreRuleAudience.DEPARTMENT_ONLY) {
+            return inDepartment;
+        }
+        if (series.getAudience() == ScoreRuleAudience.OUTSIDE_DEPARTMENTS_ONLY) {
+            return !inDepartment;
+        }
 
         return false;
     }

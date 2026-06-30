@@ -218,6 +218,8 @@ public class SecurityConfig {
                         // Recalculate score endpoints - Admin/Manager only
                         .requestMatchers(HttpMethod.POST, "/api/scores/recalculate/**")
                         .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/scores/recalculate/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
                         // removed: /api/scores/training/calculate
 
                         // Task Submissions
@@ -273,6 +275,9 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER")
                         // Score statistics - all authenticated (role-based filtering in controller)
                         .requestMatchers(HttpMethod.GET, "/api/statistics/scores")
+                        .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
+                        // Score breakdown - all authenticated (role-based filtering in controller)
+                        .requestMatchers(HttpMethod.GET, "/api/statistics/scores/breakdown")
                         .hasAnyRole("STUDENT", "ADMIN", "MANAGER")
                         // Series statistics - all authenticated
                         .requestMatchers(HttpMethod.GET, "/api/statistics/series")

@@ -40,6 +40,10 @@ public class ActivityScoreRule {
     private ScoreType scoreType;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "fail_score_type", length = 50)
+    private ScoreType failScoreType;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "trigger_type", nullable = false, length = 50)
     private ScoreRuleTrigger triggerType;
 
@@ -67,6 +71,9 @@ public class ActivityScoreRule {
 
     @Column(nullable = false)
     private boolean enabled = true;
+
+    @Column(name = "is_preset_generated", nullable = false)
+    private boolean isPresetGenerated = false;
 
     @ManyToMany
     @JoinTable(name = "activity_score_rule_departments", 

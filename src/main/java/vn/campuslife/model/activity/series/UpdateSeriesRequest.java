@@ -1,11 +1,13 @@
 package vn.campuslife.model.activity.series;
 
 import lombok.Data;
+import vn.campuslife.enumeration.ScoreRuleAudience;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.enumeration.SeriesPresetCode;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -24,6 +26,11 @@ public class UpdateSeriesRequest {
     private Boolean minimumRequirementEnabled;
     private Integer minimumRequiredEvents;
     private Integer minimumPenaltyPoints;
+    private ScoreRuleAudience audience;
+    private List<Long> departmentIds;
+    private Boolean isImportant;
+    private Boolean mandatoryForFacultyStudents;
+    private Boolean isDraft;
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
 }

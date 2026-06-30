@@ -13,6 +13,7 @@ import java.util.List;
 @Data
 public class ActivityScoreRuleRequest {
     private ScoreType scoreType;
+    private ScoreType failScoreType;
     private ScoreRuleTrigger triggerType;
     private ScoreRuleCalculation calculation;
     private BigDecimal points;
@@ -22,4 +23,5 @@ public class ActivityScoreRuleRequest {
     private Long explicitSemesterId;
     private List<Long> departmentIds;
     private Boolean enabled;
+    private Boolean isPresetGenerated;
 }

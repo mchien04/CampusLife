@@ -71,7 +71,7 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
         pythonRequest.setUserProfile(userProfile);
         pythonRequest.setActivities(pythonActivities);
 
-        String pythonUrl = "http://localhost:8000/recommend";
+        String pythonUrl = "https://recomment-0hka.onrender.com/recommend";
 
         PythonRecommendResponse[] pythonResponses =
                 restTemplate.postForObject(

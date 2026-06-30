@@ -35,3 +35,6 @@ build/
 # Firebase / Google credentials
 firebase-admin.json
 src/main/resources/firebase-admin.json
+
+# Uploads folder and all subfolders
+uploads/

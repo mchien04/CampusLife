@@ -10,6 +10,7 @@ import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
+import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
 
@@ -50,8 +51,11 @@ public class ActivitySeriesServiceImplTest {
     @Mock
     private vn.campuslife.service.SemesterHelperService semesterHelperService;
 
-    @Mock
+@Mock
     private ReminderScheduleService reminderScheduleService;
+
+    @Mock
+    private ActivityRegistrationAutoService autoRegisterService;
 
     @InjectMocks
     private ActivitySeriesServiceImpl activitySeriesService;
@@ -168,7 +172,7 @@ public class ActivitySeriesServiceImplTest {
     @Test
     void createSeries_EnabledWithoutValidThreshold_ThrowsIllegalArgumentException() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-                activitySeriesService.createSeries(
+activitySeriesService.createSeries(
                         "Series A",
                         "desc",
                         "{\"3\":5}",
@@ -180,7 +184,7 @@ public class ActivitySeriesServiceImplTest {
                         100,
                         true,
                         0,
-                        2, null));
+                        2, null, null, null, null, null, null, null));
 
         assertTrue(ex.getMessage().contains("minimumRequiredEvents"));
     }

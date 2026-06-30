@@ -1,8 +1,12 @@
 package vn.campuslife.service;
 
+import vn.campuslife.enumeration.ScoreRuleAudience;
+import vn.campuslife.enumeration.SeriesPresetCode;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest;
 import vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest;
+
+import java.util.List;
 
 public interface ActivitySeriesService {
         /**
@@ -13,7 +17,11 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
-                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId);
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
+                        SeriesPresetCode presetCode);
 
         /**
          * Tạo activity trong series với các thuộc tính tối giản
@@ -33,6 +41,8 @@ public interface ActivitySeriesService {
          * Student đăng ký series (tự động đăng ký tất cả activities trong series)
          */
         Response registerForSeries(Long seriesId, Long studentId);
+
+        Response registerForSeriesWaitlist(Long seriesId, Long studentId);
 
         /**
          * Cập nhật tiến độ sinh viên khi check-in activity thuộc chuỗi
@@ -98,11 +108,14 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationStartDate,
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
-                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId);
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
+                        SeriesPresetCode presetCode);
 
         /**
          * Xóa chuỗi sự kiện (soft delete)
          */
         Response deleteSeries(Long seriesId);
 }
-
