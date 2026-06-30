@@ -1011,12 +1011,37 @@ series.setPresetCode(presetCode);
                 return Response.error("Student not found");
             }
 
+            ActivitySeries series = seriesOpt.get();
             boolean isRegistered = registrationRepository.existsBySeriesIdAndStudentId(seriesId, studentId);
+
+            boolean canCancel = true;
+            String cancelReason = null;
+            if (!isRegistered) {
+                canCancel = false;
+                cancelReason = "Bạn chưa đăng ký chuỗi sự kiện này.";
+            } else if (series.isImportant()) {
+                canCancel = false;
+                cancelReason = "Không thể huỷ đăng ký chuỗi sự kiện quan trọng.";
+            } else if (series.isMandatoryForFacultyStudents()) {
+                canCancel = false;
+                cancelReason = "Không thể huỷ đăng ký chuỗi bắt buộc cho sinh viên khoa.";
+            } else {
+                List<ActivityRegistration> seriesRegs = registrationRepository.findBySeriesIdAndStudentId(seriesId, studentId);
+                for (ActivityRegistration reg : seriesRegs) {
+                    if (reg.getStatus() == RegistrationStatus.ATTENDED) {
+                        canCancel = false;
+                        cancelReason = "Không thể huỷ vì bạn đã tham gia sự kiện '" + reg.getActivity().getName() + "'.";
+                        break;
+                    }
+                }
+            }
 
             Map<String, Object> data = new HashMap<>();
             data.put("seriesId", seriesId);
             data.put("studentId", studentId);
             data.put("isRegistered", isRegistered);
+            data.put("canCancel", canCancel);
+            data.put("cancelReason", cancelReason);
 
             return Response.success("Series registration status retrieved", data);
         } catch (Exception e) {

@@ -208,6 +208,19 @@ export interface ChatbotStatusResponse {
 
 ---
 
+## 5. Tích hợp Score Engine mới (v6.1+)
+
+Chatbot đã được cập nhật để giải thích quy tắc tính điểm theo Score Engine mới của hệ thống. Khi sinh viên hỏi về điểm ("sự kiện này cộng bao nhiêu điểm", "có bị trừ điểm không", "no-show", "quá hạn nộp bài", "milestone"...), bot sẽ:
+
+- Đọc các `scoreRules` đang bật của activity theo trigger: `PARTICIPATION_COMPLETED`, `NO_SHOW`, `SUBMISSION_GRADED`, `TASK_OVERDUE`, `MINIGAME_PASSED`, `MINIGAME_EXHAUSTED_ATTEMPTS`, `SERIES_MILESTONE_REACHED`.
+- Hiển thị loại điểm (`REN_LUYEN`, `CONG_TAC_XA_HOI`, `CHUYEN_DE`), số điểm cộng/trừ, đối tượng áp dụng và preset code (nếu có).
+- Nếu activity thuộc Series (`seriesId != null`), bot thông báo sự kiện con không cộng điểm riêng lẻ mà tính theo mốc chuỗi.
+- Nếu `requiresSubmission = true`, bot lưu ý sinh viên phải điểm danh **và** được chấm bài thì điểm mới được công nhận đầy đủ.
+
+FE không cần thay đổi API contract; nội dung trả về nằm trong field `answer` như bình thường.
+
+---
+
 ## Gợi ý triển khai FE (TypeScript)
 ### API client (ví dụ)
 ```ts
