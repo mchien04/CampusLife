@@ -1,6 +1,7 @@
 package vn.campuslife.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vn.campuslife.entity.*;
@@ -31,6 +32,10 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityRepository activityRepository;
     private final RestTemplate restTemplate;
+
+    @Value("${app.recommendation.url:http://localhost:8000/recommend}")
+    private String pythonRecommendUrl;
+
     @Override
     public List<RecommendedActivityResponse> recommendForStudent(Long studentId, int limit) {
         String userProfile = buildUserProfile(studentId);
@@ -71,11 +76,9 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
         pythonRequest.setUserProfile(userProfile);
         pythonRequest.setActivities(pythonActivities);
 
-        String pythonUrl = "http://localhost:8000/recommend";
-
         PythonRecommendResponse[] pythonResponses =
                 restTemplate.postForObject(
-                        pythonUrl,
+                        pythonRecommendUrl,
                         pythonRequest,
                         PythonRecommendResponse[].class
                 );
