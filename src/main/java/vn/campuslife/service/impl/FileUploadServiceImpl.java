@@ -7,8 +7,6 @@ import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.UploadStorageService;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 @Service
 public class FileUploadServiceImpl implements FileUploadService {
@@ -35,12 +33,7 @@ public class FileUploadServiceImpl implements FileUploadService {
     public void deleteFile(String fileName) {
         try {
             String relativePath = uploadStorageService.extractRelativePath(fileName);
-            if (relativePath == null || relativePath.isBlank()) {
-                return;
-            }
-
-            Path filePath = uploadStorageService.resolveFilePath(relativePath);
-            Files.deleteIfExists(filePath);
+            uploadStorageService.delete(relativePath);
         } catch (IOException e) {
             throw new RuntimeException("Failed to delete file: " + e.getMessage(), e);
         }

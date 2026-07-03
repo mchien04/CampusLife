@@ -1,5 +1,6 @@
 package vn.campuslife.service.impl;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.config.UploadProperties;
@@ -15,6 +16,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 @Service
+@ConditionalOnProperty(name = "app.upload.provider", havingValue = "local", matchIfMissing = true)
 public class UploadStorageServiceImpl implements UploadStorageService {
 
     private final UploadProperties uploadProperties;
@@ -44,6 +46,15 @@ public class UploadStorageServiceImpl implements UploadStorageService {
         Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
         return buildRelativeUrl(relativeDirectory, fileName);
+    }
+
+    @Override
+    public void delete(String relativePath) throws IOException {
+        if (relativePath == null || relativePath.isBlank()) {
+            return;
+        }
+        Path filePath = resolveFilePath(relativePath);
+        Files.deleteIfExists(filePath);
     }
 
     @Override
