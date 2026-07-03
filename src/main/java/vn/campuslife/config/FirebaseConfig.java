@@ -19,16 +19,27 @@ public class FirebaseConfig {
     @Value("${firebase.enabled:true}")
     private boolean firebaseEnabled;
 
+    @Value("${firebase.service-account-base64:}")
+    private String firebaseServiceAccountBase64;
+
     @PostConstruct
     public void initFirebase() {
         if (!firebaseEnabled) {
             return;
         }
         try {
-            ClassPathResource resource = new ClassPathResource("firebase-admin.json");
+            InputStream credentialsStream;
+
+            if (firebaseServiceAccountBase64 != null && !firebaseServiceAccountBase64.isBlank()) {
+                byte[] decoded = Base64.getDecoder().decode(firebaseServiceAccountBase64);
+                credentialsStream = new ByteArrayInputStream(decoded);
+            } else {
+                ClassPathResource resource = new ClassPathResource("firebase-admin.json");
+                credentialsStream = resource.getInputStream();
+            }
 
             GoogleCredentials credentials =
-                    GoogleCredentials.fromStream(resource.getInputStream())
+                    GoogleCredentials.fromStream(credentialsStream)
                             .createScoped("https://www.googleapis.com/auth/cloud-platform");
 
             FirebaseOptions options = FirebaseOptions.builder()
