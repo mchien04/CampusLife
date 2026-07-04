@@ -410,6 +410,8 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         response.setId(assignment.getId());
         response.setTaskId(assignment.getTask().getId());
         response.setTaskName(assignment.getTask().getName());
+        response.setDescription(assignment.getTask().getDescription());
+        response.setDeadline(assignment.getTask().getDeadline());
         // Thêm thông tin Activity để sinh viên biết nhiệm vụ thuộc sự kiện nào
         response.setActivityId(assignment.getTask().getActivity().getId());
         response.setActivityName(assignment.getTask().getActivity().getName());
