@@ -9,6 +9,8 @@ public interface UploadStorageService {
 
     String store(MultipartFile file, String relativeDirectory, boolean imageOnly) throws IOException;
 
+    void delete(String relativePath) throws IOException;
+
     String toPublicUrl(String relativePath);
 
     String extractRelativePath(String fileUrl);

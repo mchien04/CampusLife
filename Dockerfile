@@ -17,13 +17,6 @@ WORKDIR /app
 # Copy JAR from build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Create uploads directory and subdirectories
-# Code will auto-create these, but creating them here ensures they exist on startup
-RUN mkdir -p uploads/activities uploads/email-attachments uploads/submissions
-
-# If using Render Disk, uncomment the line below to mount persistent storage
-# VOLUME ["/app/uploads"]
-
 # Expose port (Render will set PORT env variable)
 EXPOSE 8080
 

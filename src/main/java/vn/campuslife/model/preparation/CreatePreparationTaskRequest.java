@@ -27,4 +27,5 @@ public class CreatePreparationTaskRequest {
     private LocalDateTime deadline;
 
     private Boolean isFinancial;
+    private Boolean isCheckinScanner;
 }

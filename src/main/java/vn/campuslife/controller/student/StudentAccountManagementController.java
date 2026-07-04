@@ -7,6 +7,8 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.student.BulkCreateStudentsRequest;
 import vn.campuslife.model.student.BulkSendCredentialsRequest;
+import vn.campuslife.model.student.CreateMultipleStudentsRequest;
+import vn.campuslife.model.student.CreateStudentRequest;
 import vn.campuslife.model.student.UpdateStudentAccountRequest;
 import vn.campuslife.service.StudentAccountManagementService;
 
@@ -18,6 +20,18 @@ public class StudentAccountManagementController {
     private final StudentAccountManagementService studentAccountManagementService;
     
     /**
+     * Kiểm tra mã số sinh viên và email đã được sử dụng chưa
+     * GET /api/admin/students/validate?studentCode=...&email=...
+     */
+    @GetMapping("/validate")
+    public ResponseEntity<Response> validateStudentAccount(
+            @RequestParam(required = false) String studentCode,
+            @RequestParam(required = false) String email) {
+        Response response = studentAccountManagementService.validateStudentAccount(studentCode, email);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Upload và parse file Excel
      * POST /api/admin/students/upload-excel
      */
@@ -28,12 +42,32 @@ public class StudentAccountManagementController {
     }
     
     /**
-     * Tạo tài khoản hàng loạt từ danh sách
+     * Tạo tài khoản hàng loạt từ danh sách (Import Excel)
      * POST /api/admin/students/bulk-create
      */
     @PostMapping("/bulk-create")
     public ResponseEntity<Response> bulkCreateStudents(@RequestBody BulkCreateStudentsRequest request) {
         Response response = studentAccountManagementService.bulkCreateStudents(request);
+        return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
+    }
+    
+    /**
+     * Tạo tài khoản sinh viên đơn lẻ
+     * POST /api/admin/students/create
+     */
+    @PostMapping("/create")
+    public ResponseEntity<Response> createStudent(@RequestBody CreateStudentRequest request) {
+        Response response = studentAccountManagementService.createStudent(request);
+        return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
+    }
+    
+    /**
+     * Tạo tài khoản sinh viên từ danh sách json array (không qua Excel)
+     * POST /api/admin/students/create-multiple
+     */
+    @PostMapping("/create-multiple")
+    public ResponseEntity<Response> createMultipleStudents(@RequestBody CreateMultipleStudentsRequest request) {
+        Response response = studentAccountManagementService.createMultipleStudents(request);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
     }
     

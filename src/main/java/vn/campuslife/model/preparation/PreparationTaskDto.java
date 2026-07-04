@@ -22,6 +22,7 @@ public class PreparationTaskDto {
     private LocalDateTime deadline;
     private BigDecimal allocatedAmount;
     private Boolean isFinancial;
+    private Boolean isCheckinScanner;
     private PreparationTaskStatus status;
     private List<String> completionProofUrls;
 }
