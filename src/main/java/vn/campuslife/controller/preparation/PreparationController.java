@@ -39,6 +39,13 @@ public class PreparationController {
         return ResponseEntity.ok(Response.success("OK", dashboard));
     }
 
+    @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    public ResponseEntity<Response> getPreparationsSummary(@RequestParam List<Long> activityIds) {
+        List<PreparationSummaryResponse> summary = preparationService.getPreparationsSummary(activityIds);
+        return ResponseEntity.ok(Response.success("OK", summary));
+    }
+
     @GetMapping("/my/activity-ids")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> listMyPreparationActivityIds(Authentication authentication) {
@@ -85,7 +92,8 @@ public class PreparationController {
                 req.getTitle(),
                 req.getDescription(),
                 req.getDeadline(),
-                req.getIsFinancial()));
+                req.getIsFinancial(),
+                req.getIsCheckinScanner()));
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 

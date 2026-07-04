@@ -183,9 +183,9 @@ public class ActivityRegistrationController {
      * Hỗ trợ cả quét QR code và nhập code thủ công
      */
     @GetMapping("/checkin/validate")
-    public ResponseEntity<Response> validateTicketCode(@RequestParam String ticketCode) {
+    public ResponseEntity<Response> validateTicketCode(@RequestParam String ticketCode, Authentication authentication) {
         try {
-            Response response = registrationService.validateTicketCode(ticketCode);
+            Response response = registrationService.validateTicketCode(ticketCode, authentication != null ? authentication.getName() : null);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -233,7 +233,7 @@ public class ActivityRegistrationController {
             }
             logger.info("========================");
 
-            Response response = registrationService.checkIn(request);
+            Response response = registrationService.checkIn(request, authentication != null ? authentication.getName() : null);
             logger.info("Check-in service response: status={}, message={}",
                     response.isStatus(), response.getMessage());
             return ResponseEntity.status(response.isStatus() ? 201 : 400).body(response);

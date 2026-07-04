@@ -217,6 +217,54 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
     }
 
     @Override
+    @Transactional
+    public Response createStudent(CreateStudentRequest request) {
+        if (request == null) {
+            return Response.error("Yêu cầu không hợp lệ");
+        }
+        
+        ExcelStudentRow row = new ExcelStudentRow(request.getStudentCode(), request.getFullName(), request.getEmail());
+        BulkCreateStudentsRequest bulkRequest = new BulkCreateStudentsRequest(Collections.singletonList(row));
+        
+        Response bulkResponse = bulkCreateStudents(bulkRequest);
+        if (!bulkResponse.isStatus()) {
+            return bulkResponse;
+        }
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) bulkResponse.getBody();
+        @SuppressWarnings("unchecked")
+        List<String> errors = (List<String>) result.get("errors");
+        @SuppressWarnings("unchecked")
+        List<StudentAccountResponse> createdAccounts = (List<StudentAccountResponse>) result.get("createdAccounts");
+        
+        if (!errors.isEmpty()) {
+            return Response.error(errors.get(0));
+        }
+        
+        if (createdAccounts.isEmpty()) {
+            return Response.error("Không thể tạo tài khoản");
+        }
+        
+        return Response.success("Tạo tài khoản sinh viên thành công", createdAccounts.get(0));
+    }
+
+    @Override
+    @Transactional
+    public Response createMultipleStudents(CreateMultipleStudentsRequest request) {
+        if (request == null || request.getStudents() == null || request.getStudents().isEmpty()) {
+            return Response.error("Danh sách sinh viên không được để trống");
+        }
+        
+        List<ExcelStudentRow> rows = request.getStudents().stream()
+                .map(student -> new ExcelStudentRow(student.getStudentCode(), student.getFullName(), student.getEmail()))
+                .collect(Collectors.toList());
+                
+        BulkCreateStudentsRequest bulkRequest = new BulkCreateStudentsRequest(rows);
+        return bulkCreateStudents(bulkRequest);
+    }
+
+    @Override
     public Response getPendingAccounts() {
         try {
             // Lấy tất cả sinh viên (chưa bị xóa)
@@ -491,6 +539,33 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
         } catch (Exception e) {
             logger.error("Error in bulkSendCredentials: {}", e.getMessage(), e);
             return Response.error("Failed to send credentials: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Response validateStudentAccount(String studentCode, String email) {
+        try {
+            Map<String, Object> result = new LinkedHashMap<>();
+
+            if (studentCode != null && !studentCode.trim().isEmpty()) {
+                String code = studentCode.trim();
+                boolean usernameExists = userRepository.findByUsername(code).isPresent();
+                boolean studentCodeExists = studentRepository.findByUserUsernameAndIsDeletedFalse(code).isPresent();
+                result.put("studentCodeAvailable", !usernameExists && !studentCodeExists);
+                result.put("studentCode", code);
+            }
+
+            if (email != null && !email.trim().isEmpty()) {
+                String mail = email.trim();
+                boolean emailExists = userRepository.findByEmail(mail).isPresent();
+                result.put("emailAvailable", !emailExists);
+                result.put("email", mail);
+            }
+
+            return Response.success("Validation completed", result);
+        } catch (Exception e) {
+            logger.error("Error validating student account: {}", e.getMessage(), e);
+            return Response.error("Failed to validate: " + e.getMessage());
         }
     }
 

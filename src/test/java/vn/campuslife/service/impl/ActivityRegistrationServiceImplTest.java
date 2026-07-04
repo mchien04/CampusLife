@@ -10,6 +10,7 @@ import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.SubmissionStatus;
+import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.repository.*;
@@ -65,6 +66,15 @@ public class ActivityRegistrationServiceImplTest {
     @Mock
     private UploadProperties uploadProperties;
 
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private PreparationTaskMemberRepository preparationTaskMemberRepository;
+
+    @Mock
+    private ActivityOrganizerRepository activityOrganizerRepository;
+
     @InjectMocks
     private ActivityRegistrationServiceImpl activityRegistrationService;
 
@@ -78,6 +88,7 @@ public class ActivityRegistrationServiceImplTest {
     void setUp() {
         studentUser = new User();
         studentUser.setId(33L);
+        studentUser.setRole(Role.MANAGER);
 
         student = new Student();
         student.setId(10L);
@@ -172,9 +183,10 @@ public class ActivityRegistrationServiceImplTest {
 
         when(registrationRepository.findByTicketCode("TK001")).thenReturn(Optional.of(registration));
         when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+        when(userRepository.findByUsernameAndIsDeletedFalse("manager_user")).thenReturn(Optional.of(studentUser));
 
         Response response = activityRegistrationService
-                .checkIn(new ActivityParticipationRequest("TK001", null, null, null));
+                .checkIn(new ActivityParticipationRequest("TK001", null, null, null), "manager_user");
 
         assertTrue(response.isStatus());
         assertEquals(ParticipationType.CHECKED_IN, participation.getParticipationType());
@@ -193,9 +205,10 @@ public class ActivityRegistrationServiceImplTest {
         when(taskSubmissionRepository.findByActivityAndStudentAndStatusOrderByLatest(100L, 10L,
                 SubmissionStatus.GRADED))
                 .thenReturn(List.of());
+        when(userRepository.findByUsernameAndIsDeletedFalse("manager_user")).thenReturn(Optional.of(studentUser));
 
         Response response = activityRegistrationService
-                .checkIn(new ActivityParticipationRequest("TK002", null, null, null));
+                .checkIn(new ActivityParticipationRequest("TK002", null, null, null), "manager_user");
 
         assertTrue(response.isStatus());
         assertEquals(ParticipationType.ATTENDED, participation.getParticipationType());
@@ -212,9 +225,10 @@ public class ActivityRegistrationServiceImplTest {
 
         when(registrationRepository.findByTicketCode("TK003")).thenReturn(Optional.of(registration));
         when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+        when(userRepository.findByUsernameAndIsDeletedFalse("manager_user")).thenReturn(Optional.of(studentUser));
 
         Response response = activityRegistrationService
-                .checkIn(new ActivityParticipationRequest("TK003", null, null, null));
+                .checkIn(new ActivityParticipationRequest("TK003", null, null, null), "manager_user");
 
         assertTrue(response.isStatus());
         assertEquals(ParticipationType.COMPLETED, participation.getParticipationType());
@@ -243,6 +257,74 @@ public class ActivityRegistrationServiceImplTest {
         assertNotNull(participation.getCheckInTime());
         assertNull(participation.getCheckOutTime());
         verify(scoreRuleEngine).applyActivityCompleted(participation, studentUser);
+    }
+
+    @Test
+    void checkIn_StudentWithScannerAndOrganizer_Allowed() {
+        User studentUserOnly = new User();
+        studentUserOnly.setId(44L);
+        studentUserOnly.setRole(Role.STUDENT);
+
+        Student studentOnly = new Student();
+        studentOnly.setId(11L);
+        studentOnly.setUser(studentUserOnly);
+
+        participation.setParticipationType(ParticipationType.REGISTERED);
+        registration.setTicketCode("TK_ST_1");
+
+        when(registrationRepository.findByTicketCode("TK_ST_1")).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+        when(userRepository.findByUsernameAndIsDeletedFalse("student_scanner")).thenReturn(Optional.of(studentUserOnly));
+        when(studentRepository.findByUserUsernameAndIsDeletedFalse("student_scanner")).thenReturn(Optional.of(studentOnly));
+        when(preparationTaskMemberRepository.existsScannerTaskForStudentAndActivity(11L, 100L)).thenReturn(true);
+        when(activityOrganizerRepository.existsByActivityIdAndStudentId(100L, 11L)).thenReturn(true);
+
+        Response response = activityRegistrationService.checkIn(new ActivityParticipationRequest("TK_ST_1", null, null, null), "student_scanner");
+
+        assertTrue(response.isStatus());
+    }
+
+    @Test
+    void checkIn_StudentWithScannerButNotOrganizer_Blocked() {
+        User studentUserOnly = new User();
+        studentUserOnly.setId(44L);
+        studentUserOnly.setRole(Role.STUDENT);
+
+        Student studentOnly = new Student();
+        studentOnly.setId(11L);
+        studentOnly.setUser(studentUserOnly);
+
+        when(registrationRepository.findByTicketCode("TK_ST_2")).thenReturn(Optional.of(registration));
+        when(userRepository.findByUsernameAndIsDeletedFalse("student_scanner")).thenReturn(Optional.of(studentUserOnly));
+        when(studentRepository.findByUserUsernameAndIsDeletedFalse("student_scanner")).thenReturn(Optional.of(studentOnly));
+        when(preparationTaskMemberRepository.existsScannerTaskForStudentAndActivity(11L, 100L)).thenReturn(true);
+        when(activityOrganizerRepository.existsByActivityIdAndStudentId(100L, 11L)).thenReturn(false);
+
+        ActivityParticipationRequest request = new ActivityParticipationRequest("TK_ST_2", null, null, null);
+        assertThrows(vn.campuslife.exception.ForbiddenException.class, () -> 
+            activityRegistrationService.checkIn(request, "student_scanner")
+        );
+    }
+
+    @Test
+    void checkIn_StudentWithoutScanner_Blocked() {
+        User studentUserOnly = new User();
+        studentUserOnly.setId(44L);
+        studentUserOnly.setRole(Role.STUDENT);
+
+        Student studentOnly = new Student();
+        studentOnly.setId(11L);
+        studentOnly.setUser(studentUserOnly);
+
+        when(registrationRepository.findByTicketCode("TK_ST_3")).thenReturn(Optional.of(registration));
+        when(userRepository.findByUsernameAndIsDeletedFalse("student_no_scan")).thenReturn(Optional.of(studentUserOnly));
+        when(studentRepository.findByUserUsernameAndIsDeletedFalse("student_no_scan")).thenReturn(Optional.of(studentOnly));
+        when(preparationTaskMemberRepository.existsScannerTaskForStudentAndActivity(11L, 100L)).thenReturn(false);
+
+        ActivityParticipationRequest request = new ActivityParticipationRequest("TK_ST_3", null, null, null);
+        assertThrows(vn.campuslife.exception.ForbiddenException.class, () -> 
+            activityRegistrationService.checkIn(request, "student_no_scan")
+        );
     }
 
     @Test

@@ -1423,6 +1423,7 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                 task.getDeadline(),
                 zeroIfNull(task.getAllocatedAmount()),
                 task.isFinancial(),
+                task.isCheckinScanner(),
                 task.getStatus(),
                 proofUrls);
     }

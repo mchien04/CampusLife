@@ -50,6 +50,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final SemesterHelperService semesterHelperService;
     private final vn.campuslife.service.ScoreRuleEngine scoreRuleEngine;
     private final TaskSubmissionRepository taskSubmissionRepository;
+    private final UserRepository userRepository;
+    private final PreparationTaskMemberRepository preparationTaskMemberRepository;
+    private final ActivityOrganizerRepository activityOrganizerRepository;
 
     @Override
     @Transactional
@@ -423,7 +426,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     @Override
     @Transactional
-    public Response checkIn(ActivityParticipationRequest request) {
+    public Response checkIn(ActivityParticipationRequest request, String username) {
         ActivityRegistration registration;
 
         // Tìm registration theo ticketCode hoặc studentId
@@ -445,6 +448,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         } else {
             return Response.error("Cần cung cấp ticketCode hoặc studentId");
         }
+
+        // Validate permission
+        validateScannerPermission(registration.getActivity().getId(), username);
 
         // Block check-in if activity is draft
         if (registration.getActivity().isDraft()) {
@@ -739,7 +745,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
      */
     @Override
     @Transactional
-    public Response validateTicketCode(String ticketCode) {
+    public Response validateTicketCode(String ticketCode, String username) {
         try {
             if (ticketCode == null || ticketCode.isBlank()) {
                 return Response.error("Ticket code is required");
@@ -751,6 +757,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             ActivityRegistration registration = registrationOpt.get();
+
+            // Validate permission
+            validateScannerPermission(registration.getActivity().getId(), username);
 
             // Block if activity is draft
             if (registration.getActivity().isDraft()) {
@@ -1256,6 +1265,29 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             logger.error("Failed to cancel series registration: {}", e.getMessage(), e);
             return new Response(false, "Failed to cancel series registration", null);
         }
+    }
+
+    private void validateScannerPermission(Long activityId, String username) {
+        if (username == null) {
+            throw new vn.campuslife.exception.ForbiddenException("Yêu cầu đăng nhập");
+        }
+        User user = userRepository.findByUsernameAndIsDeletedFalse(username)
+                .orElseThrow(() -> new vn.campuslife.exception.ResourceNotFoundException("User not found"));
+        if (user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER) {
+            return; // Allowed
+        }
+        if (user.getRole() == Role.STUDENT) {
+            Student student = studentRepository.findByUserUsernameAndIsDeletedFalse(username)
+                    .orElseThrow(() -> new vn.campuslife.exception.ResourceNotFoundException("Student not found"));
+            boolean isScanner = preparationTaskMemberRepository.existsScannerTaskForStudentAndActivity(
+                    student.getId(),
+                    activityId);
+            boolean isOrganizer = activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, student.getId());
+            if (isScanner && isOrganizer) {
+                return; // Allowed
+            }
+        }
+        throw new vn.campuslife.exception.ForbiddenException("Bạn không có quyền quét mã QR check-in cho sự kiện này");
     }
 
 }

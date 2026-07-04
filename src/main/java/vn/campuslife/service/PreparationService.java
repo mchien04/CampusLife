@@ -17,6 +17,8 @@ public interface PreparationService {
 
     PreparationDashboardDto getPreparationDashboard(Long activityId);
 
+    List<PreparationSummaryResponse> getPreparationsSummary(List<Long> activityIds);
+
     List<Long> listMyPreparationActivityIds(String username);
 
     PreparationTaskDto assignTask(CreatePreparationTaskRequest request);
