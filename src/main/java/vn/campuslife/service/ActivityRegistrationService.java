@@ -67,7 +67,7 @@ public interface ActivityRegistrationService {
     /**
      * Check-in tham gia sự kiện qua ticketCode
      */
-    Response checkIn(ActivityParticipationRequest request);
+    Response checkIn(ActivityParticipationRequest request, String username);
 
     /**
      * Check-in bằng QR code (tự động set thành ATTENDED)
@@ -91,7 +91,7 @@ public interface ActivityRegistrationService {
     /**
      * Validate/lookup ticketCode để preview thông tin trước khi check-in
      */
-    Response validateTicketCode(String ticketCode);
+    Response validateTicketCode(String ticketCode, String username);
 
     /**
      * Backfill: Tạo participation cho tất cả registration đã APPROVED nhưng chưa có

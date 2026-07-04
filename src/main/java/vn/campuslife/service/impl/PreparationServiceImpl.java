@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.NotificationType;
 import vn.campuslife.enumeration.PreparationTaskMemberRole;
+import vn.campuslife.enumeration.ExpenseStatus;
 import vn.campuslife.enumeration.PreparationTaskStatus;
 import vn.campuslife.enumeration.WorkloadWarningType;
 import vn.campuslife.exception.*;
@@ -18,9 +19,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationService;
+import vn.campuslife.service.PreparationFinanceService;
 import java.math.RoundingMode;
 import java.math.BigDecimal;
-
+import java.util.Collections;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +43,7 @@ public class PreparationServiceImpl implements PreparationService {
     private final TaskAllocationRepository taskAllocationRepository;
     private final FundAdvanceRepository fundAdvanceRepository;
     private final ObjectMapper objectMapper;
+    private final PreparationFinanceService financeService;
 
     @Override
     @Transactional
@@ -134,6 +138,7 @@ public class PreparationServiceImpl implements PreparationService {
                             dto.getDeadline(),
                             dto.getAllocatedAmount(),
                             Boolean.TRUE.equals(dto.getIsFinancial()),
+                            Boolean.TRUE.equals(dto.getIsCheckinScanner()),
                             dto.getStatus(),
                             role,
                             dto.getCompletionProofUrls()
@@ -158,6 +163,54 @@ public class PreparationServiceImpl implements PreparationService {
                 .map(budget -> new PreparationDashboardDto(activityId, true, tasks, toActivityBudgetDto(budget), null))
                 .orElseGet(
                         () -> new PreparationDashboardDto(activityId, true, tasks, null, "No ActivityBudget assigned"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PreparationSummaryResponse> getPreparationsSummary(List<Long> activityIds) {
+        if (activityIds == null || activityIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Activity> activities = activityRepository.findAllById(activityIds);
+        List<PreparationSummaryResponse> result = new ArrayList<>();
+
+        for (Activity activity : activities) {
+            Long activityId = activity.getId();
+            boolean enabled = activity.isHasPreparation();
+            long pendingTasks = 0;
+            long waitingExpenses = 0;
+            String remainingAmount = null;
+
+            if (enabled && !activity.isDeleted()) {
+                pendingTasks = preparationTaskRepository.findByActivityIdOrderByDeadlineAscIdAsc(activityId)
+                        .stream()
+                        .filter(t -> t.getStatus() == PreparationTaskStatus.PENDING)
+                        .count();
+                waitingExpenses = financeService.listExpensesByActivity(activityId, ExpenseStatus.PENDING_ADMIN).size();
+                
+                if (activityBudgetRepository.findByActivityId(activityId).isPresent()) {
+                    try {
+                        FinancialReportDto report = financeService.getFinancialReport(activityId);
+                        if (report != null && report.getCategories() != null) {
+                            java.math.BigDecimal totalRemaining = java.math.BigDecimal.ZERO;
+                            for (vn.campuslife.model.preparation.BudgetCategoryDto c : report.getCategories()) {
+                                if (c.getRemainingAmount() != null) {
+                                    totalRemaining = totalRemaining.add(c.getRemainingAmount());
+                                }
+                            }
+                            remainingAmount = totalRemaining.toString();
+                        }
+                    } catch (Exception e) {
+                        // Ignore any unexpected errors to prevent transaction rollback
+                    }
+                }
+            }
+
+            result.add(new PreparationSummaryResponse(activityId, enabled, pendingTasks, waitingExpenses, remainingAmount));
+        }
+
+        return result;
     }
 
     @Override
@@ -195,6 +248,7 @@ public class PreparationServiceImpl implements PreparationService {
         task.setDescription(request.getDescription());
         task.setDeadline(request.getDeadline());
         task.setFinancial(Boolean.TRUE.equals(request.getIsFinancial()));
+        task.setCheckinScanner(Boolean.TRUE.equals(request.getIsCheckinScanner()));
         task.setStatus(PreparationTaskStatus.PENDING);
         PreparationTask saved = preparationTaskRepository.save(task);
 
@@ -208,6 +262,21 @@ public class PreparationServiceImpl implements PreparationService {
                 });
         leader.setRole(PreparationTaskMemberRole.LEADER);
         preparationTaskMemberRepository.save(leader);
+
+        if (assignee.getUser() != null) {
+            String notificationTitle = "Bạn được giao nhiệm vụ chuẩn bị mới";
+            String notificationContent = "Nhiệm vụ: " + saved.getTitle() + " (Hoạt động: " + activity.getName() + ")";
+            if (saved.isCheckinScanner()) {
+                notificationTitle = "Bạn được phân công nhiệm vụ Quét QR Check-in";
+                notificationContent = "Nhiệm vụ quét QR cho sự kiện: " + activity.getName();
+            }
+            java.util.Map<String, Object> metadata = java.util.Map.of(
+                    "taskId", saved.getId(),
+                    "activityId", activity.getId(),
+                    "isCheckinScanner", saved.isCheckinScanner());
+            notificationService.sendNotification(assignee.getUser().getId(), notificationTitle, notificationContent, NotificationType.GENERAL,
+                    null, metadata);
+        }
 
         return toTaskDto(saved);
     }
@@ -278,6 +347,21 @@ public class PreparationServiceImpl implements PreparationService {
                 });
         member.setRole(PreparationTaskMemberRole.LEADER);
         preparationTaskMemberRepository.save(member);
+
+        if (student.getUser() != null) {
+            String notificationTitle = "Bạn được phân công tham gia nhiệm vụ chuẩn bị";
+            String notificationContent = "Nhiệm vụ: " + task.getTitle() + " (Hoạt động: " + task.getActivity().getName() + ")";
+            if (task.isCheckinScanner()) {
+                notificationTitle = "Bạn được phân công quét QR Check-in";
+                notificationContent = "Nhiệm vụ quét QR cho sự kiện: " + task.getActivity().getName();
+            }
+            java.util.Map<String, Object> metadata = java.util.Map.of(
+                    "taskId", task.getId(),
+                    "activityId", task.getActivity().getId(),
+                    "isCheckinScanner", task.isCheckinScanner());
+            notificationService.sendNotification(student.getUser().getId(), notificationTitle, notificationContent, NotificationType.GENERAL,
+                    null, metadata);
+        }
     }
 
     @Override
@@ -536,6 +620,7 @@ public class PreparationServiceImpl implements PreparationService {
                 task.getDeadline(),
                 task.getAllocatedAmount(),
                 task.isFinancial(),
+                task.isCheckinScanner(),
                 task.getStatus(),
                 proofUrls);
     }

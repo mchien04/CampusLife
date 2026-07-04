@@ -210,7 +210,7 @@ public class ActivityRegistrationControllerTest {
         ActivityParticipationRequest request = new ActivityParticipationRequest();
         request.setTicketCode("TK001");
 
-        when(registrationService.checkIn(any(ActivityParticipationRequest.class)))
+        when(registrationService.checkIn(any(ActivityParticipationRequest.class), any()))
                 .thenReturn(new Response(true, "Checked in", null));
 
         mockMvc.perform(post("/api/registrations/checkin")
@@ -227,7 +227,7 @@ public class ActivityRegistrationControllerTest {
         ActivityParticipationRequest request = new ActivityParticipationRequest();
         request.setTicketCode("INVALID");
 
-        when(registrationService.checkIn(any(ActivityParticipationRequest.class)))
+        when(registrationService.checkIn(any(ActivityParticipationRequest.class), any()))
                 .thenReturn(new Response(false, "Invalid ticket", null));
 
         mockMvc.perform(post("/api/registrations/checkin")
@@ -286,7 +286,7 @@ public class ActivityRegistrationControllerTest {
     @Test
     @WithMockUser
     void validateTicketCode_ReturnsResult() throws Exception {
-        when(registrationService.validateTicketCode("TK001"))
+        when(registrationService.validateTicketCode(eq("TK001"), any()))
                 .thenReturn(new Response(true, "Valid", Map.of("studentName", "John")));
 
         mockMvc.perform(get("/api/registrations/checkin/validate")

@@ -44,6 +44,9 @@ public class PreparationTask {
     @Column(nullable = false)
     private boolean isFinancial = false;
 
+    @Column(nullable = false)
+    private boolean isCheckinScanner = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PreparationTaskStatus status = PreparationTaskStatus.PENDING;

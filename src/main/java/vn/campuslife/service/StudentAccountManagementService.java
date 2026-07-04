@@ -4,6 +4,8 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.student.BulkCreateStudentsRequest;
 import vn.campuslife.model.student.BulkSendCredentialsRequest;
+import vn.campuslife.model.student.CreateMultipleStudentsRequest;
+import vn.campuslife.model.student.CreateStudentRequest;
 import vn.campuslife.model.student.UpdateStudentAccountRequest;
 
 /**
@@ -20,6 +22,16 @@ public interface StudentAccountManagementService {
      * Tạo tài khoản hàng loạt từ danh sách
      */
     Response bulkCreateStudents(BulkCreateStudentsRequest request);
+    
+    /**
+     * Tạo tài khoản sinh viên đơn lẻ
+     */
+    Response createStudent(CreateStudentRequest request);
+    
+    /**
+     * Tạo tài khoản sinh viên từ danh sách (không qua Excel)
+     */
+    Response createMultipleStudents(CreateMultipleStudentsRequest request);
     
     /**
      * Lấy danh sách tài khoản chờ review (tất cả tài khoản đã tạo)
@@ -45,5 +57,10 @@ public interface StudentAccountManagementService {
      * Gửi email credentials hàng loạt
      */
     Response bulkSendCredentials(BulkSendCredentialsRequest request);
+
+    /**
+     * Kiểm tra mã số sinh viên và email đã được sử dụng chưa
+     */
+    Response validateStudentAccount(String studentCode, String email);
 }
 
