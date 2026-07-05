@@ -33,7 +33,7 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
     private final ActivityRepository activityRepository;
     private final RestTemplate restTemplate;
 
-    @Value("${app.recommendation.url:http://localhost:8000/recommend}")
+    @Value("${app.recommendation.url:https://recomment-0hka.onrender.com/recommend}")
     private String pythonRecommendUrl;
 
     @Override
@@ -76,8 +76,6 @@ public class ActivityRecommendationServiceImpl implements ActivityRecommendation
         pythonRequest.setUserProfile(userProfile);
         pythonRequest.setActivities(pythonActivities);
 
-
-        String pythonUrl = "https://recomment-0hka.onrender.com/recommend";
         PythonRecommendResponse[] pythonResponses =
                 restTemplate.postForObject(
                         pythonRecommendUrl,
