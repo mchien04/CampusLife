@@ -91,9 +91,16 @@ public class ScoreServiceImpl implements ScoreService {
             List<ScoreViewResponse.ScoreTypeSummary> summaries = new ArrayList<>();
             for (Map.Entry<ScoreType, List<StudentScore>> e : byType.entrySet()) {
                 ScoreViewResponse.ScoreTypeSummary s = new ScoreViewResponse.ScoreTypeSummary();
-                s.setScoreType(e.getKey());
+                ScoreType scoreType = e.getKey();
+                s.setScoreType(scoreType);
                 s.setTotal(e.getValue().stream().map(StudentScore::getScore).filter(Objects::nonNull)
                         .reduce(BigDecimal.ZERO, BigDecimal::add));
+
+                // Tính tổng tích lũy suốt các học kỳ cho loại điểm cumulative
+                if (scoreType.isCumulative()) {
+                    BigDecimal cumulativeTotal = studentScoreRepository.sumScoreByStudentIdAndScoreType(studentId, scoreType);
+                    s.setCumulativeTotal(cumulativeTotal);
+                }
 
                 List<ScoreViewResponse.ScoreItem> items = e.getValue().stream().map(ss -> {
                     ScoreViewResponse.ScoreItem it = new ScoreViewResponse.ScoreItem();
@@ -126,11 +133,21 @@ public class ScoreServiceImpl implements ScoreService {
             BigDecimal grandTotal = totalsByType.values().stream()
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+            // Tính tổng tích lũy cross-semester cho các loại điểm cumulative
+            Map<ScoreType, BigDecimal> cumulativeTotals = new HashMap<>();
+            for (ScoreType scoreType : ScoreType.values()) {
+                if (scoreType.isCumulative()) {
+                    BigDecimal cumulativeTotal = studentScoreRepository.sumScoreByStudentIdAndScoreType(studentId, scoreType);
+                    cumulativeTotals.put(scoreType, cumulativeTotal);
+                }
+            }
+
             Map<String, Object> result = new HashMap<>();
             result.put("studentId", studentId);
             result.put("semesterId", semesterId);
             result.put("grandTotal", grandTotal);
             result.put("totalsByType", totalsByType);
+            result.put("cumulativeTotals", cumulativeTotals);
             result.put("scoreCount", rows.size());
 
             return new Response(true, "Total score calculated", result);

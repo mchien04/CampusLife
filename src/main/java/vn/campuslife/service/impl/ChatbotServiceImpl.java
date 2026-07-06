@@ -838,12 +838,16 @@ public class ChatbotServiceImpl implements vn.campuslife.service.ChatbotService 
         if (type == null) {
             return "điểm";
         }
-        return switch (type) {
+        String label = switch (type) {
             case REN_LUYEN -> "điểm rèn luyện";
             case CONG_TAC_XA_HOI -> "điểm công tác xã hội";
             case CHUYEN_DE -> "điểm chuyên đề";
             default -> type.name();
         };
+        if (type.isCumulative()) {
+            label += " (tích lũy suốt 4 năm)";
+        }
+        return label;
     }
 
     String formatAudience(ScoreRuleAudience audience, List<Long> departmentIds) {
