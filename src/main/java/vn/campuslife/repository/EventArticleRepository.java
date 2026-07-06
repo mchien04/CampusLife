@@ -41,7 +41,7 @@ public interface EventArticleRepository extends JpaRepository<EventArticle, Long
     Page<EventArticle> findAllOrderByPinnedAndPriority(Pageable pageable);
 
     @Query("SELECT ea FROM EventArticle ea WHERE ea.isPublished = true AND ea.isFeatured = true ORDER BY ea.publishedAt DESC")
-    List<EventArticle> findFeaturedArticles();
+    List<EventArticle> findFeaturedArticles(Pageable pageable);
 
     @Query(value = "SELECT ea FROM EventArticle ea WHERE ea.isPublished = true AND ea.category.id = :categoryId ORDER BY ea.isPinned DESC, ea.priority DESC, ea.publishedAt DESC", countQuery = "SELECT COUNT(ea) FROM EventArticle ea WHERE ea.isPublished = true AND ea.category.id = :categoryId")
     Page<EventArticle> findByCategoryId(@Param("categoryId") Long categoryId, Pageable pageable);
@@ -56,6 +56,18 @@ public interface EventArticleRepository extends JpaRepository<EventArticle, Long
     @Query("SELECT COUNT(ea) FROM EventArticle ea WHERE ea.isPublished = true")
     long countPublishedArticles();
 
+    @Query("SELECT COUNT(ea) FROM EventArticle ea WHERE ea.isFeatured = true")
+    long countFeaturedArticles();
+
     @Query("SELECT SUM(ea.viewCount) FROM EventArticle ea WHERE ea.isPublished = true")
     Long sumTotalViews();
+
+    @Query("SELECT COUNT(ea) FROM EventArticle ea WHERE ea.isPublished = true AND ea.category.id = :categoryId")
+    Long countPublishedArticlesByCategory(@Param("categoryId") Long categoryId);
+
+    @Query("SELECT COUNT(ea) FROM EventArticle ea JOIN ea.tags t WHERE ea.isPublished = true AND t.id = :tagId")
+    Long countPublishedArticlesByTag(@Param("tagId") Long tagId);
+
+    @Query(value = "SELECT ea FROM EventArticle ea JOIN ea.tags t WHERE ea.isPublished = true AND t.slug = :tagSlug ORDER BY ea.isPinned DESC, ea.priority DESC, ea.publishedAt DESC", countQuery = "SELECT COUNT(ea) FROM EventArticle ea JOIN ea.tags t WHERE ea.isPublished = true AND t.slug = :tagSlug")
+    Page<EventArticle> findPublishedArticlesByTag(@Param("tagSlug") String tagSlug, Pageable pageable);
 }

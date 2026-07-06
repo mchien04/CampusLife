@@ -31,5 +31,6 @@ public class ArticleListResponse {
     private String categoryName;
     private List<String> tags;
     private List<ArticleImageResponse> images;
+    private Long commentCount;
 }
 

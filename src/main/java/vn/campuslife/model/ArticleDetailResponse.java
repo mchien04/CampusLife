@@ -40,6 +40,7 @@ public class ArticleDetailResponse {
     private boolean isWishlisted;
     private String redirectedFrom;
     private String currentSlug;
+    private Long commentCount;
 
     @Data
     @NoArgsConstructor

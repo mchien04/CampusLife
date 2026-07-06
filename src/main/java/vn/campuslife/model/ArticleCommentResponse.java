@@ -17,6 +17,9 @@ public class ArticleCommentResponse {
     private boolean isFlagged;
     private String flagReason;
     private boolean isHidden;
+    private boolean isAutoHidden;
+    private boolean isEdited;
+    private LocalDateTime editedAt;
     private StudentBasicInfo student;
     private List<ArticleCommentResponse> replies;
     private LocalDateTime createdAt;
@@ -30,5 +33,7 @@ public class ArticleCommentResponse {
         private String fullName;
         private String studentCode;
         private String avatarUrl;
+        private String departmentName;
+        private String className;
     }
 }

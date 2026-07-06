@@ -16,7 +16,13 @@ public interface EventArticleService {
 
     org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> searchPublishedArticles(String keyword, int page, int size);
 
-    List<vn.campuslife.model.ArticleListResponse> getFeaturedArticles();
+    List<vn.campuslife.model.ArticleListResponse> getFeaturedArticles(int limit);
+
+    List<vn.campuslife.model.ArticleCategoryPublicResponse> getPublicCategories();
+
+    List<vn.campuslife.model.ArticleTagPublicResponse> getPublicTags();
+
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getPublishedArticlesByTag(String tagSlug, int page, int size);
 
     vn.campuslife.model.ArticleDetailResponse getArticleDetailBySlug(String slug, Long studentId);
 
@@ -64,6 +70,8 @@ public interface EventArticleService {
     List<vn.campuslife.model.ArticleTagResponse> getAllTags();
 
     vn.campuslife.model.ArticleTagResponse createTag(vn.campuslife.model.ArticleTagRequest request);
+
+    vn.campuslife.model.ArticleTagResponse updateTag(Long tagId, vn.campuslife.model.ArticleTagRequest request);
 
     void deleteTag(Long tagId);
 

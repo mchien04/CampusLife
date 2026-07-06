@@ -161,6 +161,14 @@ public class EventArticleAdminController {
         return ResponseEntity.status(201).body(response);
     }
 
+    @PutMapping("/tags/{tagId}")
+    public ResponseEntity<ArticleTagResponse> updateTag(
+            @PathVariable Long tagId,
+            @RequestBody ArticleTagRequest request) {
+        ArticleTagResponse response = eventArticleService.updateTag(tagId, request);
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/tags/{tagId}")
     public ResponseEntity<Void> deleteTag(@PathVariable Long tagId) {
         eventArticleService.deleteTag(tagId);

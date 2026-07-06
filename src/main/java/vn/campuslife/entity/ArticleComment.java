@@ -56,4 +56,9 @@ public class ArticleComment {
 
     @LastModifiedDate
     private LocalDateTime updatedAt;
+
+    @Column(nullable = false)
+    private boolean isEdited = false;
+
+    private LocalDateTime editedAt;
 }

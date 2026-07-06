@@ -56,6 +56,7 @@ public class EventArticleServiceImpl implements EventArticleService {
     private final  ArticleViewHistoryRepository articleViewHistoryRepository;
     private final StudentRepository studentRepository;
     private final ArticleReactionRepository articleReactionRepository;
+    private final ArticleCommentRepository articleCommentRepository;
     private final vn.campuslife.service.NotificationService notificationService;
 
     @org.springframework.beans.factory.annotation.Value("${app.upload.public-url:http://localhost:8080}")
@@ -108,9 +109,38 @@ public class EventArticleServiceImpl implements EventArticleService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ArticleListResponse> getFeaturedArticles() {
-        List<EventArticle> articles = eventArticleRepository.findFeaturedArticles();
+    public List<ArticleListResponse> getFeaturedArticles(int limit) {
+        Pageable pageable = PageRequest.of(0, limit);
+        List<EventArticle> articles = eventArticleRepository.findFeaturedArticles(pageable);
         return articles.stream().map(a -> toListResponse(a, null)).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<vn.campuslife.model.ArticleCategoryPublicResponse> getPublicCategories() {
+        return categoryRepository.findByIsActiveTrueOrderByDisplayOrderAsc().stream()
+                .map(c -> {
+                    Long count = eventArticleRepository.countPublishedArticlesByCategory(c.getId());
+                    return new vn.campuslife.model.ArticleCategoryPublicResponse(c.getId(), c.getName(), c.getSlug(), count);
+                }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<vn.campuslife.model.ArticleTagPublicResponse> getPublicTags() {
+        return tagRepository.findByIsActiveTrueOrderByNameAsc().stream()
+                .map(t -> {
+                    Long count = eventArticleRepository.countPublishedArticlesByTag(t.getId());
+                    return new vn.campuslife.model.ArticleTagPublicResponse(t.getId(), t.getName(), t.getSlug(), count);
+                }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getPublishedArticlesByTag(String tagSlug, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<EventArticle> articles = eventArticleRepository.findPublishedArticlesByTag(tagSlug, pageable);
+        return articles.map(a -> toListResponse(a, null));
     }
 
     @Override
@@ -223,6 +253,8 @@ public class EventArticleServiceImpl implements EventArticleService {
             response.setWishlisted(false);
             response.setMyReaction(null);
         }
+
+        response.setCommentCount(articleCommentRepository.countByArticleIdAndIsHiddenFalse(article.getId()));
 
         return response;
     }
@@ -652,7 +684,7 @@ public class EventArticleServiceImpl implements EventArticleService {
             stats.setTotalWishlists(stats.getTotalWishlists() + a.getWishlistCount());
         });
 
-        stats.setFeaturedArticles(eventArticleRepository.findFeaturedArticles().size());
+        stats.setFeaturedArticles(eventArticleRepository.countFeaturedArticles());
         stats.setPinnedArticles(eventArticleRepository.findAll().stream().filter(EventArticle::isPinned).count());
 
         List<Map<String, Object>> topViewed = new ArrayList<>();
@@ -769,6 +801,21 @@ public class EventArticleServiceImpl implements EventArticleService {
         ArticleTag tag = new ArticleTag();
         tag.setName(request.getName());
         tag.setSlug(normalizeSlug(request.getSlug() != null ? request.getSlug() : request.getName()));
+        tag.setActive(request.isActive());
+        ArticleTag saved = tagRepository.save(tag);
+        return toTagResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public ArticleTagResponse updateTag(Long tagId, ArticleTagRequest request) {
+        ArticleTag tag = tagRepository.findById(tagId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tag not found: " + tagId));
+        
+        tag.setName(request.getName());
+        if (request.getSlug() != null) {
+            tag.setSlug(normalizeSlug(request.getSlug()));
+        }
         tag.setActive(request.isActive());
         ArticleTag saved = tagRepository.save(tag);
         return toTagResponse(saved);
@@ -912,6 +959,8 @@ public class EventArticleServiceImpl implements EventArticleService {
         if (images != null && !images.isEmpty()) {
             response.setImages(images.stream().map(this::toImageResponse).collect(Collectors.toList()));
         }
+
+        response.setCommentCount(articleCommentRepository.countByArticleIdAndIsHiddenFalse(article.getId()));
 
         return response;
     }
