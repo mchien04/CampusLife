@@ -18,6 +18,7 @@ public interface ArticleCommentRepository extends JpaRepository<ArticleComment, 
     List<ArticleComment> findByParentCommentIdAndIsHiddenFalseOrderByCreatedAtAsc(Long parentCommentId);
 
     List<ArticleComment> findByParentCommentIdOrderByCreatedAtAsc(Long parentCommentId);
-
     int countByParentCommentIdAndIsHiddenFalse(Long parentCommentId);
+
+    long countByArticleIdAndIsHiddenFalse(Long articleId);
 }

@@ -11,4 +11,5 @@ import java.util.Optional;
 public interface ArticleTagRepository extends JpaRepository<ArticleTag, Long> {
     Optional<ArticleTag> findBySlug(String slug);
     List<ArticleTag> findByIsActiveTrue();
+    List<ArticleTag> findByIsActiveTrueOrderByNameAsc();
 }

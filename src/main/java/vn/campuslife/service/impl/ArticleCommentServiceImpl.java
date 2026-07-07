@@ -20,6 +20,7 @@ import vn.campuslife.service.ArticleCommentService;
 import vn.campuslife.service.StudentService;
 import vn.campuslife.util.ProfanityFilter;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -56,6 +57,7 @@ public class ArticleCommentServiceImpl implements ArticleCommentService {
         if (hasProfanity) {
             comment.setFlagged(true);
             comment.setFlagReason("PROFANITY");
+            comment.setHidden(true);
         }
 
         if (request.getParentCommentId() != null) {
@@ -66,6 +68,43 @@ public class ArticleCommentServiceImpl implements ArticleCommentService {
             }
             comment.setParentComment(parent);
         }
+
+        ArticleComment saved = commentRepository.save(comment);
+        return toResponse(saved, false);
+    }
+
+    @Override
+    @Transactional
+    public ArticleCommentResponse editComment(Long commentId, String username, ArticleCommentRequest request) {
+        ArticleComment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Comment not found: " + commentId));
+
+        Long studentId = studentService.getStudentIdByUsername(username);
+        if (studentId == null || !comment.getStudent().getId().equals(studentId)) {
+            throw new BadRequestException("You are not authorized to edit this comment");
+        }
+
+        if (comment.getCreatedAt().plusMinutes(15).isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Cannot edit comment after 15 minutes");
+        }
+
+        comment.setContent(request.getContent().trim());
+
+        // Kiểm tra lại từ ngữ thô tục
+        boolean hasProfanity = profanityFilter.containsProfanity(comment.getContent());
+        if (hasProfanity) {
+            comment.setFlagged(true);
+            comment.setFlagReason("PROFANITY");
+            comment.setHidden(true);
+        } else {
+            // Nếu sửa từ bậy thành không bậy, tự động gỡ flag (hoặc tùy policy)
+            comment.setFlagged(false);
+            comment.setFlagReason(null);
+            comment.setHidden(false);
+        }
+
+        comment.setEdited(true);
+        comment.setEditedAt(LocalDateTime.now());
 
         ArticleComment saved = commentRepository.save(comment);
         return toResponse(saved, false);
@@ -125,6 +164,9 @@ public class ArticleCommentServiceImpl implements ArticleCommentService {
         res.setFlagged(comment.isFlagged());
         res.setFlagReason(comment.getFlagReason());
         res.setHidden(comment.isHidden());
+        res.setAutoHidden(comment.isFlagged() && "PROFANITY".equals(comment.getFlagReason()) && comment.isHidden());
+        res.setEdited(comment.isEdited());
+        res.setEditedAt(comment.getEditedAt());
         res.setCreatedAt(comment.getCreatedAt());
         res.setUpdatedAt(comment.getUpdatedAt());
 
@@ -133,7 +175,13 @@ public class ArticleCommentServiceImpl implements ArticleCommentService {
             studentInfo.setId(comment.getStudent().getId());
             studentInfo.setFullName(comment.getStudent().getFullName());
             studentInfo.setStudentCode(comment.getStudent().getStudentCode());
-            studentInfo.setAvatarUrl(comment.getStudent().getAvatarUrl());
+            
+            String avatar = comment.getStudent().getAvatarUrl();
+            studentInfo.setAvatarUrl(avatar != null ? avatar : "https://cdn.campuslife.vn/avatars/default.png");
+            
+            studentInfo.setDepartmentName(comment.getStudent().getDepartment() != null ? comment.getStudent().getDepartment().getName() : null);
+            studentInfo.setClassName(comment.getStudent().getStudentClass() != null ? comment.getStudent().getStudentClass().getClassName() : null);
+            
             res.setStudent(studentInfo);
         }
 

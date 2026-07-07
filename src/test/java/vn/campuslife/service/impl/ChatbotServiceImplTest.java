@@ -204,11 +204,11 @@ class ChatbotServiceImplTest {
         assertTrue(answer.contains("Nếu đăng ký nhưng không tham gia (no-show): -2 điểm rèn luyện (áp dụng: tất cả sinh viên)."));
 
         // Verify SUBMISSION_GRADED (pass +3, fail -1)
-        assertTrue(answer.contains("Khi nộp bài và được chấm đạt: +3 điểm công tác xã hội; trượt/quá hạn: -1 điểm rèn luyện"));
+        assertTrue(answer.contains("Khi nộp bài và được chấm đạt: +3 điểm công tác xã hội (tích lũy suốt 4 năm); trượt/quá hạn: -1 điểm rèn luyện"));
         assertTrue(answer.contains("chỉ áp dụng sinh viên thuộc khoa đã chọn"));
 
         // Verify TASK_OVERDUE (must use failPoints = 4.0)
-        assertTrue(answer.contains("Nếu quá hạn nộp bài: -4 điểm chuyên đề (chỉ áp dụng sinh viên ngoài các khoa đã chọn)."));
+        assertTrue(answer.contains("Nếu quá hạn nộp bài: -4 điểm chuyên đề (tích lũy suốt 4 năm) (chỉ áp dụng sinh viên ngoài các khoa đã chọn)."));
 
         // Verify MINIGAME_PASSED
         assertTrue(answer.contains("Khi vượt qua minigame: +1 điểm rèn luyện (áp dụng: tất cả sinh viên)."));

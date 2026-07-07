@@ -15,7 +15,8 @@ public class ScoreViewResponse {
     @Data
     public static class ScoreTypeSummary {
         private ScoreType scoreType;
-        private BigDecimal total;
+        private BigDecimal total;           // Điểm của học kỳ HIỆN TẠI
+        private BigDecimal cumulativeTotal; // Tổng đã tích lũy suốt các kỳ (chỉ có với loại tích lũy)
         private List<ScoreItem> items;
     }
 

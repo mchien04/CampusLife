@@ -6,7 +6,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 import vn.campuslife.model.ArticleCommentRequest;
 import vn.campuslife.model.ArticleCommentResponse;
 import vn.campuslife.model.ArticleDetailResponse;
@@ -39,8 +41,9 @@ public class EventArticleController {
     }
 
     @GetMapping("/featured")
-    public ResponseEntity<List<ArticleListResponse>> getFeaturedArticles() {
-        List<ArticleListResponse> articles = eventArticleService.getFeaturedArticles();
+    public ResponseEntity<List<ArticleListResponse>> getFeaturedArticles(
+            @RequestParam(defaultValue = "5") int limit) {
+        List<ArticleListResponse> articles = eventArticleService.getFeaturedArticles(limit);
         return ResponseEntity.ok(articles);
     }
 
@@ -61,6 +64,24 @@ public class EventArticleController {
             @RequestParam(defaultValue = "10") int size) {
         Page<ArticleListResponse> articles = eventArticleService.searchPublishedArticles(keyword, page, size);
         return ResponseEntity.ok(articles);
+    }
+
+    @GetMapping("/categories")
+    public ResponseEntity<?> getPublicCategories() {
+        return ResponseEntity.ok(eventArticleService.getPublicCategories());
+    }
+
+    @GetMapping("/tags")
+    public ResponseEntity<?> getPublicTags() {
+        return ResponseEntity.ok(eventArticleService.getPublicTags());
+    }
+
+    @GetMapping("/tag/{tagSlug}")
+    public ResponseEntity<?> getArticlesByTag(
+            @PathVariable String tagSlug,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(eventArticleService.getPublishedArticlesByTag(tagSlug, page, size));
     }
 
     @GetMapping("/series/{seriesId}")
@@ -105,40 +126,32 @@ public class EventArticleController {
     }
 
     @PostMapping("/{slug}/waitlist")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> registerForWaitlist(@PathVariable String slug, Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).body(new Response(false, "Authentication required", null));
-        }
         Response response = eventArticleService.registerForWaitlist(slug, authentication.getName());
         return ResponseEntity.status(response.isStatus() ? 201 : 400).body(response);
     }
 
     @PostMapping("/{slug}/wishlist")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> addToWishlist(@PathVariable String slug, Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).body(new Response(false, "Authentication required", null));
-        }
         Response response = eventArticleService.addToWishlist(slug, authentication.getName());
         return ResponseEntity.status(response.isStatus() ? 201 : 400).body(response);
     }
 
     @DeleteMapping("/{slug}/wishlist")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> removeFromWishlist(@PathVariable String slug, Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).body(new Response(false, "Authentication required", null));
-        }
         Response response = eventArticleService.removeFromWishlist(slug, authentication.getName());
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/wishlist")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Page<ArticleWishlistItemResponse>> getStudentWishlist(
             Authentication authentication,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).build();
-        }
         Page<ArticleWishlistItemResponse> wishlist = eventArticleService.getStudentWishlist(authentication.getName(),
                 page, size);
         return ResponseEntity.ok(wishlist);
@@ -163,15 +176,23 @@ public class EventArticleController {
     }
 
     @PostMapping("/{slug}/comments")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<ArticleCommentResponse> addComment(
             @PathVariable String slug,
-            @RequestBody ArticleCommentRequest request,
+            @RequestBody @Valid ArticleCommentRequest request,
             Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).build();
-        }
         ArticleCommentResponse response = articleCommentService.addComment(slug, authentication.getName(), request);
         return ResponseEntity.status(201).body(response);
+    }
+
+    @PutMapping("/comments/{commentId}")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<ArticleCommentResponse> editComment(
+            @PathVariable Long commentId,
+            @RequestBody @Valid ArticleCommentRequest request,
+            Authentication authentication) {
+        ArticleCommentResponse response = articleCommentService.editComment(commentId, authentication.getName(), request);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{slug}/comments")
@@ -184,35 +205,29 @@ public class EventArticleController {
     }
 
     @DeleteMapping("/comments/{commentId}")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Void> deleteComment(
             @PathVariable Long commentId,
             Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).build();
-        }
         articleCommentService.deleteComment(commentId, authentication.getName(), false);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{slug}/reaction")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> addReaction(
             @PathVariable String slug,
             @RequestParam vn.campuslife.enumeration.ReactionType type,
             Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).body(new Response(false, "Authentication required", null));
-        }
         Response response = eventArticleService.addReaction(slug, authentication.getName(), type);
         return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{slug}/reaction")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Response> removeReaction(
             @PathVariable String slug,
             Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).body(new Response(false, "Authentication required", null));
-        }
         Response response = eventArticleService.removeReaction(slug, authentication.getName());
         return ResponseEntity.ok(response);
     }
@@ -230,33 +245,27 @@ public class EventArticleController {
     }
 
     @GetMapping("/history")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Page<ArticleHistoryResponse>> getReadingHistory(
             Authentication authentication,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).build();
-        }
         Page<ArticleHistoryResponse> history = eventArticleService.getReadingHistory(authentication.getName(), page, size);
         return ResponseEntity.ok(history);
     }
 
     @DeleteMapping("/history/{historyId}")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Void> deleteReadingHistory(
             @PathVariable Long historyId,
             Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).build();
-        }
         eventArticleService.deleteReadingHistory(authentication.getName(), historyId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/history")
+    @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Void> clearAllReadingHistory(Authentication authentication) {
-        if (authentication == null) {
-            return ResponseEntity.status(401).build();
-        }
         eventArticleService.clearAllReadingHistory(authentication.getName());
         return ResponseEntity.noContent().build();
     }

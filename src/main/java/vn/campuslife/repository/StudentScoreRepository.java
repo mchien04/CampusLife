@@ -24,6 +24,16 @@ public interface StudentScoreRepository extends JpaRepository<StudentScore, Long
         List<StudentScore> findByStudentIdAndScoreType(@Param("studentId") Long studentId,
                         @Param("scoreType") ScoreType scoreType);
 
+        /**
+         * Tính tổng điểm tích lũy của sinh viên cho một loại điểm across TẤT CẢ học kỳ
+         */
+        @Query("SELECT COALESCE(SUM(ss.score), 0) FROM StudentScore ss " +
+                "WHERE ss.student.id = :studentId AND ss.scoreType = :scoreType " +
+                "AND ss.student.isDeleted = false")
+        java.math.BigDecimal sumScoreByStudentIdAndScoreType(
+                @Param("studentId") Long studentId,
+                @Param("scoreType") ScoreType scoreType);
+
         // Lấy tất cả scores theo semester và scoreType, sắp xếp theo điểm
         @Query("SELECT ss FROM StudentScore ss " +
                         "WHERE ss.semester.id = :semesterId " +

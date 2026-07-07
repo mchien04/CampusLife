@@ -8,6 +8,8 @@ public interface ArticleCommentService {
     
     ArticleCommentResponse addComment(String slug, String username, ArticleCommentRequest request);
 
+    ArticleCommentResponse editComment(Long commentId, String username, ArticleCommentRequest request);
+
     Page<ArticleCommentResponse> getArticleComments(String slug, boolean isAdmin, int page, int size);
 
     void deleteComment(Long commentId, String username, boolean isAdmin);
