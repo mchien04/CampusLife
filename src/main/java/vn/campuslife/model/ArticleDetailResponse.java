@@ -1,5 +1,6 @@
 package vn.campuslife.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -26,7 +27,9 @@ public class ArticleDetailResponse {
     private String registrationStatus;
     private Long viewCount;
     private Long wishlistCount;
+    @JsonProperty("isFeatured")
     private boolean isFeatured;
+    @JsonProperty("isPinned")
     private boolean isPinned;
     private int priority;
     private LocalDateTime createdAt;
@@ -37,6 +40,7 @@ public class ArticleDetailResponse {
     private List<String> tags;
     private List<ArticleImageResponse> images;
     private List<ArticleImageResponse> coverImages;
+    @JsonProperty("isWishlisted")
     private boolean isWishlisted;
     private String redirectedFrom;
     private String currentSlug;

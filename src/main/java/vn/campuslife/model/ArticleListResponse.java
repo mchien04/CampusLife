@@ -1,5 +1,6 @@
 package vn.campuslife.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -21,9 +22,13 @@ public class ArticleListResponse {
     private Long activityId;
     private String shareLink;
     private ArticleType articleType;
+    @JsonProperty("isPrimary")
     private boolean isPrimary;
+    @JsonProperty("isPublished")
     private boolean isPublished;
+    @JsonProperty("isFeatured")
     private boolean isFeatured;
+    @JsonProperty("isPinned")
     private boolean isPinned;
     private LocalDateTime publishedAt;
     private Long viewCount;
