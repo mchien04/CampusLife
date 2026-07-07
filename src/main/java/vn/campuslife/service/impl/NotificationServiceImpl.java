@@ -11,6 +11,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.entity.Notification;
+import vn.campuslife.entity.Department;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.NotificationStatus;
 import vn.campuslife.enumeration.NotificationType;
@@ -34,6 +35,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final StudentClassRepository studentClassRepository;
+    private final DepartmentRepository departmentRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final FcmService fcmService;
     private final DeviceTokenRepository deviceTokenRepository;
@@ -42,6 +44,13 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional
     public Response sendNotification(Long userId, String title, String content, NotificationType type, String actionUrl,
             Map<String, Object> metadata) {
+        return sendNotification(userId, title, content, type, actionUrl, metadata, null, null);
+    }
+
+    @Override
+    @Transactional
+    public Response sendNotification(Long userId, String title, String content, NotificationType type, String actionUrl,
+            Map<String, Object> metadata, Long senderDepartmentId, Set<Long> targetDepartmentIds) {
         try {
             Optional<User> userOpt = userRepository.findById(userId);
             if (userOpt.isEmpty()) {
@@ -55,14 +64,12 @@ public class NotificationServiceImpl implements NotificationService {
             notification.setType(type);
             notification.setActionUrl(actionUrl);
             notification.setStatus(NotificationStatus.UNREAD);
-
+            applyDepartmentMetadata(notification, senderDepartmentId, targetDepartmentIds);
 
             if (metadata != null && !metadata.isEmpty()) {
                 try {
-                    // Convert metadata to JSON string using ObjectMapper
                     notification.setMetadata(objectMapper.writeValueAsString(metadata));
                 } catch (Exception e) {
-                    // Fallback to toString if JSON conversion fails
                     notification.setMetadata(metadata.toString());
                 }
             }
@@ -415,5 +422,19 @@ public class NotificationServiceImpl implements NotificationService {
         }
         
         return response;
+    }
+
+    private void applyDepartmentMetadata(Notification notification, Long senderDepartmentId,
+                                         Set<Long> targetDepartmentIds) {
+        if (senderDepartmentId != null) {
+            departmentRepository.findById(senderDepartmentId).ifPresent(notification::setSenderDepartment);
+        }
+        if (targetDepartmentIds != null && !targetDepartmentIds.isEmpty()) {
+            Set<Department> targets = new LinkedHashSet<>();
+            for (Long departmentId : targetDepartmentIds) {
+                departmentRepository.findById(departmentId).ifPresent(targets::add);
+            }
+            notification.setTargetDepartments(targets);
+        }
     }
 }

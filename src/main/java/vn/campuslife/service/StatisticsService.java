@@ -42,12 +42,17 @@ public interface StatisticsService {
      * Thống kê Series
      */
     Response getSeriesStatistics(Long seriesId, Long semesterId);
+
+    Response getSeriesStatistics(Long seriesId, Long semesterId, DepartmentScope scope);
     
     /**
      * Thống kê MiniGames
      */
     Response getMiniGameStatistics(Long miniGameId, java.time.LocalDateTime startDate, 
                                     java.time.LocalDateTime endDate);
+
+    Response getMiniGameStatistics(Long miniGameId, java.time.LocalDateTime startDate,
+                                   java.time.LocalDateTime endDate, DepartmentScope scope);
 
     /**
      * Score source-type breakdown

@@ -16,9 +16,11 @@ CREATE TABLE IF NOT EXISTS user_departments (
         FOREIGN KEY (assigned_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+DROP INDEX IF EXISTS idx_user_departments_user ON user_departments;
 CREATE INDEX idx_user_departments_user
     ON user_departments(user_id);
 
+DROP INDEX IF EXISTS idx_user_departments_dept ON user_departments;
 CREATE INDEX idx_user_departments_dept
     ON user_departments(department_id);
 
@@ -34,17 +36,27 @@ ALTER TABLE score_entries
 ALTER TABLE student_scores
     ADD COLUMN student_department_id_at_award BIGINT NULL;
 
+DROP INDEX IF EXISTS idx_activity_registrations_student_dept_snapshot
+    ON activity_registrations;
 CREATE INDEX idx_activity_registrations_student_dept_snapshot
     ON activity_registrations(student_department_id_at_registration);
 
+DROP INDEX IF EXISTS idx_activity_participations_student_dept_snapshot
+    ON activity_participations;
 CREATE INDEX idx_activity_participations_student_dept_snapshot
     ON activity_participations(student_department_id_at_participation);
 
+DROP INDEX IF EXISTS idx_score_entries_student_dept_snapshot
+    ON score_entries;
 CREATE INDEX idx_score_entries_student_dept_snapshot
     ON score_entries(student_department_id_at_award);
 
+DROP INDEX IF EXISTS idx_student_scores_student_dept_snapshot
+    ON student_scores;
 CREATE INDEX idx_student_scores_student_dept_snapshot
     ON student_scores(student_department_id_at_award);
+
+SET SQL_SAFE_UPDATES = 0;
 
 UPDATE activity_registrations ar
 INNER JOIN students s ON ar.student_id = s.id

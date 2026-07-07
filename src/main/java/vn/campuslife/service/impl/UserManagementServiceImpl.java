@@ -18,6 +18,8 @@ import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.UserDepartmentRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.service.UserManagementService;
+import vn.campuslife.service.UserUniquenessHelper;
+import vn.campuslife.util.UserSoftDeleteSupport;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -69,10 +71,13 @@ public class UserManagementServiceImpl implements UserManagementService {
                 return new Response(false, "departmentIds is required when creating a MANAGER account", null);
             }
 
-            if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+            UserUniquenessHelper.reclaimDeletedIdentifiers(
+                    userRepository, request.getUsername(), request.getEmail());
+
+            if (userRepository.existsByUsernameAndIsDeletedFalse(request.getUsername())) {
                 return new Response(false, "Username already exists", null);
             }
-            if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
                 return new Response(false, "Email already exists", null);
             }
 
@@ -120,23 +125,27 @@ public class UserManagementServiceImpl implements UserManagementService {
             }
 
             if (request.getUsername() != null && !request.getUsername().trim().isEmpty()) {
-                userRepository.findByUsername(request.getUsername())
+                String username = request.getUsername().trim();
+                UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, username, null);
+                userRepository.findByUsernameAndIsDeletedFalse(username)
                         .ifPresent(existingUser -> {
                             if (!existingUser.getId().equals(userId)) {
                                 throw new IllegalArgumentException("Username already exists");
                             }
                         });
-                user.setUsername(request.getUsername());
+                user.setUsername(username);
             }
 
             if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
-                userRepository.findByEmail(request.getEmail())
+                String email = request.getEmail().trim();
+                UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, null, email);
+                userRepository.findByEmailAndIsDeletedFalse(email)
                         .ifPresent(existingUser -> {
                             if (!existingUser.getId().equals(userId)) {
                                 throw new IllegalArgumentException("Email already exists");
                             }
                         });
-                user.setEmail(request.getEmail());
+                user.setEmail(email);
             }
 
             if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
@@ -190,7 +199,7 @@ public class UserManagementServiceImpl implements UserManagementService {
                 return new Response(false, "User has already been deleted", null);
             }
 
-            user.setDeleted(true);
+            UserSoftDeleteSupport.softDelete(user);
             userRepository.save(user);
 
             logger.info("Deleted user: {}", user.getUsername());

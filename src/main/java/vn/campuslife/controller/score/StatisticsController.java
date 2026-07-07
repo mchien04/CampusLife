@@ -154,9 +154,13 @@ public class StatisticsController {
     @GetMapping("/series")
     public ResponseEntity<Response> getSeriesStatistics(
             @RequestParam(required = false) Long seriesId,
-            @RequestParam(required = false) Long semesterId) {
+            @RequestParam(required = false) Long semesterId,
+            HttpServletRequest request) {
         try {
-            Response response = statisticsService.getSeriesStatistics(seriesId, semesterId);
+            DepartmentScope scope = currentScope(request);
+            Response response = hasManagerScope(scope)
+                    ? statisticsService.getSeriesStatistics(seriesId, semesterId, scope)
+                    : statisticsService.getSeriesStatistics(seriesId, semesterId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Error in getSeriesStatistics: {}", e.getMessage(), e);
@@ -173,7 +177,8 @@ public class StatisticsController {
     public ResponseEntity<Response> getMiniGameStatistics(
             @RequestParam(required = false) Long miniGameId,
             @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
+            @RequestParam(required = false) String endDate,
+            HttpServletRequest request) {
         try {
             LocalDateTime start = null;
             LocalDateTime end = null;
@@ -184,7 +189,10 @@ public class StatisticsController {
                 end = LocalDateTime.parse(endDate);
             }
 
-            Response response = statisticsService.getMiniGameStatistics(miniGameId, start, end);
+            DepartmentScope scope = currentScope(request);
+            Response response = hasManagerScope(scope)
+                    ? statisticsService.getMiniGameStatistics(miniGameId, start, end, scope)
+                    : statisticsService.getMiniGameStatistics(miniGameId, start, end);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Error in getMiniGameStatistics: {}", e.getMessage(), e);

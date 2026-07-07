@@ -41,6 +41,10 @@ public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpec
     @Query("SELECT s FROM Student s WHERE s.user.username = :username AND s.isDeleted = false")
     Optional<Student> findByUserUsernameAndIsDeletedFalse(@Param("username") String username);
 
+    Optional<Student> findByStudentCode(String studentCode);
+
+    Optional<Student> findByStudentCodeAndIsDeletedFalse(String studentCode);
+
     /**
      * Tìm sinh viên theo ID và chưa bị xóa
      */

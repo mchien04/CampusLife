@@ -269,10 +269,13 @@ public final class DepartmentScopeSpec {
         }
         return (root, query, cb) -> {
             query.distinct(true);
+            Join<EmailHistory, Department> senderDepartment = root.join("senderDepartment", JoinType.LEFT);
+            Join<EmailHistory, Department> recipientDepartment =
+                    root.join("recipientDepartmentAtSend", JoinType.LEFT);
             Join<EmailHistory, Department> targetDepartments = root.join("targetDepartments", JoinType.LEFT);
             return cb.or(
-                    root.get("senderDepartment").get("id").in(deptIds),
-                    root.get("recipientDepartmentAtSend").get("id").in(deptIds),
+                    senderDepartment.get("id").in(deptIds),
+                    recipientDepartment.get("id").in(deptIds),
                     targetDepartments.get("id").in(deptIds));
         };
     }

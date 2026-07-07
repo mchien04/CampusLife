@@ -10,7 +10,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.data.jpa.domain.Specification;
 import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.*;
@@ -23,7 +22,6 @@ import vn.campuslife.model.SendNotificationOnlyRequest;
 import vn.campuslife.repository.*;
 import vn.campuslife.security.department.DepartmentAuthorizationService;
 import vn.campuslife.security.department.DepartmentScope;
-import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.EmailService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.EmailUtil;
@@ -153,6 +151,7 @@ public class EmailServiceImpl implements EmailService {
                         emailHistory.setErrorMessage("Failed to send email");
                         overallStatus = EmailStatus.PARTIAL;
                     }
+                    applyEmailHistoryDepartmentMetadata(emailHistory, recipient, request, scope);
 
                     // Create notification if requested
                     if (request.getCreateNotification() != null && request.getCreateNotification()) {
@@ -187,7 +186,9 @@ public class EmailServiceImpl implements EmailService {
                                     notificationContent,
                                     notificationType,
                                     actionUrl,
-                                    metadata.isEmpty() ? null : metadata);
+                                    metadata.isEmpty() ? null : metadata,
+                                    resolveSenderDepartmentId(scope, request.getRecipientType(), request.getDepartmentId()),
+                                    resolveTargetDepartmentIdsForRecipient(request, scope, recipient));
                             emailHistory.setNotificationCreated(true);
                         } catch (Exception e) {
                             logger.error("Failed to create notification for user {}: {}", recipient.getId(),
@@ -220,6 +221,7 @@ public class EmailServiceImpl implements EmailService {
                     emailHistory.setSentAt(LocalDateTime.now());
                     emailHistory.setStatus(EmailStatus.FAILED);
                     emailHistory.setErrorMessage(e.getMessage());
+                    applyEmailHistoryDepartmentMetadata(emailHistory, recipient, request, scope);
                     emailHistories.add(emailHistory);
                 }
             }
@@ -311,6 +313,8 @@ public class EmailServiceImpl implements EmailService {
                 metadata.put("seriesId", request.getSeriesId());
             }
 
+            Long senderDepartmentId = resolveSenderDepartmentId(scope, request.getRecipientType(), request.getDepartmentId());
+
             for (User recipient : recipients) {
                 try {
                     // Build template variables
@@ -326,7 +330,9 @@ public class EmailServiceImpl implements EmailService {
                             processedContent,
                             request.getType(),
                             actionUrl,
-                            metadata.isEmpty() ? null : metadata);
+                            metadata.isEmpty() ? null : metadata,
+                            senderDepartmentId,
+                            resolveTargetDepartmentIdsForNotification(request, scope, recipient));
                     successCount++;
                 } catch (Exception e) {
                     logger.error("Failed to send notification to user {}: {}", recipient.getId(), e.getMessage());
@@ -360,14 +366,12 @@ public class EmailServiceImpl implements EmailService {
 
     private Response getEmailHistoryInternal(Long senderId, Pageable pageable, DepartmentScope scope) {
         try {
-            Page<EmailHistory> emailHistories;
-            if (scope != null && scope.manager() && !scope.admin()) {
-                Specification<EmailHistory> spec = DepartmentScopeSpec.emailHistory(scope.departmentIds())
-                        .and((root, query, cb) -> cb.equal(root.get("sender").get("id"), senderId));
-                emailHistories = emailHistoryRepository.findAll(spec, pageable);
-            } else {
-                emailHistories = emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId, pageable);
-            }
+            // Lịch sử email luôn giới hạn theo người gửi hiện tại (senderId).
+            // Với MANAGER, đây chính là các email trong phạm vi khoa của họ vì họ chỉ gửi
+            // được tới đối tượng trong scope (đã validate lúc gửi). Không lọc thêm theo
+            // department metadata vì cột đó chưa được backfill và sẽ loại bỏ toàn bộ kết quả.
+            Page<EmailHistory> emailHistories =
+                    emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId, pageable);
             List<EmailHistoryResponse> responses = emailHistories.getContent().stream()
                     .map(this::toEmailHistoryResponse)
                     .collect(Collectors.toList());
@@ -887,5 +891,111 @@ public class EmailServiceImpl implements EmailService {
         response.setFileSize(attachment.getFileSize());
         response.setContentType(attachment.getContentType());
         return response;
+    }
+
+    private void applyEmailHistoryDepartmentMetadata(EmailHistory emailHistory, User recipient,
+                                                     SendEmailRequest request, DepartmentScope scope) {
+        Long senderDeptId = resolveSenderDepartmentId(scope, request.getRecipientType(), request.getDepartmentId());
+        if (senderDeptId != null) {
+            departmentRepository.findById(senderDeptId).ifPresent(emailHistory::setSenderDepartment);
+        }
+        resolveRecipientDepartment(recipient).ifPresent(emailHistory::setRecipientDepartmentAtSend);
+        Set<Department> targets = resolveTargetDepartmentsForRecipient(request, scope, recipient);
+        if (!targets.isEmpty()) {
+            emailHistory.setTargetDepartments(targets);
+        }
+    }
+
+    private Long resolveSenderDepartmentId(DepartmentScope scope, RecipientType recipientType, Long requestDepartmentId) {
+        if (recipientType == RecipientType.BY_DEPARTMENT && requestDepartmentId != null) {
+            return requestDepartmentId;
+        }
+        if (scope != null && scope.manager() && !scope.departmentIds().isEmpty()) {
+            return scope.departmentIds().iterator().next();
+        }
+        return null;
+    }
+
+    private Optional<Department> resolveRecipientDepartment(User recipient) {
+        return studentRepository.findByUserIdAndIsDeletedFalse(recipient.getId())
+                .map(Student::getDepartment)
+                .filter(Objects::nonNull);
+    }
+
+    private Set<Department> resolveTargetDepartmentsForRecipient(SendEmailRequest request, DepartmentScope scope,
+                                                                 User recipient) {
+        return toDepartmentEntities(resolveTargetDepartmentIdsForRecipient(request, scope, recipient));
+    }
+
+    private Set<Long> resolveTargetDepartmentIdsForRecipient(SendEmailRequest request, DepartmentScope scope,
+                                                           User recipient) {
+        return resolveTargetDepartmentIds(
+                request.getRecipientType(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                scope,
+                recipient);
+    }
+
+    private Set<Long> resolveTargetDepartmentIdsForNotification(SendNotificationOnlyRequest request,
+                                                                DepartmentScope scope, User recipient) {
+        return resolveTargetDepartmentIds(
+                request.getRecipientType(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                scope,
+                recipient);
+    }
+
+    private Set<Long> resolveTargetDepartmentIds(RecipientType recipientType, Long departmentId, Long classId,
+                                                 Long activityId, Long seriesId, DepartmentScope scope,
+                                                 User recipient) {
+        Set<Long> ids = new LinkedHashSet<>();
+        switch (recipientType) {
+            case BY_DEPARTMENT -> {
+                if (departmentId != null) {
+                    ids.add(departmentId);
+                }
+            }
+            case BY_CLASS -> {
+                if (classId != null) {
+                    studentClassRepository.findById(classId)
+                            .map(StudentClass::getDepartment)
+                            .map(Department::getId)
+                            .ifPresent(ids::add);
+                }
+            }
+            case ACTIVITY_REGISTRATIONS -> {
+                if (activityId != null) {
+                    activityRepository.findById(activityId).ifPresent(activity ->
+                            activity.getOrganizers().stream()
+                                    .map(Department::getId)
+                                    .forEach(ids::add));
+                }
+            }
+            case SERIES_REGISTRATIONS -> {
+                if (scope != null && scope.manager()) {
+                    ids.addAll(scope.departmentIds());
+                }
+            }
+            case BULK -> resolveRecipientDepartment(recipient)
+                    .map(Department::getId)
+                    .ifPresent(ids::add);
+            default -> {
+            }
+        }
+        return ids;
+    }
+
+    private Set<Department> toDepartmentEntities(Set<Long> departmentIds) {
+        Set<Department> departments = new LinkedHashSet<>();
+        for (Long departmentId : departmentIds) {
+            departmentRepository.findById(departmentId).ifPresent(departments::add);
+        }
+        return departments;
     }
 }

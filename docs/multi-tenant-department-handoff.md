@@ -195,6 +195,16 @@ Repository bổ sung method `existsBy…DepartmentIds` / `JpaSpecificationExecut
 
 Không có endpoint riêng `GET/PUT .../departments` — mọi gán khoa nằm trong CRUD hiện có.
 
+**Scope các thao tác khác trên student account (ADMIN + MANAGER):**
+
+| Endpoint | Manager scope |
+|----------|---------------|
+| `GET /pending` | Chỉ liệt kê SV thuộc khoa được phân công (`DepartmentScopeSpec.student`). SV chưa có khoa không hiện với Manager. |
+| `DELETE /{studentId}/account` | `requireStudentAccess` — chỉ xóa SV trong khoa scope |
+| `POST /{studentId}/send-credentials` | `requireStudentAccess` — chỉ gửi cho SV trong khoa scope |
+| `POST /bulk-send-credentials` | Bỏ qua (ghi lỗi `Access denied`) các SV ngoài khoa scope |
+| `POST /bulk-create`, `/create-multiple`, `/upload-excel` | Tạo SV mới không kèm khoa (không lộ dữ liệu SV khác) |
+
 ### Phase 4 — Hardening & Audit
 
 - `DepartmentScopeAuditService` — audit violation & admin bypass
@@ -217,9 +227,9 @@ Không có endpoint riêng `GET/PUT .../departments` — mọi gán khoa nằm t
 | `ACTIVITY_REGISTRATIONS` | Chỉ nếu manager là organizer của activity |
 | `SERIES_REGISTRATIONS` | Chỉ nếu manager có quyền series |
 
-Notification-only send: `POST /api/email/notifications/send` — cùng validation.
+Notification-only send: `POST /api/emails/notifications/send` — cùng validation.
 
-Email history list: scoped qua `DepartmentScopeSpec.emailHistory`.
+Email history list (`GET /api/emails/history`): luôn lọc theo `senderId` của người đăng nhập. Khi gửi email/notification, backend ghi `sender_department_id`, `recipient_department_id_at_send`, và `email_history_target_departments` / `notification_target_departments` để phục vụ audit và dashboard sau này.
 
 ---
 

@@ -18,11 +18,14 @@ import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.security.department.DepartmentAuthorizationService;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.StudentAccountManagementService;
 import vn.campuslife.service.StudentScoreInitService;
+import vn.campuslife.service.UserUniquenessHelper;
 import vn.campuslife.util.EmailUtil;
 import vn.campuslife.util.ExcelParser;
 import vn.campuslife.util.PasswordGenerator;
+import vn.campuslife.util.UserSoftDeleteSupport;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -134,20 +137,21 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                     String email = studentRow.getEmail().trim();
                     String fullName = studentRow.getFullName() != null ? studentRow.getFullName().trim() : "";
 
-                    // Check if username (studentCode) already exists
-                    if (userRepository.findByUsername(studentCode).isPresent()) {
+                    UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, studentCode, email);
+                    UserUniquenessHelper.reclaimDeletedStudentCode(studentRepository, userRepository, studentCode);
+
+                    if (userRepository.existsByUsernameAndIsDeletedFalse(studentCode)) {
                         errors.add("Dòng " + studentCode + ": Mã số sinh viên đã tồn tại");
                         continue;
                     }
 
-                    // Check if email already exists
-                    if (userRepository.findByEmail(email).isPresent()) {
+                    if (userRepository.existsByEmailAndIsDeletedFalse(email)) {
                         errors.add("Dòng " + studentCode + ": Email đã tồn tại");
                         continue;
                     }
 
-                    // Check if studentCode already exists in Student
-                    if (studentRepository.findByUserUsernameAndIsDeletedFalse(studentCode).isPresent()) {
+                    if (studentRepository.findByStudentCodeAndIsDeletedFalse(studentCode).isPresent()
+                            || studentRepository.findByUserUsernameAndIsDeletedFalse(studentCode).isPresent()) {
                         errors.add("Dòng " + studentCode + ": Mã số sinh viên đã tồn tại");
                         continue;
                     }
@@ -291,11 +295,21 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
 
     @Override
     public Response getPendingAccounts() {
+        return getPendingAccounts(null);
+    }
+
+    @Override
+    public Response getPendingAccounts(DepartmentScope scope) {
         try {
-            // Lấy tất cả sinh viên (chưa bị xóa)
-            List<Student> students = studentRepository.findAll().stream()
-                    .filter(s -> !s.isDeleted())
-                    .collect(Collectors.toList());
+            // Lấy sinh viên (chưa bị xóa). Manager chỉ thấy sinh viên thuộc khoa được phân công.
+            List<Student> students;
+            if (scope != null && scope.manager() && !scope.admin()) {
+                students = studentRepository.findAll(DepartmentScopeSpec.student(scope.departmentIds()));
+            } else {
+                students = studentRepository.findAll().stream()
+                        .filter(s -> !s.isDeleted())
+                        .collect(Collectors.toList());
+            }
 
             List<StudentAccountResponse> accounts = new ArrayList<>();
             for (Student student : students) {
@@ -377,7 +391,8 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             if (request.getUsername() != null && !request.getUsername().trim().isEmpty()) {
                 String newUsername = request.getUsername().trim();
                 // Check if username already exists (excluding current user)
-                Optional<User> existingUser = userRepository.findByUsername(newUsername);
+                UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, newUsername, null);
+                Optional<User> existingUser = userRepository.findByUsernameAndIsDeletedFalse(newUsername);
                 if (existingUser.isPresent() && !existingUser.get().getId().equals(user.getId())) {
                     return Response.error("Username already exists");
                 }
@@ -392,7 +407,8 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                     return Response.error("Invalid email format");
                 }
                 // Check if email already exists (excluding current user)
-                Optional<User> existingUser = userRepository.findByEmail(newEmail);
+                UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, null, newEmail);
+                Optional<User> existingUser = userRepository.findByEmailAndIsDeletedFalse(newEmail);
                 if (existingUser.isPresent() && !existingUser.get().getId().equals(user.getId())) {
                     return Response.error("Email already exists");
                 }
@@ -404,8 +420,12 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             if (request.getStudentCode() != null && !request.getStudentCode().trim().isEmpty()) {
                 String newStudentCode = request.getStudentCode().trim();
                 // Check if studentCode already exists (excluding current student)
+                UserUniquenessHelper.reclaimDeletedStudentCode(studentRepository, userRepository, newStudentCode);
                 Optional<Student> existingStudent = studentRepository
-                        .findByUserUsernameAndIsDeletedFalse(newStudentCode);
+                        .findByStudentCodeAndIsDeletedFalse(newStudentCode);
+                if (existingStudent.isEmpty()) {
+                    existingStudent = studentRepository.findByUserUsernameAndIsDeletedFalse(newStudentCode);
+                }
                 if (existingStudent.isPresent() && !existingStudent.get().getId().equals(student.getId())) {
                     return Response.error("Student code already exists");
                 }
@@ -462,18 +482,25 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
     @Override
     @Transactional
     public Response deleteStudentAccount(Long studentId) {
+        return deleteStudentAccount(studentId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response deleteStudentAccount(Long studentId, DepartmentScope scope) {
         try {
             Student student = studentRepository.findByIdAndIsDeletedFalse(studentId)
                     .orElseThrow(() -> new IllegalArgumentException("Student not found"));
 
-            // Soft delete
-            student.setDeleted(true);
-            studentRepository.save(student);
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireStudentAccess(studentId, scope);
+            }
 
-            User user = student.getUser();
-            if (user != null) {
-                user.setDeleted(true);
-                userRepository.save(user);
+            // Soft delete
+            UserSoftDeleteSupport.softDelete(student);
+            studentRepository.save(student);
+            if (student.getUser() != null) {
+                userRepository.save(student.getUser());
             }
 
             return Response.success("Student account deleted successfully", null);
@@ -488,9 +515,18 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
 
     @Override
     public Response sendCredentials(Long studentId) {
+        return sendCredentials(studentId, null);
+    }
+
+    @Override
+    public Response sendCredentials(Long studentId, DepartmentScope scope) {
         try {
             Student student = studentRepository.findByIdAndIsDeletedFalse(studentId)
                     .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireStudentAccess(studentId, scope);
+            }
 
             User user = student.getUser();
             if (user == null || user.isDeleted()) {
@@ -525,10 +561,17 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
 
     @Override
     public Response bulkSendCredentials(BulkSendCredentialsRequest request) {
+        return bulkSendCredentials(request, null);
+    }
+
+    @Override
+    public Response bulkSendCredentials(BulkSendCredentialsRequest request, DepartmentScope scope) {
         try {
             if (request.getStudentIds() == null || request.getStudentIds().isEmpty()) {
                 return Response.error("Danh sách sinh viên không được để trống");
             }
+
+            boolean managerScoped = scope != null && scope.manager() && !scope.admin();
 
             List<String> successList = new ArrayList<>();
             List<String> errorList = new ArrayList<>();
@@ -540,6 +583,12 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
 
                     if (student == null) {
                         errorList.add("Student ID " + studentId + ": Not found");
+                        continue;
+                    }
+
+                    if (managerScoped && !studentRepository.existsActiveByIdAndDepartmentIds(
+                            studentId, scope.departmentIds())) {
+                        errorList.add("Student ID " + studentId + ": Access denied");
                         continue;
                     }
 
@@ -596,15 +645,19 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
 
             if (studentCode != null && !studentCode.trim().isEmpty()) {
                 String code = studentCode.trim();
-                boolean usernameExists = userRepository.findByUsername(code).isPresent();
-                boolean studentCodeExists = studentRepository.findByUserUsernameAndIsDeletedFalse(code).isPresent();
+                UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, code, null);
+                UserUniquenessHelper.reclaimDeletedStudentCode(studentRepository, userRepository, code);
+                boolean usernameExists = userRepository.existsByUsernameAndIsDeletedFalse(code);
+                boolean studentCodeExists = studentRepository.findByStudentCodeAndIsDeletedFalse(code).isPresent()
+                        || studentRepository.findByUserUsernameAndIsDeletedFalse(code).isPresent();
                 result.put("studentCodeAvailable", !usernameExists && !studentCodeExists);
                 result.put("studentCode", code);
             }
 
             if (email != null && !email.trim().isEmpty()) {
                 String mail = email.trim();
-                boolean emailExists = userRepository.findByEmail(mail).isPresent();
+                UserUniquenessHelper.reclaimDeletedIdentifiers(userRepository, null, mail);
+                boolean emailExists = userRepository.existsByEmailAndIsDeletedFalse(mail);
                 result.put("emailAvailable", !emailExists);
                 result.put("email", mail);
             }

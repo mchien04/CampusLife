@@ -60,8 +60,11 @@ public class StudentAccountManagementController {
     }
 
     @GetMapping("/pending")
-    public ResponseEntity<Response> getPendingAccounts() {
-        Response response = studentAccountManagementService.getPendingAccounts();
+    public ResponseEntity<Response> getPendingAccounts(HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? studentAccountManagementService.getPendingAccounts(scope)
+                : studentAccountManagementService.getPendingAccounts();
         return ResponseEntity.ok(response);
     }
 
@@ -78,20 +81,32 @@ public class StudentAccountManagementController {
     }
 
     @DeleteMapping("/{studentId}/account")
-    public ResponseEntity<Response> deleteStudentAccount(@PathVariable Long studentId) {
-        Response response = studentAccountManagementService.deleteStudentAccount(studentId);
+    public ResponseEntity<Response> deleteStudentAccount(@PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? studentAccountManagementService.deleteStudentAccount(studentId, scope)
+                : studentAccountManagementService.deleteStudentAccount(studentId);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
     }
 
     @PostMapping("/{studentId}/send-credentials")
-    public ResponseEntity<Response> sendCredentials(@PathVariable Long studentId) {
-        Response response = studentAccountManagementService.sendCredentials(studentId);
+    public ResponseEntity<Response> sendCredentials(@PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? studentAccountManagementService.sendCredentials(studentId, scope)
+                : studentAccountManagementService.sendCredentials(studentId);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
     }
 
     @PostMapping("/bulk-send-credentials")
-    public ResponseEntity<Response> bulkSendCredentials(@RequestBody BulkSendCredentialsRequest request) {
-        Response response = studentAccountManagementService.bulkSendCredentials(request);
+    public ResponseEntity<Response> bulkSendCredentials(@RequestBody BulkSendCredentialsRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? studentAccountManagementService.bulkSendCredentials(request, scope)
+                : studentAccountManagementService.bulkSendCredentials(request);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
     }
 

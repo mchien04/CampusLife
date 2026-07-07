@@ -40,6 +40,8 @@ public interface StudentAccountManagementService {
      * Lấy danh sách tài khoản chờ review (tất cả tài khoản đã tạo)
      */
     Response getPendingAccounts();
+
+    Response getPendingAccounts(DepartmentScope scope);
     
     /**
      * Chỉnh sửa thông tin tài khoản
@@ -52,16 +54,22 @@ public interface StudentAccountManagementService {
      * Xóa tài khoản (soft delete)
      */
     Response deleteStudentAccount(Long studentId);
+
+    Response deleteStudentAccount(Long studentId, DepartmentScope scope);
     
     /**
      * Gửi email credentials cho 1 sinh viên
      */
     Response sendCredentials(Long studentId);
+
+    Response sendCredentials(Long studentId, DepartmentScope scope);
     
     /**
      * Gửi email credentials hàng loạt
      */
     Response bulkSendCredentials(BulkSendCredentialsRequest request);
+
+    Response bulkSendCredentials(BulkSendCredentialsRequest request, DepartmentScope scope);
 
     /**
      * Kiểm tra mã số sinh viên và email đã được sử dụng chưa
