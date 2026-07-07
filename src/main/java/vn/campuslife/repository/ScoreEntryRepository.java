@@ -1,6 +1,7 @@
 package vn.campuslife.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ScoreEntryRepository extends JpaRepository<ScoreEntry, Long> {
+public interface ScoreEntryRepository extends JpaRepository<ScoreEntry, Long>, JpaSpecificationExecutor<ScoreEntry> {
     
     Optional<ScoreEntry> findByStudentIdAndSourceTypeAndSourceIdAndRuleIdAndStatus(
             Long studentId, ScoreEntrySourceType sourceType, Long sourceId, Long ruleId, ScoreEntryStatus status);

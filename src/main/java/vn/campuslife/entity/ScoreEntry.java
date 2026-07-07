@@ -32,6 +32,10 @@ public class ScoreEntry {
     private Student student;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "student_department_id_at_award")
+    private Department studentDepartmentAtAward;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "semester_id", nullable = false)
     private Semester semester;
 
@@ -75,4 +79,11 @@ public class ScoreEntry {
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    void captureStudentDepartmentSnapshot() {
+        if (studentDepartmentAtAward == null && student != null) {
+            studentDepartmentAtAward = student.getDepartment();
+        }
+    }
 }

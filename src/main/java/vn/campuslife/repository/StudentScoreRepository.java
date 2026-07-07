@@ -1,6 +1,7 @@
 package vn.campuslife.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface StudentScoreRepository extends JpaRepository<StudentScore, Long> {
+public interface StudentScoreRepository extends JpaRepository<StudentScore, Long>, JpaSpecificationExecutor<StudentScore> {
 
         @Query("SELECT ss FROM StudentScore ss WHERE ss.student.id = :studentId AND ss.semester.id = :semesterId")
         List<StudentScore> findByStudentAndSemester(@Param("studentId") Long studentId,

@@ -1,5 +1,6 @@
 package vn.campuslife.controller.preparation;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,8 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.PreparationService;
 import vn.campuslife.service.StudentService;
@@ -27,22 +30,40 @@ public class PreparationController {
 
     @PutMapping("/activities/{activityId}/toggle")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
-    public ResponseEntity<Response> togglePreparation(@PathVariable Long activityId, @RequestParam boolean enabled) {
-        preparationService.togglePreparation(activityId, enabled);
+    public ResponseEntity<Response> togglePreparation(
+            @PathVariable Long activityId,
+            @RequestParam boolean enabled,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            preparationService.togglePreparation(activityId, enabled, scope);
+        } else {
+            preparationService.togglePreparation(activityId, enabled);
+        }
         return ResponseEntity.ok(Response.success("Updated preparation flag"));
     }
 
     @GetMapping("/activities/{activityId}/dashboard")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
-    public ResponseEntity<Response> getPreparationDashboard(@PathVariable Long activityId) {
-        PreparationDashboardDto dashboard = preparationService.getPreparationDashboard(activityId);
+    public ResponseEntity<Response> getPreparationDashboard(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        PreparationDashboardDto dashboard = hasManagerScope(scope)
+                ? preparationService.getPreparationDashboard(activityId, scope)
+                : preparationService.getPreparationDashboard(activityId);
         return ResponseEntity.ok(Response.success("OK", dashboard));
     }
 
     @GetMapping("/summary")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
-    public ResponseEntity<Response> getPreparationsSummary(@RequestParam List<Long> activityIds) {
-        List<PreparationSummaryResponse> summary = preparationService.getPreparationsSummary(activityIds);
+    public ResponseEntity<Response> getPreparationsSummary(
+            @RequestParam List<Long> activityIds,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<PreparationSummaryResponse> summary = hasManagerScope(scope)
+                ? preparationService.getPreparationsSummary(activityIds, scope)
+                : preparationService.getPreparationsSummary(activityIds);
         return ResponseEntity.ok(Response.success("OK", summary));
     }
 
@@ -61,8 +82,16 @@ public class PreparationController {
 
     @PostMapping("/activities/{activityId}/organizers/{studentId}")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
-    public ResponseEntity<Response> addOrganizer(@PathVariable Long activityId, @PathVariable Long studentId) {
-        preparationService.addOrganizer(activityId, studentId);
+    public ResponseEntity<Response> addOrganizer(
+            @PathVariable Long activityId,
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            preparationService.addOrganizer(activityId, studentId, scope);
+        } else {
+            preparationService.addOrganizer(activityId, studentId);
+        }
         return ResponseEntity.ok(Response.success("Added organizer"));
     }
 
@@ -70,30 +99,54 @@ public class PreparationController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> addOrganizers(
             @PathVariable Long activityId,
-            @RequestBody @Valid BulkAddOrganizersRequest request) {
-        BulkAddOrganizersResultDto result = preparationService.addOrganizers(activityId, request.getStudentIds());
+            @RequestBody @Valid BulkAddOrganizersRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        BulkAddOrganizersResultDto result = hasManagerScope(scope)
+                ? preparationService.addOrganizers(activityId, request.getStudentIds(), scope)
+                : preparationService.addOrganizers(activityId, request.getStudentIds());
         return ResponseEntity.ok(Response.success("OK", result));
     }
 
     @DeleteMapping("/activities/{activityId}/organizers/{studentId}")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
-    public ResponseEntity<Response> removeOrganizer(@PathVariable Long activityId, @PathVariable Long studentId) {
-        preparationService.removeOrganizer(activityId, studentId);
+    public ResponseEntity<Response> removeOrganizer(
+            @PathVariable Long activityId,
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            preparationService.removeOrganizer(activityId, studentId, scope);
+        } else {
+            preparationService.removeOrganizer(activityId, studentId);
+        }
         return ResponseEntity.ok(Response.success("Removed organizer"));
     }
 
     @PostMapping("/activities/{activityId}/tasks")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication)")
-    public ResponseEntity<Response> assignTask(@PathVariable Long activityId,
-            @RequestBody @Valid CreatePreparationTaskRequest req) {
-        PreparationTaskDto dto = preparationService.assignTask(new CreatePreparationTaskRequest(
-                activityId,
-                req.getOwnerId(),
-                req.getTitle(),
-                req.getDescription(),
-                req.getDeadline(),
-                req.getIsFinancial(),
-                req.getIsCheckinScanner()));
+    public ResponseEntity<Response> assignTask(
+            @PathVariable Long activityId,
+            @RequestBody @Valid CreatePreparationTaskRequest req,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        PreparationTaskDto dto = hasManagerScope(scope)
+                ? preparationService.assignTask(new CreatePreparationTaskRequest(
+                        activityId,
+                        req.getOwnerId(),
+                        req.getTitle(),
+                        req.getDescription(),
+                        req.getDeadline(),
+                        req.getIsFinancial(),
+                        req.getIsCheckinScanner()), scope)
+                : preparationService.assignTask(new CreatePreparationTaskRequest(
+                        activityId,
+                        req.getOwnerId(),
+                        req.getTitle(),
+                        req.getDescription(),
+                        req.getDeadline(),
+                        req.getIsFinancial(),
+                        req.getIsCheckinScanner()));
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -166,8 +219,13 @@ public class PreparationController {
 
     @GetMapping("/activities/{activityId}/workload-warnings")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
-    public ResponseEntity<Response> getWorkloadWarnings(@PathVariable Long activityId) {
-        List<WorkloadWarningDto> warnings = preparationService.getWorkloadWarnings(activityId);
+    public ResponseEntity<Response> getWorkloadWarnings(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<WorkloadWarningDto> warnings = hasManagerScope(scope)
+                ? preparationService.getWorkloadWarnings(activityId, scope)
+                : preparationService.getWorkloadWarnings(activityId);
         return ResponseEntity.ok(Response.success("OK", warnings));
     }
 
@@ -205,8 +263,14 @@ public class PreparationController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> grantPrepSupervisor(
             @PathVariable Long activityId,
-            @PathVariable Long studentId) {
-        preparationService.grantPrepSupervisor(activityId, studentId);
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            preparationService.grantPrepSupervisor(activityId, studentId, scope);
+        } else {
+            preparationService.grantPrepSupervisor(activityId, studentId);
+        }
         return ResponseEntity.ok(Response.success("Granted PrepSupervisor"));
     }
 
@@ -214,9 +278,23 @@ public class PreparationController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public ResponseEntity<Response> revokePrepSupervisor(
             @PathVariable Long activityId,
-            @PathVariable Long studentId) {
-        preparationService.revokePrepSupervisor(activityId, studentId);
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            preparationService.revokePrepSupervisor(activityId, studentId, scope);
+        } else {
+            preparationService.revokePrepSupervisor(activityId, studentId);
+        }
         return ResponseEntity.ok(Response.success("Revoked PrepSupervisor"));
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

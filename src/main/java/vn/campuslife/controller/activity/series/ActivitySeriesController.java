@@ -1,6 +1,7 @@
 package vn.campuslife.controller.activity.series;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,8 @@ import vn.campuslife.model.activity.series.CreateSeriesRequest;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewRequest;
 import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
 import vn.campuslife.model.activity.series.UpdateSeriesRequest;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.ScorePresetService;
@@ -48,7 +51,8 @@ public class ActivitySeriesController {
     }
 
     @PostMapping
-    public ResponseEntity<Response> createSeries(@RequestBody CreateSeriesRequest request) {
+    public ResponseEntity<Response> createSeries(@RequestBody CreateSeriesRequest request,
+            HttpServletRequest httpRequest) {
         try {
             String name = request.getName();
             if (name == null || name.trim().isEmpty()) {
@@ -84,14 +88,24 @@ public class ActivitySeriesController {
             Integer minimumRequiredEvents = request.getMinimumRequiredEvents();
             Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints();
 
-            Response response = seriesService.createSeries(name, description, milestonePoints, scoreType,
-                    mainActivityId,
-                    registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
-                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
-                    request.getAudience(), request.getDepartmentIds(),
-                    request.getIsImportant(), request.getMandatoryForFacultyStudents(),
-                    request.getIsDraft(),
-                    request.getPresetCode());
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.createSeries(name, description, milestonePoints, scoreType,
+                            mainActivityId,
+                            registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                            minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
+                            request.getAudience(), request.getDepartmentIds(),
+                            request.getIsImportant(), request.getMandatoryForFacultyStudents(),
+                            request.getIsDraft(),
+                            request.getPresetCode(), scope)
+                    : seriesService.createSeries(name, description, milestonePoints, scoreType,
+                            mainActivityId,
+                            registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                            minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
+                            request.getAudience(), request.getDepartmentIds(),
+                            request.getIsImportant(), request.getMandatoryForFacultyStudents(),
+                            request.getIsDraft(),
+                            request.getPresetCode());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating series: {}", e.getMessage(), e);
@@ -112,7 +126,8 @@ public class ActivitySeriesController {
     @PostMapping("/{seriesId}/activities/create")
     public ResponseEntity<Response> createActivityInSeries(
             @PathVariable Long seriesId,
-            @RequestBody CreateSeriesActivityRequest request) {
+            @RequestBody CreateSeriesActivityRequest request,
+            HttpServletRequest httpRequest) {
         try {
             String name = request.getName();
             if (name == null || name.trim().isEmpty()) {
@@ -120,10 +135,16 @@ public class ActivitySeriesController {
                         .body(new Response(false, "Activity name is required", null));
             }
 
-            Response response = seriesService.createActivityInSeries(seriesId, name, request.getDescription(),
-                    request.getStartDate(), request.getEndDate(), request.getLocation(), request.getOrder(),
-                    request.getShareLink(), request.getBannerUrl(), request.getBenefits(), request.getRequirements(),
-                    request.getContactInfo(), request.getOrganizerIds(), request.getType());
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.createActivityInSeries(seriesId, name, request.getDescription(),
+                            request.getStartDate(), request.getEndDate(), request.getLocation(), request.getOrder(),
+                            request.getShareLink(), request.getBannerUrl(), request.getBenefits(), request.getRequirements(),
+                            request.getContactInfo(), request.getOrganizerIds(), request.getType(), scope)
+                    : seriesService.createActivityInSeries(seriesId, name, request.getDescription(),
+                            request.getStartDate(), request.getEndDate(), request.getLocation(), request.getOrder(),
+                            request.getShareLink(), request.getBannerUrl(), request.getBenefits(), request.getRequirements(),
+                            request.getContactInfo(), request.getOrganizerIds(), request.getType());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.error("Invalid argument when creating activity in series: {}", e.getMessage(), e);
@@ -139,8 +160,12 @@ public class ActivitySeriesController {
     @PostMapping("/{seriesId}/activities")
     public ResponseEntity<Response> createSeriesActivity(
             @PathVariable Long seriesId,
-            @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request) {
-        Response response = seriesService.createSeriesActivity(seriesId, request);
+            @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? seriesService.createSeriesActivity(seriesId, request, scope)
+                : seriesService.createSeriesActivity(seriesId, request);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
@@ -148,16 +173,24 @@ public class ActivitySeriesController {
     public ResponseEntity<Response> updateSeriesActivity(
             @PathVariable Long seriesId,
             @PathVariable Long activityId,
-            @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request) {
-        Response response = seriesService.updateSeriesActivity(seriesId, activityId, request);
+            @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? seriesService.updateSeriesActivity(seriesId, activityId, request, scope)
+                : seriesService.updateSeriesActivity(seriesId, activityId, request);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
     @GetMapping("/{seriesId}/activities/{activityId}")
     public ResponseEntity<Response> getSeriesActivity(
             @PathVariable Long seriesId,
-            @PathVariable Long activityId) {
-        Response response = seriesService.getSeriesActivity(seriesId, activityId);
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? seriesService.getSeriesActivity(seriesId, activityId, scope)
+                : seriesService.getSeriesActivity(seriesId, activityId);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
@@ -233,12 +266,16 @@ public class ActivitySeriesController {
     @PostMapping("/{seriesId}/activities/attach")
     public ResponseEntity<Response> addActivityToSeries(
             @PathVariable Long seriesId,
-            @RequestBody AddActivityToSeriesRequest request) {
+            @RequestBody AddActivityToSeriesRequest request,
+            HttpServletRequest httpRequest) {
         try {
             Long activityId = request.getActivityId();
             Integer order = request.getOrder();
 
-            Response response = seriesService.addActivityToSeries(activityId, seriesId, order);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.addActivityToSeries(activityId, seriesId, order, scope)
+                    : seriesService.addActivityToSeries(activityId, seriesId, order);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to add activity to series: {}", e.getMessage(), e);
@@ -253,9 +290,13 @@ public class ActivitySeriesController {
     @PostMapping("/{seriesId}/students/{studentId}/calculate-milestone")
     public ResponseEntity<Response> calculateMilestone(
             @PathVariable Long seriesId,
-            @PathVariable Long studentId) {
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.calculateMilestonePoints(studentId, seriesId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.calculateMilestonePoints(studentId, seriesId, scope)
+                    : seriesService.calculateMilestonePoints(studentId, seriesId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to calculate milestone: {}", e.getMessage(), e);
@@ -268,9 +309,12 @@ public class ActivitySeriesController {
      * Lấy tất cả chuỗi sự kiện
      */
     @GetMapping
-    public ResponseEntity<Response> getAllSeries() {
+    public ResponseEntity<Response> getAllSeries(HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.getAllSeries();
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.getAllSeries(scope)
+                    : seriesService.getAllSeries();
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get all series: {}", e.getMessage(), e);
@@ -283,9 +327,12 @@ public class ActivitySeriesController {
      * Lấy chuỗi sự kiện theo ID
      */
     @GetMapping("/{seriesId}")
-    public ResponseEntity<Response> getSeriesById(@PathVariable Long seriesId) {
+    public ResponseEntity<Response> getSeriesById(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.getSeriesById(seriesId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.getSeriesById(seriesId, scope)
+                    : seriesService.getSeriesById(seriesId);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.notFound().build();
@@ -300,9 +347,12 @@ public class ActivitySeriesController {
      * Lấy danh sách activities trong series
      */
     @GetMapping("/{seriesId}/activities")
-    public ResponseEntity<Response> getActivitiesInSeries(@PathVariable Long seriesId) {
+    public ResponseEntity<Response> getActivitiesInSeries(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.getActivitiesInSeries(seriesId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.getActivitiesInSeries(seriesId, scope)
+                    : seriesService.getActivitiesInSeries(seriesId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get activities in series: {}", e.getMessage(), e);
@@ -368,9 +418,13 @@ public class ActivitySeriesController {
     @GetMapping("/{seriesId}/students/{studentId}/progress")
     public ResponseEntity<Response> getStudentProgress(
             @PathVariable Long seriesId,
-            @PathVariable Long studentId) {
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.getStudentProgress(seriesId, studentId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.getStudentProgress(seriesId, studentId, scope)
+                    : seriesService.getStudentProgress(seriesId, studentId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get student progress: {}", e.getMessage(), e);
@@ -387,9 +441,13 @@ public class ActivitySeriesController {
             @PathVariable Long seriesId,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "20") Integer size,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.getSeriesProgress(seriesId, page, size, keyword);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.getSeriesProgress(seriesId, page, size, keyword, scope)
+                    : seriesService.getSeriesProgress(seriesId, page, size, keyword);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get series progress: {}", e.getMessage(), e);
@@ -402,9 +460,12 @@ public class ActivitySeriesController {
      * Admin/Manager xem tổng quan thống kê của chuỗi sự kiện
      */
     @GetMapping("/{seriesId}/overview")
-    public ResponseEntity<Response> getSeriesOverview(@PathVariable Long seriesId) {
+    public ResponseEntity<Response> getSeriesOverview(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.getSeriesOverview(seriesId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.getSeriesOverview(seriesId, scope)
+                    : seriesService.getSeriesOverview(seriesId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get series overview: {}", e.getMessage(), e);
@@ -419,7 +480,8 @@ public class ActivitySeriesController {
     @PutMapping("/{seriesId}")
     public ResponseEntity<Response> updateSeries(
             @PathVariable Long seriesId,
-            @RequestBody UpdateSeriesRequest request) {
+            @RequestBody UpdateSeriesRequest request,
+            HttpServletRequest httpRequest) {
         try {
             scorePresetService.applySeriesPreset(request);
 
@@ -450,13 +512,22 @@ public class ActivitySeriesController {
             Integer minimumRequiredEvents = request.getMinimumRequiredEvents();
             Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints();
 
-            Response response = seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
-                    mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
-                    minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
-                    request.getAudience(), request.getDepartmentIds(),
-                    request.getIsImportant(), request.getMandatoryForFacultyStudents(),
-                    request.getIsDraft(),
-                    request.getPresetCode());
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
+                            mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                            minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
+                            request.getAudience(), request.getDepartmentIds(),
+                            request.getIsImportant(), request.getMandatoryForFacultyStudents(),
+                            request.getIsDraft(),
+                            request.getPresetCode(), scope)
+                    : seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
+                            mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                            minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
+                            request.getAudience(), request.getDepartmentIds(),
+                            request.getIsImportant(), request.getMandatoryForFacultyStudents(),
+                            request.getIsDraft(),
+                            request.getPresetCode());
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -488,9 +559,12 @@ public class ActivitySeriesController {
      * Xóa chuỗi sự kiện (soft delete)
      */
     @DeleteMapping("/{seriesId}")
-    public ResponseEntity<Response> deleteSeries(@PathVariable Long seriesId) {
+    public ResponseEntity<Response> deleteSeries(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
-            Response response = seriesService.deleteSeries(seriesId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? seriesService.deleteSeries(seriesId, scope)
+                    : seriesService.deleteSeries(seriesId);
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -501,6 +575,14 @@ public class ActivitySeriesController {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to delete series: " + e.getMessage(), null));
         }
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

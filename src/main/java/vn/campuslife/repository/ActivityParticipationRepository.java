@@ -5,6 +5,7 @@ import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.ScoreType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ActivityParticipationRepository extends JpaRepository<ActivityParticipation, Long> {
+public interface ActivityParticipationRepository extends JpaRepository<ActivityParticipation, Long>, JpaSpecificationExecutor<ActivityParticipation> {
 
         // Kiểm tra đã tồn tại participation cho registration
         boolean existsByRegistration(ActivityRegistration registration);

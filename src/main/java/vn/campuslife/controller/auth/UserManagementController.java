@@ -1,6 +1,7 @@
 package vn.campuslife.controller.auth;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.CreateUserRequest;
 import vn.campuslife.model.Response;
@@ -18,9 +19,10 @@ public class UserManagementController {
     }
 
     @PostMapping
-    public ResponseEntity<Response> createUser(@RequestBody CreateUserRequest request) {
+    public ResponseEntity<Response> createUser(@RequestBody CreateUserRequest request, Authentication authentication) {
         try {
-            Response response = userManagementService.createUser(request);
+            Response response = userManagementService.createUser(
+                    request, authentication != null ? authentication.getName() : null);
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -37,9 +39,11 @@ public class UserManagementController {
     @PutMapping("/{userId}")
     public ResponseEntity<Response> updateUser(
             @PathVariable Long userId,
-            @RequestBody UpdateUserRequest request) {
+            @RequestBody UpdateUserRequest request,
+            Authentication authentication) {
         try {
-            Response response = userManagementService.updateUser(userId, request);
+            Response response = userManagementService.updateUser(
+                    userId, request, authentication != null ? authentication.getName() : null);
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -100,7 +104,7 @@ public class UserManagementController {
             } else {
                 response = userManagementService.getAllUsers();
             }
-            
+
             if (response.isStatus()) {
                 return ResponseEntity.ok(response);
             } else {
@@ -114,5 +118,3 @@ public class UserManagementController {
         }
     }
 }
-
-

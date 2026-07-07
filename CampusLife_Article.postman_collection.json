@@ -1,0 +1,370 @@
+{
+	"info": {
+		"_postman_id": "e6a14781-f2f5-4424-8a4a-7bc9b6c161d9",
+		"name": "CampusLife - Article & Comments",
+		"description": "Collection để test các chức năng API Bài Viết, Bình luận và Thả cảm xúc",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Comments",
+			"item": [
+				{
+					"name": "GET Comments of an Article",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/:slug/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								":slug",
+								"comments"
+							],
+							"variable": [
+								{
+									"key": "slug",
+									"value": "article-slug-here"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "POST Add Comment (Auth required)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{studentToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"content\": \"Bài viết rất hay!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/:slug/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								":slug",
+								"comments"
+							],
+							"variable": [
+								{
+									"key": "slug",
+									"value": "article-slug-here"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "POST Add Comment with Profanity (Auth required)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{studentToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"content\": \"địt mẹ bài này vcl\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/:slug/comments",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								":slug",
+								"comments"
+							],
+							"variable": [
+								{
+									"key": "slug",
+									"value": "article-slug-here"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PUT Edit Comment (Auth required)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{studentToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"content\": \"Nội dung sau khi sửa\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/comments/:commentId",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								"comments",
+								":commentId"
+							],
+							"variable": [
+								{
+									"key": "commentId",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "DELETE Comment (Auth required)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{studentToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/comments/:commentId",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								"comments",
+								":commentId"
+							],
+							"variable": [
+								{
+									"key": "commentId",
+									"value": "1"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Reactions",
+			"item": [
+				{
+					"name": "GET Reaction Counts",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/:slug/reactions",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								":slug",
+								"reactions"
+							],
+							"variable": [
+								{
+									"key": "slug",
+									"value": "article-slug-here"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "POST Add Reaction (Auth required)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{studentToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/:slug/reaction?type=LIKE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								":slug",
+								"reaction"
+							],
+							"query": [
+								{
+									"key": "type",
+									"value": "LIKE"
+								}
+							],
+							"variable": [
+								{
+									"key": "slug",
+									"value": "article-slug-here"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "DELETE Remove Reaction (Auth required)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{studentToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/:slug/reaction",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								":slug",
+								"reaction"
+							],
+							"variable": [
+								{
+									"key": "slug",
+									"value": "article-slug-here"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Tags & Categories",
+			"item": [
+				{
+					"name": "GET Public Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/categories",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								"categories"
+							]
+						}
+					}
+				},
+				{
+					"name": "GET Public Tags",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/articles/tags",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"articles",
+								"tags"
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "studentToken",
+			"value": "your-jwt-token-here",
+			"type": "string"
+		}
+	]
+}

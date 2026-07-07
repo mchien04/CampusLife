@@ -1,5 +1,6 @@
 package vn.campuslife.controller.activity.quiz;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,8 @@ import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.quiz.CreateMiniGameRequest;
 import vn.campuslife.model.activity.quiz.UpdateMiniGameRequest;
 import jakarta.validation.Valid;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.MiniGameService;
 
 import java.math.BigDecimal;
@@ -29,9 +32,14 @@ public class MiniGameController {
      * Tạo minigame với quiz
      */
     @PostMapping
-    public ResponseEntity<Response> createMiniGame(@RequestBody @Valid CreateMiniGameRequest request) {
+    public ResponseEntity<Response> createMiniGame(
+            @RequestBody @Valid CreateMiniGameRequest request,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.createMiniGame(request);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.createMiniGame(request, scope)
+                    : miniGameService.createMiniGame(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to create minigame: {}", e.getMessage(), e);
@@ -44,9 +52,14 @@ public class MiniGameController {
      * Lấy minigame theo activity ID
      */
     @GetMapping("/activity/{activityId}")
-    public ResponseEntity<Response> getMiniGameByActivity(@PathVariable Long activityId) {
+    public ResponseEntity<Response> getMiniGameByActivity(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.getMiniGameByActivity(activityId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.getMiniGameByActivity(activityId, scope)
+                    : miniGameService.getMiniGameByActivity(activityId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get minigame: {}", e.getMessage(), e);
@@ -180,9 +193,13 @@ public class MiniGameController {
     @PutMapping("/{miniGameId}")
     public ResponseEntity<Response> updateMiniGame(
             @PathVariable Long miniGameId,
-            @RequestBody @Valid UpdateMiniGameRequest request) {
+            @RequestBody @Valid UpdateMiniGameRequest request,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.updateMiniGame(miniGameId, request);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.updateMiniGame(miniGameId, request, scope)
+                    : miniGameService.updateMiniGame(miniGameId, request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to update minigame: {}", e.getMessage(), e);
@@ -195,9 +212,14 @@ public class MiniGameController {
      * Xóa minigame (soft delete - deactivate)
      */
     @DeleteMapping("/{miniGameId}")
-    public ResponseEntity<Response> deleteMiniGame(@PathVariable Long miniGameId) {
+    public ResponseEntity<Response> deleteMiniGame(
+            @PathVariable Long miniGameId,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.deleteMiniGame(miniGameId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.deleteMiniGame(miniGameId, scope)
+                    : miniGameService.deleteMiniGame(miniGameId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to delete minigame: {}", e.getMessage(), e);
@@ -210,9 +232,12 @@ public class MiniGameController {
      * Lấy tất cả minigames (Admin/Manager)
      */
     @GetMapping
-    public ResponseEntity<Response> getAllMiniGames() {
+    public ResponseEntity<Response> getAllMiniGames(HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.getAllMiniGames();
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.getAllMiniGames(scope)
+                    : miniGameService.getAllMiniGames();
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get all minigames: {}", e.getMessage(), e);
@@ -225,9 +250,14 @@ public class MiniGameController {
      * Kiểm tra xem activity đã có minigame/quiz chưa
      */
     @GetMapping("/activity/{activityId}/check")
-    public ResponseEntity<Response> checkActivityHasQuiz(@PathVariable Long activityId) {
+    public ResponseEntity<Response> checkActivityHasQuiz(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.checkActivityHasQuiz(activityId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.checkActivityHasQuiz(activityId, scope)
+                    : miniGameService.checkActivityHasQuiz(activityId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to check activity quiz: {}", e.getMessage(), e);
@@ -241,9 +271,14 @@ public class MiniGameController {
      * Nếu chưa có quiz, trả về questions rỗng
      */
     @GetMapping("/{miniGameId}/questions/edit")
-    public ResponseEntity<Response> getQuestionsForEdit(@PathVariable Long miniGameId) {
+    public ResponseEntity<Response> getQuestionsForEdit(
+            @PathVariable Long miniGameId,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = miniGameService.getQuestionsForEdit(miniGameId);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? miniGameService.getQuestionsForEdit(miniGameId, scope)
+                    : miniGameService.getQuestionsForEdit(miniGameId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get questions for edit: {}", e.getMessage(), e);
@@ -264,6 +299,14 @@ public class MiniGameController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 
 }

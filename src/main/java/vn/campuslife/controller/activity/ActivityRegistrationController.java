@@ -1,5 +1,6 @@
 package vn.campuslife.controller.activity;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -11,6 +12,8 @@ import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.model.activity.ActivityRegistrationRequest;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.StudentService;
 
@@ -100,8 +103,11 @@ public class ActivityRegistrationController {
      * Lấy danh sách đăng ký theo sự kiện (Admin/Manager)
      */
     @GetMapping("/activity/{activityId}")
-    public ResponseEntity<Response> getActivityRegistrations(@PathVariable Long activityId) {
-        Response response = registrationService.getActivityRegistrations(activityId);
+    public ResponseEntity<Response> getActivityRegistrations(@PathVariable Long activityId, HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = scope == null
+                ? registrationService.getActivityRegistrations(activityId)
+                : registrationService.getActivityRegistrations(activityId, scope);
         return ResponseEntity.ok(response);
     }
 
@@ -109,8 +115,11 @@ public class ActivityRegistrationController {
      * Lấy danh sách đăng ký theo chuỗi sự kiện (Admin/Manager)
      */
     @GetMapping("/series/{seriesId}")
-    public ResponseEntity<Response> getSeriesRegistrations(@PathVariable Long seriesId) {
-        Response response = registrationService.getSeriesRegistrations(seriesId);
+    public ResponseEntity<Response> getSeriesRegistrations(@PathVariable Long seriesId, HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = scope == null
+                ? registrationService.getSeriesRegistrations(seriesId)
+                : registrationService.getSeriesRegistrations(seriesId, scope);
         return ResponseEntity.ok(response);
     }
 
@@ -119,8 +128,12 @@ public class ActivityRegistrationController {
      */
     @PutMapping("/{registrationId}/status")
     public ResponseEntity<Response> updateRegistrationStatus(@PathVariable Long registrationId,
-            @RequestParam String status) {
-        Response response = registrationService.updateRegistrationStatus(registrationId, status);
+            @RequestParam String status,
+            HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = scope == null
+                ? registrationService.updateRegistrationStatus(registrationId, status)
+                : registrationService.updateRegistrationStatus(registrationId, status, scope);
         return ResponseEntity.ok(response);
     }
 
@@ -128,8 +141,11 @@ public class ActivityRegistrationController {
      * Lấy chi tiết đăng ký
      */
     @GetMapping("/{registrationId}")
-    public ResponseEntity<Response> getRegistrationById(@PathVariable Long registrationId) {
-        Response response = registrationService.getRegistrationById(registrationId);
+    public ResponseEntity<Response> getRegistrationById(@PathVariable Long registrationId, HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = scope == null
+                ? registrationService.getRegistrationById(registrationId)
+                : registrationService.getRegistrationById(registrationId, scope);
         return ResponseEntity.ok(response);
     }
 
@@ -299,9 +315,13 @@ public class ActivityRegistrationController {
     @GetMapping("/activities/{activityId}/report")
     public ResponseEntity<Response> getReport(
             @PathVariable Long activityId,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         System.out.println("Authorities: " + authentication.getAuthorities());
-        return ResponseEntity.ok(registrationService.getParticipationReport(activityId));
+        DepartmentScope scope = currentScope(request);
+        return ResponseEntity.ok(scope == null
+                ? registrationService.getParticipationReport(activityId)
+                : registrationService.getParticipationReport(activityId, scope));
     }
 
     /**
@@ -312,9 +332,13 @@ public class ActivityRegistrationController {
             @PathVariable Long participationId,
             @RequestParam boolean isCompleted,
             @RequestParam(required = false) String notes,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
-            Response response = registrationService.gradeCompletion(participationId, isCompleted, notes);
+            DepartmentScope scope = currentScope(request);
+            Response response = scope == null
+                    ? registrationService.gradeCompletion(participationId, isCompleted, notes)
+                    : registrationService.gradeCompletion(participationId, isCompleted, notes, scope);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -328,9 +352,12 @@ public class ActivityRegistrationController {
      * Chỉ dành cho Admin/Manager
      */
     @PostMapping("/backfill/participations")
-    public ResponseEntity<Response> backfillMissingParticipations() {
+    public ResponseEntity<Response> backfillMissingParticipations(HttpServletRequest request) {
         try {
-            Response response = registrationService.backfillMissingParticipations();
+            DepartmentScope scope = currentScope(request);
+            Response response = scope == null
+                    ? registrationService.backfillMissingParticipations()
+                    : registrationService.backfillMissingParticipations(scope);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -343,9 +370,12 @@ public class ActivityRegistrationController {
      * Hiển thị trạng thái của tất cả participations để kiểm tra trước khi chấm điểm
      */
     @GetMapping("/activities/{activityId}/participations")
-    public ResponseEntity<Response> getActivityParticipations(@PathVariable Long activityId) {
+    public ResponseEntity<Response> getActivityParticipations(@PathVariable Long activityId, HttpServletRequest request) {
         try {
-            Response response = registrationService.getActivityParticipations(activityId);
+            DepartmentScope scope = currentScope(request);
+            Response response = scope == null
+                    ? registrationService.getActivityParticipations(activityId)
+                    : registrationService.getActivityParticipations(activityId, scope);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -381,11 +411,18 @@ public class ActivityRegistrationController {
     @GetMapping("/search")
     public ResponseEntity<?> search(
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) RegistrationStatus status
+            @RequestParam(required = false) RegistrationStatus status,
+            HttpServletRequest request
     ) {
-        return ResponseEntity.ok(registrationService.search(keyword, status));
+        DepartmentScope scope = currentScope(request);
+        return ResponseEntity.ok(scope == null
+                ? registrationService.search(keyword, status)
+                : registrationService.search(keyword, status, scope));
     }
 
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
 
 
 }

@@ -25,6 +25,10 @@ public class ActivityParticipation {
     @JoinColumn(name = "registration_id", nullable = false)
     private ActivityRegistration registration;
 
+    @ManyToOne
+    @JoinColumn(name = "student_department_id_at_participation")
+    private Department studentDepartmentAtParticipation;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private vn.campuslife.enumeration.ParticipationType participationType;
@@ -39,4 +43,18 @@ public class ActivityParticipation {
     private LocalDateTime checkInTime;
 
     private LocalDateTime checkOutTime;
+
+    @PrePersist
+    void captureStudentDepartmentSnapshot() {
+        if (studentDepartmentAtParticipation != null || registration == null) {
+            return;
+        }
+        if (registration.getStudentDepartmentAtRegistration() != null) {
+            studentDepartmentAtParticipation = registration.getStudentDepartmentAtRegistration();
+            return;
+        }
+        if (registration.getStudent() != null) {
+            studentDepartmentAtParticipation = registration.getStudent().getDepartment();
+        }
+    }
 }

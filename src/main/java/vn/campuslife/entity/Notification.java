@@ -11,6 +11,8 @@ import vn.campuslife.enumeration.NotificationStatus;
 import vn.campuslife.enumeration.NotificationType;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "notifications")
@@ -26,6 +28,18 @@ public class Notification {
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_department_id")
+    private Department senderDepartment;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "notification_target_departments",
+            joinColumns = @JoinColumn(name = "notification_id"),
+            inverseJoinColumns = @JoinColumn(name = "department_id")
+    )
+    private Set<Department> targetDepartments = new LinkedHashSet<>();
 
     @Column(nullable = false)
     private String title;

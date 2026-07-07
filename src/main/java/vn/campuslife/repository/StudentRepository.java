@@ -1,6 +1,7 @@
 package vn.campuslife.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,7 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 @Repository
-public interface StudentRepository extends JpaRepository<Student, Long> {
+public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpecificationExecutor<Student> {
 
     @Query("""
                 select s.department.id
@@ -44,6 +45,16 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
      * Tìm sinh viên theo ID và chưa bị xóa
      */
     Optional<Student> findByIdAndIsDeletedFalse(Long id);
+
+    @Query("""
+            SELECT COUNT(s) > 0
+            FROM Student s
+            WHERE s.id = :studentId
+              AND s.isDeleted = false
+              AND s.department.id IN :departmentIds
+            """)
+    boolean existsActiveByIdAndDepartmentIds(@Param("studentId") Long studentId,
+                                             @Param("departmentIds") Collection<Long> departmentIds);
 
     @Query("SELECT s.user.id FROM Student s WHERE s.department.id = :departmentId AND s.isDeleted = false")
     List<Long> findUserIdsByDepartmentId(@Param("departmentId") Long departmentId);

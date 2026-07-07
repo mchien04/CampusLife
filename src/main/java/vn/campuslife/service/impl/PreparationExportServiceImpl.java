@@ -51,6 +51,8 @@ import vn.campuslife.repository.FundAdvanceRepository;
 import vn.campuslife.repository.PreparationTaskMemberRepository;
 import vn.campuslife.repository.PreparationTaskRepository;
 import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.PreparationExportService;
 import vn.campuslife.service.PreparationFinanceService;
 
@@ -78,6 +80,7 @@ public class PreparationExportServiceImpl implements PreparationExportService {
     private final FundAdvanceRepository fundAdvanceRepository;
     private final AllocationAdjustmentRequestRepository allocationAdjustmentRequestRepository;
     private final AuditLogRepository auditLogRepository;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
     private static final DecimalFormat MONEY = new DecimalFormat("#,##0.##");
@@ -146,6 +149,33 @@ public class PreparationExportServiceImpl implements PreparationExportService {
         byte[] xlsx = buildAuditWorkbook(activityId);
         return new ExportFile(fileName("preparation_audit", activityId, "xlsx"),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsx);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExportFile exportFinancial(Long activityId, String format, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return exportFinancial(activityId, format);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExportFile exportOperational(Long activityId, String format, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return exportOperational(activityId, format);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExportFile exportAudit(Long activityId, String format, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return exportAudit(activityId, format);
+    }
+
+    private void guardManagerActivityAccess(Long activityId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
     }
 
     private byte[] buildFinancialWorkbook(Long activityId) {

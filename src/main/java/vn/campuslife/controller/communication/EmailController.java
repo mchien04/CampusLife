@@ -1,5 +1,6 @@
 package vn.campuslife.controller.communication;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,8 @@ import vn.campuslife.model.SendEmailRequest;
 import vn.campuslife.model.SendNotificationOnlyRequest;
 import vn.campuslife.repository.EmailAttachmentRepository;
 import vn.campuslife.repository.UserRepository;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.EmailService;
 
 import java.io.File;
@@ -59,7 +62,8 @@ public class EmailController {
     public ResponseEntity<Response> sendEmail(
             @RequestPart(value = "request", required = true) SendEmailRequest request,
             @RequestPart(value = "attachments", required = false) MultipartFile[] attachments,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
         try {
             logger.info("Email send request received (multipart). Authentication: {}, Authorities: {}",
                     authentication != null ? authentication.getName() : "null",
@@ -72,7 +76,10 @@ public class EmailController {
                         .body(Response.error("User not found"));
             }
 
-            Response response = emailService.sendEmail(request, senderId, attachments);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? emailService.sendEmail(request, senderId, attachments, scope)
+                    : emailService.sendEmail(request, senderId, attachments);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -90,7 +97,8 @@ public class EmailController {
     @PostMapping(value = "/send-json", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Response> sendEmailJson(
             @RequestBody SendEmailRequest request,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
         try {
             logger.info("Email send request received (JSON). Authentication: {}, Authorities: {}",
                     authentication != null ? authentication.getName() : "null",
@@ -103,7 +111,10 @@ public class EmailController {
                         .body(Response.error("User not found"));
             }
 
-            Response response = emailService.sendEmail(request, senderId, null);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? emailService.sendEmail(request, senderId, null, scope)
+                    : emailService.sendEmail(request, senderId, null);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -119,9 +130,13 @@ public class EmailController {
      */
     @PostMapping("/notifications/send")
     public ResponseEntity<Response> sendNotificationOnly(
-            @RequestBody SendNotificationOnlyRequest request) {
+            @RequestBody SendNotificationOnlyRequest request,
+            HttpServletRequest httpRequest) {
         try {
-            Response response = emailService.sendNotificationOnly(request);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? emailService.sendNotificationOnly(request, scope)
+                    : emailService.sendNotificationOnly(request);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -139,7 +154,8 @@ public class EmailController {
     public ResponseEntity<Response> getEmailHistory(
             Authentication authentication,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            HttpServletRequest httpRequest) {
         try {
             Long senderId = getUserIdFromAuth(authentication);
             if (senderId == null) {
@@ -148,7 +164,10 @@ public class EmailController {
             }
 
             Pageable pageable = PageRequest.of(page, size);
-            Response response = emailService.getEmailHistory(senderId, pageable);
+            DepartmentScope scope = currentScope(httpRequest);
+            Response response = hasManagerScope(scope)
+                    ? emailService.getEmailHistory(senderId, pageable, scope)
+                    : emailService.getEmailHistory(senderId, pageable);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Error getting email history: {}", e.getMessage(), e);
@@ -235,6 +254,14 @@ public class EmailController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

@@ -5,6 +5,7 @@ import vn.campuslife.enumeration.SeriesPresetCode;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest;
 import vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest;
+import vn.campuslife.security.department.DepartmentScope;
 
 import java.util.List;
 
@@ -23,6 +24,17 @@ public interface ActivitySeriesService {
                         Boolean isDraft,
                         SeriesPresetCode presetCode);
 
+        Response createSeries(String name, String description, String milestonePointsJson,
+                        vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
+                        java.time.LocalDateTime registrationStartDate,
+                        java.time.LocalDateTime registrationDeadline,
+                        Boolean requiresApproval, Integer ticketQuantity,
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
+                        SeriesPresetCode presetCode, DepartmentScope scope);
+
         /**
          * Tạo activity trong series với các thuộc tính tối giản
          */
@@ -32,10 +44,18 @@ public interface ActivitySeriesService {
                         String benefits, String requirements, String contactInfo, java.util.List<Long> organizerIds,
                         vn.campuslife.enumeration.ActivityType type);
 
+        Response createActivityInSeries(Long seriesId, String name, String description,
+                        java.time.LocalDateTime startDate, java.time.LocalDateTime endDate,
+                        String location, Integer order, String shareLink, String bannerUrl,
+                        String benefits, String requirements, String contactInfo, java.util.List<Long> organizerIds,
+                        vn.campuslife.enumeration.ActivityType type, DepartmentScope scope);
+
         /**
          * Thêm activity vào chuỗi
          */
         Response addActivityToSeries(Long activityId, Long seriesId, Integer order);
+
+        Response addActivityToSeries(Long activityId, Long seriesId, Integer order, DepartmentScope scope);
 
         /**
          * Student đăng ký series (tự động đăng ký tất cả activities trong series)
@@ -54,6 +74,8 @@ public interface ActivitySeriesService {
          */
         Response calculateMilestonePoints(Long studentId, Long seriesId);
 
+        Response calculateMilestonePoints(Long studentId, Long seriesId, DepartmentScope scope);
+
         /**
          * Kiểm tra và áp dụng penalty nếu không đạt yêu cầu tối thiểu
          */
@@ -64,26 +86,40 @@ public interface ActivitySeriesService {
          */
         Response getAllSeries();
 
+        Response getAllSeries(DepartmentScope scope);
+
         /**
          * Lấy chuỗi sự kiện theo ID
          */
         Response getSeriesById(Long seriesId);
+
+        Response getSeriesById(Long seriesId, DepartmentScope scope);
 
         /**
          * Lấy danh sách activities trong series
          */
         Response getActivitiesInSeries(Long seriesId);
 
+        Response getActivitiesInSeries(Long seriesId, DepartmentScope scope);
+
         Response createSeriesActivity(Long seriesId, SeriesChildActivityCreateRequest request);
+
+        Response createSeriesActivity(Long seriesId, SeriesChildActivityCreateRequest request, DepartmentScope scope);
 
         Response updateSeriesActivity(Long seriesId, Long activityId, SeriesChildActivityUpdateRequest request);
 
+        Response updateSeriesActivity(Long seriesId, Long activityId, SeriesChildActivityUpdateRequest request, DepartmentScope scope);
+
         Response getSeriesActivity(Long seriesId, Long activityId);
+
+        Response getSeriesActivity(Long seriesId, Long activityId, DepartmentScope scope);
 
         /**
          * Lấy thông tin progress của student trong series
          */
         Response getStudentProgress(Long seriesId, Long studentId);
+
+        Response getStudentProgress(Long seriesId, Long studentId, DepartmentScope scope);
 
         /**
          * Kiểm tra student đã đăng ký chuỗi sự kiện này chưa
@@ -95,10 +131,14 @@ public interface ActivitySeriesService {
          */
         Response getSeriesProgress(Long seriesId, Integer page, Integer size, String keyword);
 
+        Response getSeriesProgress(Long seriesId, Integer page, Integer size, String keyword, DepartmentScope scope);
+
         /**
          * Lấy tổng quan thống kê của một chuỗi sự kiện (Admin/Manager)
          */
         Response getSeriesOverview(Long seriesId);
+
+        Response getSeriesOverview(Long seriesId, DepartmentScope scope);
 
         /**
          * Cập nhật thông tin chuỗi sự kiện
@@ -114,8 +154,21 @@ public interface ActivitySeriesService {
                         Boolean isDraft,
                         SeriesPresetCode presetCode);
 
+        Response updateSeries(Long seriesId, String name, String description, String milestonePointsJson,
+                        vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId,
+                        java.time.LocalDateTime registrationStartDate,
+                        java.time.LocalDateTime registrationDeadline,
+                        Boolean requiresApproval, Integer ticketQuantity,
+                        Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        Boolean isImportant, Boolean mandatoryForFacultyStudents,
+                        Boolean isDraft,
+                        SeriesPresetCode presetCode, DepartmentScope scope);
+
         /**
          * Xóa chuỗi sự kiện (soft delete)
          */
         Response deleteSeries(Long seriesId);
+
+        Response deleteSeries(Long seriesId, DepartmentScope scope);
 }

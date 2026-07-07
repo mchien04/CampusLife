@@ -3,6 +3,7 @@ package vn.campuslife.repository;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.enumeration.TaskStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, Long> {
+public interface TaskAssignmentRepository extends JpaRepository<TaskAssignment, Long>, JpaSpecificationExecutor<TaskAssignment> {
 
     /**
      * Lấy danh sách phân công theo student ID (chỉ lấy task của activity chưa bị

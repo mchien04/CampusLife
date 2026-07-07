@@ -13,6 +13,7 @@ import vn.campuslife.enumeration.ScoreType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +29,17 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
   List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(@Param("scoreType") ScoreType scoreType);
 
   List<Activity> findByIsDeletedFalseOrderByStartDateAsc();
+
+  @Query("""
+      SELECT COUNT(DISTINCT a) > 0
+      FROM Activity a
+      JOIN a.organizers d
+      WHERE a.id = :activityId
+        AND a.isDeleted = false
+        AND d.id IN :departmentIds
+      """)
+  boolean existsActiveByIdAndOrganizerDepartmentIds(@Param("activityId") Long activityId,
+      @Param("departmentIds") Collection<Long> departmentIds);
 
   @Query("""
       select a from Activity a

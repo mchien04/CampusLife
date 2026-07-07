@@ -44,6 +44,9 @@ import vn.campuslife.repository.MiniGameQuizRepository;
 import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.repository.ScoreEntryRepository;
 import vn.campuslife.repository.StudentRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.MiniGameService;
 import vn.campuslife.service.SemesterHelperService;
@@ -81,10 +84,26 @@ public class MiniGameServiceImpl implements MiniGameService {
     private final ScoreRuleEngine scoreRuleEngine;
     private final ScoreEntryRepository scoreEntryRepository;
     private final UploadProperties uploadProperties;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
+    @Override
+    @Transactional
     public Response createMiniGame(CreateMiniGameRequest request) {
+        return createMiniGameInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createMiniGame(CreateMiniGameRequest request, DepartmentScope scope) {
+        return createMiniGameInternal(request, scope);
+    }
+
+    private Response createMiniGameInternal(CreateMiniGameRequest request, DepartmentScope scope) {
         try {
             Long activityId = request.getActivityId();
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             String title = request.getTitle();
             String description = request.getDescription();
             Integer questionCount = request.getQuestionCount();
@@ -170,7 +189,20 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional(readOnly = true)
     public Response getMiniGameByActivity(Long activityId) {
+        return getMiniGameByActivityInternal(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getMiniGameByActivity(Long activityId, DepartmentScope scope) {
+        return getMiniGameByActivityInternal(activityId, scope);
+    }
+
+    private Response getMiniGameByActivityInternal(Long activityId, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             Optional<MiniGame> miniGameOpt = miniGameRepository.findByActivityId(activityId);
             if (miniGameOpt.isEmpty()) {
                 return Response.error("MiniGame not found for this activity");
@@ -546,7 +578,20 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional
     public Response updateMiniGame(Long miniGameId, UpdateMiniGameRequest request) {
+        return updateMiniGameInternal(miniGameId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateMiniGame(Long miniGameId, UpdateMiniGameRequest request, DepartmentScope scope) {
+        return updateMiniGameInternal(miniGameId, request, scope);
+    }
+
+    private Response updateMiniGameInternal(Long miniGameId, UpdateMiniGameRequest request, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireMiniGameAccess(miniGameId, scope);
+            }
             Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
             if (miniGameOpt.isEmpty()) {
                 return Response.error("MiniGame not found");
@@ -629,7 +674,20 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional
     public Response deleteMiniGame(Long miniGameId) {
+        return deleteMiniGameInternal(miniGameId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response deleteMiniGame(Long miniGameId, DepartmentScope scope) {
+        return deleteMiniGameInternal(miniGameId, scope);
+    }
+
+    private Response deleteMiniGameInternal(Long miniGameId, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireMiniGameAccess(miniGameId, scope);
+            }
             Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
             if (miniGameOpt.isEmpty()) {
                 return Response.error("MiniGame not found");
@@ -650,8 +708,20 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional(readOnly = true)
     public Response getAllMiniGames() {
+        return getAllMiniGamesInternal(null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getAllMiniGames(DepartmentScope scope) {
+        return getAllMiniGamesInternal(scope);
+    }
+
+    private Response getAllMiniGamesInternal(DepartmentScope scope) {
         try {
-            List<MiniGame> miniGames = miniGameRepository.findAll();
+            List<MiniGame> miniGames = scope != null && scope.manager() && !scope.admin()
+                    ? miniGameRepository.findAll(DepartmentScopeSpec.miniGame(scope.departmentIds()))
+                    : miniGameRepository.findAll();
             List<MiniGameResponse> responses = miniGames.stream()
                     .map(MiniGameResponse::fromEntity)
                     .collect(Collectors.toList());
@@ -665,8 +735,20 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional(readOnly = true)
     public Response checkActivityHasQuiz(Long activityId) {
+        return checkActivityHasQuizInternal(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response checkActivityHasQuiz(Long activityId, DepartmentScope scope) {
+        return checkActivityHasQuizInternal(activityId, scope);
+    }
+
+    private Response checkActivityHasQuizInternal(Long activityId, DepartmentScope scope) {
         try {
-            // Kiểm tra activity tồn tại
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             Optional<Activity> activityOpt = activityRepository.findById(activityId);
             if (activityOpt.isEmpty()) {
                 return Response.error("Activity not found");
@@ -715,7 +797,20 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Override
     @Transactional(readOnly = true)
     public Response getQuestionsForEdit(Long miniGameId) {
+        return getQuestionsForEditInternal(miniGameId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getQuestionsForEdit(Long miniGameId, DepartmentScope scope) {
+        return getQuestionsForEditInternal(miniGameId, scope);
+    }
+
+    private Response getQuestionsForEditInternal(Long miniGameId, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireMiniGameAccess(miniGameId, scope);
+            }
             Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
             if (miniGameOpt.isEmpty()) {
                 return Response.error("MiniGame not found");

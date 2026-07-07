@@ -10,6 +10,8 @@ import vn.campuslife.enumeration.EmailStatus;
 import vn.campuslife.enumeration.RecipientType;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "email_history")
@@ -29,6 +31,22 @@ public class EmailHistory {
     @ManyToOne
     @JoinColumn(name = "recipient_id", nullable = true)
     private User recipient;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sender_department_id")
+    private Department senderDepartment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recipient_department_id_at_send")
+    private Department recipientDepartmentAtSend;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "email_history_target_departments",
+            joinColumns = @JoinColumn(name = "email_history_id"),
+            inverseJoinColumns = @JoinColumn(name = "department_id")
+    )
+    private Set<Department> targetDepartments = new LinkedHashSet<>();
 
     @Column(name = "recipient_email", nullable = false)
     private String recipientEmail;

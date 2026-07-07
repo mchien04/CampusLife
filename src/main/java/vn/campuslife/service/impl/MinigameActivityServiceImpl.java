@@ -23,6 +23,9 @@ import vn.campuslife.repository.MiniGameQuizOptionRepository;
 import vn.campuslife.repository.MiniGameQuizQuestionRepository;
 import vn.campuslife.repository.MiniGameQuizRepository;
 import vn.campuslife.repository.MiniGameRepository;
+import vn.campuslife.repository.MiniGameRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.MinigameActivityService;
@@ -59,16 +62,27 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     private final MinigameActivityValidator validator;
     private final MinigameActivityMapper mapper;
     private final UploadProperties uploadProperties;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
     public Response createMinigame(MinigameActivityCreateRequest request) {
+        return createMinigameInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createMinigame(MinigameActivityCreateRequest request, DepartmentScope scope) {
+        return createMinigameInternal(request, scope);
+    }
+
+    private Response createMinigameInternal(MinigameActivityCreateRequest request, DepartmentScope scope) {
         try {
             validator.validate(request);
 
             scorePresetService.applyActivityPreset(request);
 
-            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            Set<Department> organizers = resolveOrganizersForScope(request.getOrganizerIds(), scope);
 
             Activity shell = mapper.toShellEntity(request);
             shell.setOrganizers(organizers);
@@ -112,7 +126,20 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     @Override
     @Transactional
     public Response updateMinigame(Long id, MinigameActivityUpdateRequest request) {
+        return updateMinigameInternal(id, request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateMinigame(Long id, MinigameActivityUpdateRequest request, DepartmentScope scope) {
+        return updateMinigameInternal(id, request, scope);
+    }
+
+    private Response updateMinigameInternal(Long id, MinigameActivityUpdateRequest request, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireActivityAccess(id, scope);
+            }
             Optional<Activity> opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty()) {
                 return Response.error("Activity not found");
@@ -122,7 +149,7 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             mapper.applyShellUpdate(shell, request);
 
             if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
-                shell.setOrganizers(resolveOrganizers(request.getOrganizerIds()));
+                shell.setOrganizers(resolveOrganizersForScope(request.getOrganizerIds(), scope));
             }
 
             Activity savedShell = activityRepository.save(shell);
@@ -173,6 +200,19 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     @Override
     @Transactional(readOnly = true)
     public Response getMinigame(Long id) {
+        return getMinigameInternal(id, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getMinigame(Long id, DepartmentScope scope) {
+        return getMinigameInternal(id, scope);
+    }
+
+    private Response getMinigameInternal(Long id, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(id, scope);
+        }
         Optional<Activity> opt = activityRepository.findByIdAndIsDeletedFalse(id);
         if (opt.isEmpty()) {
             return Response.error("Activity not found");
@@ -192,6 +232,23 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             throw new IllegalArgumentException("Department ids not found: " + missing);
         }
         return new LinkedHashSet<>(deps);
+    }
+
+    private Set<Department> resolveOrganizersForScope(List<Long> organizerIds, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return resolveOrganizers(organizerIds);
+        }
+        Set<Long> managerDepartmentIds = scope.departmentIds();
+        if (organizerIds == null || organizerIds.isEmpty()) {
+            if (managerDepartmentIds.size() == 1) {
+                return resolveOrganizers(List.copyOf(managerDepartmentIds));
+            }
+            throw new IllegalArgumentException("Manager quản lý nhiều Khoa phải chọn organizerIds trong scope");
+        }
+        if (!managerDepartmentIds.containsAll(new LinkedHashSet<>(organizerIds))) {
+            throw new IllegalArgumentException("Organizer departments must be within manager scope");
+        }
+        return resolveOrganizers(organizerIds);
     }
 
     /**

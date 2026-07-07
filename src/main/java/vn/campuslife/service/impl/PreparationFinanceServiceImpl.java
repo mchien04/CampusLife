@@ -23,6 +23,8 @@ import vn.campuslife.repository.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.PreparationFinanceService;
 
@@ -54,6 +56,7 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     private static final String DEFAULT_WALLET_NAME = "Tổng";
     private static final String RESIDUAL_WALLET_NAME = "Khác";
@@ -1822,5 +1825,163 @@ public class PreparationFinanceServiceImpl implements PreparationFinanceService 
                 .filter(v -> v != null)
                 .sorted(Comparator.comparing(AllocationSourceSuggestionDto::getAvailableToAllocateAmount).reversed())
                 .toList();
+    }
+
+    @Override
+    public ActivityBudgetDto upsertActivityBudget(Long activityId, UpsertActivityBudgetRequest request, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return upsertActivityBudget(activityId, request);
+    }
+
+    @Override
+    public ActivityBudgetDto getActivityBudget(Long activityId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return getActivityBudget(activityId);
+    }
+
+    @Override
+    public PreparationTaskDto allocateTaskAmount(Long taskId, AllocateTaskAmountRequest request, DepartmentScope scope) {
+        guardManagerTaskAccess(taskId, scope);
+        return allocateTaskAmount(taskId, request);
+    }
+
+    @Override
+    public void addTaskMember(Long taskId, Long studentId, DepartmentScope scope) {
+        guardManagerTaskAccess(taskId, scope);
+        addTaskMember(taskId, studentId);
+    }
+
+    @Override
+    public FundAdvanceDto adminDecisionFundAdvance(Long fundAdvanceId, boolean approved, String username, DepartmentScope scope) {
+        guardManagerFundAdvanceAccess(fundAdvanceId, scope);
+        return adminDecisionFundAdvance(fundAdvanceId, approved, username);
+    }
+
+    @Override
+    public FundAdvanceDto adminReturnFundAdvance(Long fundAdvanceId, String username, DepartmentScope scope) {
+        guardManagerFundAdvanceAccess(fundAdvanceId, scope);
+        return adminReturnFundAdvance(fundAdvanceId, username);
+    }
+
+    @Override
+    public List<FundAdvanceDto> listFundAdvancesByTask(Long taskId, DepartmentScope scope) {
+        guardManagerTaskAccess(taskId, scope);
+        return listFundAdvancesByTask(taskId);
+    }
+
+    @Override
+    public ExpenseDto adminDecision(Long expenseId, boolean approved, String username, DepartmentScope scope) {
+        guardManagerExpenseAccess(expenseId, scope);
+        return adminDecision(expenseId, approved, username);
+    }
+
+    @Override
+    public List<ExpenseDto> listExpensesByActivity(Long activityId, ExpenseStatus status, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return listExpensesByActivity(activityId, status);
+    }
+
+    @Override
+    public List<AllocationAdjustmentRequestDto> listAllocationAdjustmentRequests(Long activityId,
+            AllocationAdjustmentStatus status, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return listAllocationAdjustmentRequests(activityId, status);
+    }
+
+    @Override
+    public AllocationAdjustmentRequestDto adminDecisionAllocationAdjustment(Long requestId, boolean approved,
+            Long categoryId, String username, DepartmentScope scope) {
+        guardManagerAllocationAdjustmentAccess(requestId, scope);
+        return adminDecisionAllocationAdjustment(requestId, approved, categoryId, username);
+    }
+
+    @Override
+    public AllocationAdjustmentRequestDto adminDecisionAllocationAdjustmentMulti(Long requestId,
+            List<AllocationAdjustmentSourceRequest> sources, String username, DepartmentScope scope) {
+        guardManagerAllocationAdjustmentAccess(requestId, scope);
+        return adminDecisionAllocationAdjustmentMulti(requestId, sources, username);
+    }
+
+    @Override
+    public List<AllocationSourceSuggestionDto> suggestAllocationAdjustmentSources(Long requestId, DepartmentScope scope) {
+        guardManagerAllocationAdjustmentAccess(requestId, scope);
+        return suggestAllocationAdjustmentSources(requestId);
+    }
+
+    @Override
+    public List<AllocationAdjustmentSourcePlanDto> planAllocationAdjustmentSources(Long requestId, DepartmentScope scope) {
+        guardManagerAllocationAdjustmentAccess(requestId, scope);
+        return planAllocationAdjustmentSources(requestId);
+    }
+
+    @Override
+    public List<FundAdvanceDebtDto> listFundAdvanceDebts(Long activityId, Long studentId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        if (scope != null && scope.manager() && !scope.admin() && studentId != null) {
+            departmentAuthorizationService.requireStudentAccess(studentId, scope);
+        }
+        return listFundAdvanceDebts(activityId, studentId);
+    }
+
+    @Override
+    public List<TaskAllocationSourceDto> listTaskAllocationSources(Long taskId, DepartmentScope scope) {
+        guardManagerTaskAccess(taskId, scope);
+        return listTaskAllocationSources(taskId);
+    }
+
+    @Override
+    public FinanceOverviewReportDto getFinanceOverviewReport(Long activityId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return getFinanceOverviewReport(activityId);
+    }
+
+    @Override
+    public CashFlowReportDto getCashFlowReport(Long activityId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return getCashFlowReport(activityId);
+    }
+
+    @Override
+    public FinancialReportDto getFinancialReport(Long activityId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return getFinancialReport(activityId);
+    }
+
+    private void guardManagerActivityAccess(Long activityId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
+    }
+
+    private void guardManagerTaskAccess(Long taskId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            PreparationTask task = preparationTaskRepository.findById(taskId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+            departmentAuthorizationService.requireActivityAccess(task.getActivity().getId(), scope);
+        }
+    }
+
+    private void guardManagerAllocationAdjustmentAccess(Long requestId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            AllocationAdjustmentRequest request = allocationAdjustmentRequestRepository.findById(requestId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Allocation adjustment request not found"));
+            departmentAuthorizationService.requireActivityAccess(request.getTask().getActivity().getId(), scope);
+        }
+    }
+
+    private void guardManagerFundAdvanceAccess(Long fundAdvanceId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            FundAdvance fundAdvance = fundAdvanceRepository.findById(fundAdvanceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Fund advance not found"));
+            departmentAuthorizationService.requireActivityAccess(fundAdvance.getTask().getActivity().getId(), scope);
+        }
+    }
+
+    private void guardManagerExpenseAccess(Long expenseId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            Expense expense = expenseRepository.findById(expenseId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Expense not found"));
+            departmentAuthorizationService.requireActivityAccess(expense.getTask().getActivity().getId(), scope);
+        }
     }
 }

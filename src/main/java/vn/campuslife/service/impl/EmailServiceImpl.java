@@ -10,15 +10,20 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.data.jpa.domain.Specification;
 import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.*;
+import vn.campuslife.exception.ForbiddenException;
 import vn.campuslife.model.EmailAttachmentResponse;
 import vn.campuslife.model.EmailHistoryResponse;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.SendEmailRequest;
 import vn.campuslife.model.SendNotificationOnlyRequest;
 import vn.campuslife.repository.*;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.EmailService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.EmailUtil;
@@ -51,6 +56,7 @@ public class EmailServiceImpl implements EmailService {
     private final DepartmentRepository departmentRepository;
     private final NotificationService notificationService;
     private final UploadProperties uploadProperties;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -60,7 +66,18 @@ public class EmailServiceImpl implements EmailService {
     @Override
     @Transactional
     public Response sendEmail(SendEmailRequest request, Long senderId, MultipartFile[] attachments) {
+        return sendEmailInternal(request, senderId, attachments, null);
+    }
+
+    @Override
+    @Transactional
+    public Response sendEmail(SendEmailRequest request, Long senderId, MultipartFile[] attachments, DepartmentScope scope) {
+        return sendEmailInternal(request, senderId, attachments, scope);
+    }
+
+    private Response sendEmailInternal(SendEmailRequest request, Long senderId, MultipartFile[] attachments, DepartmentScope scope) {
         try {
+            validateRecipientScope(request, scope);
             // Validate sender
             Optional<User> senderOpt = userRepository.findById(senderId);
             if (senderOpt.isEmpty()) {
@@ -242,7 +259,18 @@ public class EmailServiceImpl implements EmailService {
     @Override
     @Transactional
     public Response sendNotificationOnly(SendNotificationOnlyRequest request) {
+        return sendNotificationOnlyInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response sendNotificationOnly(SendNotificationOnlyRequest request, DepartmentScope scope) {
+        return sendNotificationOnlyInternal(request, scope);
+    }
+
+    private Response sendNotificationOnlyInternal(SendNotificationOnlyRequest request, DepartmentScope scope) {
         try {
+            validateNotificationRecipientScope(request, scope);
             // Validate request
             if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
                 return Response.error("Title is required");
@@ -322,9 +350,24 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     public Response getEmailHistory(Long senderId, Pageable pageable) {
+        return getEmailHistoryInternal(senderId, pageable, null);
+    }
+
+    @Override
+    public Response getEmailHistory(Long senderId, Pageable pageable, DepartmentScope scope) {
+        return getEmailHistoryInternal(senderId, pageable, scope);
+    }
+
+    private Response getEmailHistoryInternal(Long senderId, Pageable pageable, DepartmentScope scope) {
         try {
-            Page<EmailHistory> emailHistories = emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId,
-                    pageable);
+            Page<EmailHistory> emailHistories;
+            if (scope != null && scope.manager() && !scope.admin()) {
+                Specification<EmailHistory> spec = DepartmentScopeSpec.emailHistory(scope.departmentIds())
+                        .and((root, query, cb) -> cb.equal(root.get("sender").get("id"), senderId));
+                emailHistories = emailHistoryRepository.findAll(spec, pageable);
+            } else {
+                emailHistories = emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId, pageable);
+            }
             List<EmailHistoryResponse> responses = emailHistories.getContent().stream()
                     .map(this::toEmailHistoryResponse)
                     .collect(Collectors.toList());
@@ -543,6 +586,77 @@ public class EmailServiceImpl implements EmailService {
         }
 
         return recipients;
+    }
+
+    private void validateRecipientScope(SendEmailRequest request, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return;
+        }
+        validateRecipientTypeScope(
+                request.getRecipientType(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getRecipientIds(),
+                scope);
+    }
+
+    private void validateNotificationRecipientScope(SendNotificationOnlyRequest request, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return;
+        }
+        validateRecipientTypeScope(
+                request.getRecipientType(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getRecipientIds(),
+                scope);
+    }
+
+    private void validateRecipientTypeScope(
+            RecipientType recipientType,
+            Long activityId,
+            Long seriesId,
+            Long departmentId,
+            Long classId,
+            List<Long> recipientIds,
+            DepartmentScope scope) {
+        if (recipientType == null) {
+            throw new ForbiddenException("Access denied");
+        }
+        switch (recipientType) {
+            case ALL_STUDENTS -> throw new ForbiddenException("Access denied");
+            case BY_DEPARTMENT -> {
+                if (departmentId == null || !scope.departmentIds().contains(departmentId)) {
+                    throw new ForbiddenException("Access denied");
+                }
+            }
+            case BY_CLASS -> {
+                if (classId == null) {
+                    throw new ForbiddenException("Access denied");
+                }
+                StudentClass studentClass = studentClassRepository.findById(classId)
+                        .orElseThrow(() -> new ForbiddenException("Access denied"));
+                if (studentClass.getDepartment() == null
+                        || !scope.departmentIds().contains(studentClass.getDepartment().getId())) {
+                    throw new ForbiddenException("Access denied");
+                }
+            }
+            case BULK -> {
+                if (recipientIds != null) {
+                    for (Long userId : recipientIds) {
+                        Student student = studentRepository.findByUserIdAndIsDeletedFalse(userId)
+                                .orElseThrow(() -> new ForbiddenException("Access denied"));
+                        departmentAuthorizationService.requireStudentAccess(student.getId(), scope);
+                    }
+                }
+            }
+            case ACTIVITY_REGISTRATIONS -> departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            case SERIES_REGISTRATIONS -> departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        }
     }
 
     private Map<String, String> buildTemplateVariables(User recipient, SendEmailRequest request) {

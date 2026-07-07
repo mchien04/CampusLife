@@ -1,6 +1,7 @@
 package vn.campuslife.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface TaskSubmissionRepository extends JpaRepository<TaskSubmission, Long> {
+public interface TaskSubmissionRepository extends JpaRepository<TaskSubmission, Long>, JpaSpecificationExecutor<TaskSubmission> {
 
        List<TaskSubmission> findByTaskIdAndIsDeletedFalseOrderBySubmittedAtDesc(Long taskId);
 

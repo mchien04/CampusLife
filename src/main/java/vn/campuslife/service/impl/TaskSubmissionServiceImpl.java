@@ -3,6 +3,7 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -35,6 +36,9 @@ import vn.campuslife.service.TaskSubmissionService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.service.UploadStorageService;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -65,6 +69,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     private final ReminderScheduleService reminderScheduleService;
     private final ScoreRuleEngine scoreRuleEngine;
     private final vn.campuslife.service.ActivitySeriesService activitySeriesService;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
@@ -235,9 +240,21 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     public Response getTaskSubmissions(Long taskId) {
+        return getTaskSubmissions(taskId, null);
+    }
+
+    @Override
+    public Response getTaskSubmissions(Long taskId, DepartmentScope scope) {
         try {
-            List<TaskSubmission> submissions = taskSubmissionRepository
-                    .findByTaskIdAndIsDeletedFalseOrderBySubmittedAtDesc(taskId);
+            if (scope != null) {
+                ActivityTask task = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId)
+                        .orElseThrow(() -> new RuntimeException("Task not found"));
+                departmentAuthorizationService.requireActivityAccess(task.getActivity().getId(), scope);
+            }
+            List<TaskSubmission> submissions = scope != null && scope.manager()
+                    ? taskSubmissionRepository.findAll(DepartmentScopeSpec.taskSubmission(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("task").get("id"), taskId)))
+                    : taskSubmissionRepository.findByTaskIdAndIsDeletedFalseOrderBySubmittedAtDesc(taskId);
             List<TaskSubmissionResponse> dtos = submissions.stream().map(this::toDto).toList();
             return new Response(true, "Task submissions retrieved successfully", dtos);
         } catch (Exception e) {
@@ -249,6 +266,12 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
     @Override
     @Transactional
     public Response gradeSubmission(Long submissionId, Long graderId, boolean isCompleted, String feedback) {
+        return gradeSubmission(submissionId, graderId, isCompleted, feedback, null);
+    }
+
+    @Override
+    @Transactional
+    public Response gradeSubmission(Long submissionId, Long graderId, boolean isCompleted, String feedback, DepartmentScope scope) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
             if (submissionOpt.isEmpty()) {
@@ -261,6 +284,7 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             TaskSubmission submission = submissionOpt.get();
+            guardSubmissionAccess(submission, scope);
             ActivityTask task = submission.getTask();
             Activity activity = task.getActivity();
 
@@ -304,13 +328,19 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     public Response getSubmissionDetails(Long submissionId) {
+        return getSubmissionDetails(submissionId, null);
+    }
+
+    @Override
+    public Response getSubmissionDetails(Long submissionId, DepartmentScope scope) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
             if (submissionOpt.isEmpty()) {
                 return new Response(false, "Submission not found", null);
             }
-
-            return new Response(true, "Submission details retrieved successfully", toDto(submissionOpt.get()));
+            TaskSubmission submission = submissionOpt.get();
+            guardSubmissionAccess(submission, scope);
+            return new Response(true, "Submission details retrieved successfully", toDto(submission));
         } catch (Exception e) {
             logger.error("Failed to get submission details: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submission details: " + e.getMessage(), null);
@@ -348,6 +378,11 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
 
     @Override
     public Response getSubmissionFiles(Long submissionId) {
+        return getSubmissionFiles(submissionId, null);
+    }
+
+    @Override
+    public Response getSubmissionFiles(Long submissionId, DepartmentScope scope) {
         try {
             Optional<TaskSubmission> submissionOpt = taskSubmissionRepository.findById(submissionId);
             if (submissionOpt.isEmpty()) {
@@ -355,12 +390,21 @@ public class TaskSubmissionServiceImpl implements TaskSubmissionService {
             }
 
             TaskSubmission submission = submissionOpt.get();
+            guardSubmissionAccess(submission, scope);
             return new Response(true, "Submission files retrieved successfully",
                     buildAttachmentItems(submission.getFileUrls()));
         } catch (Exception e) {
             logger.error("Failed to get submission files: {}", e.getMessage(), e);
             return new Response(false, "Failed to get submission files: " + e.getMessage(), null);
         }
+    }
+
+    private void guardSubmissionAccess(TaskSubmission submission, DepartmentScope scope) {
+        if (scope == null) {
+            return;
+        }
+        departmentAuthorizationService.requireActivityAccess(submission.getTask().getActivity().getId(), scope);
+        departmentAuthorizationService.requireStudentAccess(submission.getStudent().getId(), scope);
     }
 
     private TaskSubmissionResponse toDto(TaskSubmission submission) {

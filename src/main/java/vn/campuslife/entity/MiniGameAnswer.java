@@ -10,7 +10,7 @@ import org.hibernate.annotations.Comment;
 @Table(name = "mini_game_answers",
        indexes = {
            @Index(name = "idx_attempt_question", columnList = "attempt_id, question_id"),
-           @Index(name = "idx_is_correct", columnList = "is_correct")
+           @Index(name = "idx_mini_game_answers_is_correct", columnList = "is_correct")
        })
 @Data
 @NoArgsConstructor

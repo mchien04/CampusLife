@@ -11,6 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EventArticleUpsertRequest {
+    private Long ownerDepartmentId;
     private Long activityId;
     private ArticleType articleType;
     private boolean isPrimary;

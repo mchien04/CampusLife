@@ -1,17 +1,14 @@
 package vn.campuslife.controller.article;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.ArticleCategoryRequest;
 import vn.campuslife.model.ArticleCategoryResponse;
 import vn.campuslife.model.ArticleCommentResponse;
-import vn.campuslife.model.ArticleHistoryResponse;
 import vn.campuslife.model.ArticleImageRequest;
 import vn.campuslife.model.ArticleImageResponse;
 import vn.campuslife.model.ArticleListResponse;
@@ -20,10 +17,11 @@ import vn.campuslife.model.ArticleTagRequest;
 import vn.campuslife.model.ArticleTagResponse;
 import vn.campuslife.model.EventArticleAdminResponse;
 import vn.campuslife.model.EventArticleUpsertRequest;
-import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.service.ArticleCommentService;
 import vn.campuslife.service.EventArticleService;
 import vn.campuslife.service.StudentService;
-import vn.campuslife.service.ArticleCommentService;
 
 import java.util.List;
 
@@ -50,76 +48,127 @@ public class EventArticleAdminController {
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        Page<ArticleListResponse> articles = eventArticleService.getFilteredArticlesForAdmin(
-                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size
-        );
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Page<ArticleListResponse> articles = hasManagerScope(scope)
+                ? eventArticleService.getFilteredArticlesForAdmin(
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size, scope)
+                : eventArticleService.getFilteredArticlesForAdmin(
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size);
         return ResponseEntity.ok(articles);
     }
 
     @GetMapping("/statistics")
-    public ResponseEntity<ArticleStatisticsResponse> getStatistics() {
-        ArticleStatisticsResponse stats = eventArticleService.getArticleStatistics();
+    public ResponseEntity<ArticleStatisticsResponse> getStatistics(HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        ArticleStatisticsResponse stats = hasManagerScope(scope)
+                ? eventArticleService.getArticleStatistics(scope)
+                : eventArticleService.getArticleStatistics();
         return ResponseEntity.ok(stats);
     }
 
     @GetMapping("/{articleId}")
-    public ResponseEntity<EventArticleAdminResponse> getArticleById(@PathVariable Long articleId) {
-        EventArticleAdminResponse response = eventArticleService.getArticleById(articleId);
+    public ResponseEntity<EventArticleAdminResponse> getArticleById(
+            @PathVariable Long articleId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse response = hasManagerScope(scope)
+                ? eventArticleService.getArticleById(articleId, scope)
+                : eventArticleService.getArticleById(articleId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/by-activity/{activityId}")
-    public ResponseEntity<List<EventArticleAdminResponse>> getArticlesByActivityId(@PathVariable Long activityId) {
-        List<EventArticleAdminResponse> response = eventArticleService.getArticlesByActivityId(activityId);
+    public ResponseEntity<List<EventArticleAdminResponse>> getArticlesByActivityId(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<EventArticleAdminResponse> response = hasManagerScope(scope)
+                ? eventArticleService.getArticlesByActivityId(activityId, scope)
+                : eventArticleService.getArticlesByActivityId(activityId);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{articleId}/set-primary")
-    public ResponseEntity<EventArticleAdminResponse> setPrimaryArticle(@PathVariable Long articleId) {
-        EventArticleAdminResponse response = eventArticleService.setPrimaryArticle(articleId);
+    public ResponseEntity<EventArticleAdminResponse> setPrimaryArticle(
+            @PathVariable Long articleId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse response = hasManagerScope(scope)
+                ? eventArticleService.setPrimaryArticle(articleId, scope)
+                : eventArticleService.setPrimaryArticle(articleId);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping
-    public ResponseEntity<EventArticleAdminResponse> createArticle(@RequestBody EventArticleUpsertRequest request) {
-        EventArticleAdminResponse response = eventArticleService.createArticle(request);
+    public ResponseEntity<EventArticleAdminResponse> createArticle(
+            @RequestBody EventArticleUpsertRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse response = hasManagerScope(scope)
+                ? eventArticleService.createArticle(request, scope)
+                : eventArticleService.createArticle(request);
         return ResponseEntity.status(201).body(response);
     }
 
     @PutMapping("/{articleId}")
     public ResponseEntity<EventArticleAdminResponse> updateArticle(
             @PathVariable Long articleId,
-            @RequestBody EventArticleUpsertRequest request) {
-        EventArticleAdminResponse response = eventArticleService.updateArticle(articleId, request);
+            @RequestBody EventArticleUpsertRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse response = hasManagerScope(scope)
+                ? eventArticleService.updateArticle(articleId, request, scope)
+                : eventArticleService.updateArticle(articleId, request);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{articleId}/publish")
-    public ResponseEntity<EventArticleAdminResponse> publishArticle(@PathVariable Long articleId) {
-        EventArticleAdminResponse response = eventArticleService.publishArticle(articleId);
+    public ResponseEntity<EventArticleAdminResponse> publishArticle(
+            @PathVariable Long articleId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse response = hasManagerScope(scope)
+                ? eventArticleService.publishArticle(articleId, scope)
+                : eventArticleService.publishArticle(articleId);
         return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{articleId}/unpublish")
-    public ResponseEntity<EventArticleAdminResponse> unpublishArticle(@PathVariable Long articleId) {
-        EventArticleAdminResponse response = eventArticleService.unpublishArticle(articleId);
+    public ResponseEntity<EventArticleAdminResponse> unpublishArticle(
+            @PathVariable Long articleId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse response = hasManagerScope(scope)
+                ? eventArticleService.unpublishArticle(articleId, scope)
+                : eventArticleService.unpublishArticle(articleId);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{articleId}/images")
     public ResponseEntity<ArticleImageResponse> addImage(
             @PathVariable Long articleId,
-            @RequestBody ArticleImageRequest request) {
-        ArticleImageResponse response = eventArticleService.addImageToArticle(articleId, request);
+            @RequestBody ArticleImageRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        ArticleImageResponse response = hasManagerScope(scope)
+                ? eventArticleService.addImageToArticle(articleId, request, scope)
+                : eventArticleService.addImageToArticle(articleId, request);
         return ResponseEntity.status(201).body(response);
     }
 
     @DeleteMapping("/{articleId}/images/{imageId}")
     public ResponseEntity<Void> removeImage(
             @PathVariable Long articleId,
-            @PathVariable Long imageId) {
-        eventArticleService.removeImageFromArticle(articleId, imageId);
+            @PathVariable Long imageId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            eventArticleService.removeImageFromArticle(articleId, imageId, scope);
+        } else {
+            eventArticleService.removeImageFromArticle(articleId, imageId);
+        }
         return ResponseEntity.noContent().build();
     }
 
@@ -186,12 +235,16 @@ public class EventArticleAdminController {
             @RequestParam(required = false) Boolean primary,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
-            
-        byte[] xlsxData = eventArticleService.exportArticlesToExcel(
-                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo
-        );
-        
+            @RequestParam(required = false) String dateTo,
+            HttpServletRequest httpRequest) {
+
+        DepartmentScope scope = currentScope(httpRequest);
+        byte[] xlsxData = hasManagerScope(scope)
+                ? eventArticleService.exportArticlesToExcel(
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, scope)
+                : eventArticleService.exportArticlesToExcel(
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo);
+
         return ResponseEntity.ok()
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"articles.xlsx\"")
                 .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
@@ -202,8 +255,12 @@ public class EventArticleAdminController {
     public ResponseEntity<Page<ArticleCommentResponse>> getArticleComments(
             @PathVariable Long articleId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        EventArticleAdminResponse article = eventArticleService.getArticleById(articleId);
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        EventArticleAdminResponse article = hasManagerScope(scope)
+                ? eventArticleService.getArticleById(articleId, scope)
+                : eventArticleService.getArticleById(articleId);
         Page<ArticleCommentResponse> comments = articleCommentService.getArticleComments(article.getSlug(), true, page, size);
         return ResponseEntity.ok(comments);
     }
@@ -225,5 +282,12 @@ public class EventArticleAdminController {
         articleCommentService.deleteComment(commentId, null, true);
         return ResponseEntity.noContent().build();
     }
-}
 
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
+    }
+}

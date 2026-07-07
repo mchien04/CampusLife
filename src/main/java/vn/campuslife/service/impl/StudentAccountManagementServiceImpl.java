@@ -9,11 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.User;
+import vn.campuslife.entity.Department;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.student.*;
+import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.UserRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.StudentAccountManagementService;
 import vn.campuslife.service.StudentScoreInitService;
 import vn.campuslife.util.EmailUtil;
@@ -32,6 +36,8 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
     private final ExcelParser excelParser;
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
+    private final DepartmentRepository departmentRepository;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
     private final PasswordEncoder passwordEncoder;
     private final StudentScoreInitService studentScoreInitService;
     private final EmailUtil emailUtil;
@@ -186,9 +192,10 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                     accountResponse.setFullName(savedStudent.getFullName());
                     accountResponse.setPassword(plainPassword); // Plain password for review
                     accountResponse.setIsActivated(savedUser.isActivated());
-                    accountResponse.setEmailSent(false); // Chưa gửi email credentials
-                    accountResponse.setLastLogin(savedUser.getLastLogin()); // null vì chưa đăng nhập
+                    accountResponse.setEmailSent(false);
+                    accountResponse.setLastLogin(savedUser.getLastLogin());
                     accountResponse.setCreatedAt(savedUser.getCreatedAt());
+                    fillDepartmentFields(accountResponse, savedStudent);
 
                     createdAccounts.add(accountResponse);
 
@@ -219,34 +226,52 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
     @Override
     @Transactional
     public Response createStudent(CreateStudentRequest request) {
+        return createStudent(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createStudent(CreateStudentRequest request, DepartmentScope scope) {
         if (request == null) {
             return Response.error("Yêu cầu không hợp lệ");
         }
-        
+
         ExcelStudentRow row = new ExcelStudentRow(request.getStudentCode(), request.getFullName(), request.getEmail());
         BulkCreateStudentsRequest bulkRequest = new BulkCreateStudentsRequest(Collections.singletonList(row));
-        
+
         Response bulkResponse = bulkCreateStudents(bulkRequest);
         if (!bulkResponse.isStatus()) {
             return bulkResponse;
         }
-        
+
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) bulkResponse.getBody();
         @SuppressWarnings("unchecked")
         List<String> errors = (List<String>) result.get("errors");
         @SuppressWarnings("unchecked")
         List<StudentAccountResponse> createdAccounts = (List<StudentAccountResponse>) result.get("createdAccounts");
-        
+
         if (!errors.isEmpty()) {
             return Response.error(errors.get(0));
         }
-        
         if (createdAccounts.isEmpty()) {
             return Response.error("Không thể tạo tài khoản");
         }
-        
-        return Response.success("Tạo tài khoản sinh viên thành công", createdAccounts.get(0));
+
+        StudentAccountResponse account = createdAccounts.get(0);
+        if (request.getDepartmentId() != null) {
+            try {
+                Student student = studentRepository.findByIdAndIsDeletedFalse(account.getStudentId())
+                        .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+                applyDepartmentToStudent(student, request.getDepartmentId(), scope);
+                studentRepository.save(student);
+                fillDepartmentFields(account, student);
+            } catch (IllegalArgumentException e) {
+                return Response.error(e.getMessage());
+            }
+        }
+
+        return Response.success("Tạo tài khoản sinh viên thành công", account);
     }
 
     @Override
@@ -295,6 +320,7 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                 response.setEmailSent(user.getLastLogin() != null);
                 response.setLastLogin(user.getLastLogin());
                 response.setCreatedAt(user.getCreatedAt());
+                fillDepartmentFields(response, student);
 
                 accounts.add(response);
             }
@@ -321,9 +347,24 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
     @Override
     @Transactional
     public Response updateStudentAccount(Long studentId, UpdateStudentAccountRequest request) {
+        return updateStudentAccount(studentId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateStudentAccount(Long studentId, UpdateStudentAccountRequest request, DepartmentScope scope) {
         try {
             Student student = studentRepository.findByIdAndIsDeletedFalse(studentId)
                     .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+
+            if (scope != null && scope.manager() && !scope.admin()) {
+                if (student.getDepartment() != null) {
+                    departmentAuthorizationService.requireStudentAccess(studentId, scope);
+                } else if (request.getDepartmentId() != null
+                        && !scope.departmentIds().contains(request.getDepartmentId())) {
+                    return Response.error("Department is outside your scope");
+                }
+            }
 
             User user = student.getUser();
             if (user == null || user.isDeleted()) {
@@ -378,6 +419,11 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                 updated = true;
             }
 
+            if (request.getDepartmentId() != null) {
+                applyDepartmentToStudent(student, request.getDepartmentId(), scope);
+                updated = true;
+            }
+
             if (!updated) {
                 return Response.error("No fields to update");
             }
@@ -401,6 +447,7 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             response.setEmailSent(user.getLastLogin() != null);
             response.setLastLogin(user.getLastLogin());
             response.setCreatedAt(user.getCreatedAt());
+            fillDepartmentFields(response, student);
 
             return Response.success("Student account updated successfully", response);
 
@@ -577,5 +624,24 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             return false;
         }
         return email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    }
+
+    private void applyDepartmentToStudent(Student student, Long departmentId, DepartmentScope scope) {
+        Department department = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+
+        if (scope != null && scope.manager() && !scope.admin()
+                && !scope.departmentIds().contains(departmentId)) {
+            throw new IllegalArgumentException("Department is outside your scope");
+        }
+
+        student.setDepartment(department);
+    }
+
+    private void fillDepartmentFields(StudentAccountResponse response, Student student) {
+        if (student.getDepartment() != null) {
+            response.setDepartmentId(student.getDepartment().getId());
+            response.setDepartmentName(student.getDepartment().getName());
+        }
     }
 }

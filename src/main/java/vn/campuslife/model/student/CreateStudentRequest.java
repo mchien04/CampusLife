@@ -14,4 +14,6 @@ public class CreateStudentRequest {
     private String studentCode; // Mã số sinh viên
     private String fullName;    // Họ tên
     private String email;       // Email
+    /** Tùy chọn khi tạo thủ công; import Excel không cần — SV tự điền khi đăng nhập */
+    private Long departmentId;
 }

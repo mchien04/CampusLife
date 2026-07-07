@@ -1,10 +1,13 @@
 package vn.campuslife.controller.activity.task;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityTaskService;
 import vn.campuslife.service.StudentService;
 
@@ -39,8 +42,11 @@ public class TaskAssignmentController {
      * Lấy danh sách nhiệm vụ của sinh viên (Admin/Manager có thể xem của bất kỳ sinh viên nào)
      */
     @GetMapping("/student/{studentId}")
-    public ResponseEntity<Response> getStudentTasks(@PathVariable Long studentId) {
-        Response response = activityTaskService.getStudentTasks(studentId);
+    public ResponseEntity<Response> getStudentTasks(@PathVariable Long studentId, HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.getStudentTasks(studentId, scope)
+                : activityTaskService.getStudentTasks(studentId);
         return ResponseEntity.ok(response);
     }
 
@@ -58,8 +64,11 @@ public class TaskAssignmentController {
      * Hủy phân công nhiệm vụ
      */
     @DeleteMapping("/{assignmentId}")
-    public ResponseEntity<Response> removeTaskAssignment(@PathVariable Long assignmentId) {
-        Response response = activityTaskService.removeTaskAssignment(assignmentId);
+    public ResponseEntity<Response> removeTaskAssignment(@PathVariable Long assignmentId, HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.removeTaskAssignment(assignmentId, scope)
+                : activityTaskService.removeTaskAssignment(assignmentId);
         return ResponseEntity.ok(response);
     }
 
@@ -77,8 +86,20 @@ public class TaskAssignmentController {
     @GetMapping("/activity/{activityId}/student/{studentId}")
     public ResponseEntity<Response> getAssignmentsByActivityAndStudent(
             @PathVariable Long activityId,
-            @PathVariable Long studentId) {
-        Response response = activityTaskService.getAssignmentsByActivityAndStudent(activityId, studentId);
+            @PathVariable Long studentId,
+            HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.getAssignmentsByActivityAndStudent(activityId, studentId, scope)
+                : activityTaskService.getAssignmentsByActivityAndStudent(activityId, studentId);
         return ResponseEntity.ok(response);
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

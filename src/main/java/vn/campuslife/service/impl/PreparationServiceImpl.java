@@ -14,6 +14,8 @@ import vn.campuslife.exception.*;
 import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.repository.*;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,10 +46,22 @@ public class PreparationServiceImpl implements PreparationService {
     private final FundAdvanceRepository fundAdvanceRepository;
     private final ObjectMapper objectMapper;
     private final PreparationFinanceService financeService;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
     public void togglePreparation(Long activityId, boolean enabled) {
+        togglePreparationInternal(activityId, enabled, null);
+    }
+
+    @Override
+    @Transactional
+    public void togglePreparation(Long activityId, boolean enabled, DepartmentScope scope) {
+        togglePreparationInternal(activityId, enabled, scope);
+    }
+
+    private void togglePreparationInternal(Long activityId, boolean enabled, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
         Activity activity = getActiveActivity(activityId);
         activity.setHasPreparation(enabled);
         activityRepository.save(activity);
@@ -149,6 +163,17 @@ public class PreparationServiceImpl implements PreparationService {
     @Override
     @Transactional(readOnly = true)
     public PreparationDashboardDto getPreparationDashboard(Long activityId) {
+        return getPreparationDashboardInternal(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PreparationDashboardDto getPreparationDashboard(Long activityId, DepartmentScope scope) {
+        return getPreparationDashboardInternal(activityId, scope);
+    }
+
+    private PreparationDashboardDto getPreparationDashboardInternal(Long activityId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
         Activity activity = getActiveActivity(activityId);
         if (!activity.isHasPreparation()) {
             throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
@@ -168,11 +193,28 @@ public class PreparationServiceImpl implements PreparationService {
     @Override
     @Transactional(readOnly = true)
     public List<PreparationSummaryResponse> getPreparationsSummary(List<Long> activityIds) {
+        return getPreparationsSummaryInternal(activityIds, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PreparationSummaryResponse> getPreparationsSummary(List<Long> activityIds, DepartmentScope scope) {
+        return getPreparationsSummaryInternal(activityIds, scope);
+    }
+
+    private List<PreparationSummaryResponse> getPreparationsSummaryInternal(List<Long> activityIds, DepartmentScope scope) {
         if (activityIds == null || activityIds.isEmpty()) {
             return Collections.emptyList();
         }
 
-        List<Activity> activities = activityRepository.findAllById(activityIds);
+        List<Long> effectiveActivityIds = activityIds;
+        if (scope != null && scope.manager() && !scope.admin()) {
+            effectiveActivityIds = activityIds.stream()
+                    .filter(id -> departmentAuthorizationService.canAccessActivity(id, scope))
+                    .toList();
+        }
+
+        List<Activity> activities = activityRepository.findAllById(effectiveActivityIds);
         List<PreparationSummaryResponse> result = new ArrayList<>();
 
         for (Activity activity : activities) {
@@ -224,9 +266,20 @@ public class PreparationServiceImpl implements PreparationService {
     @Override
     @Transactional
     public PreparationTaskDto assignTask(CreatePreparationTaskRequest request) {
+        return assignTaskInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public PreparationTaskDto assignTask(CreatePreparationTaskRequest request, DepartmentScope scope) {
+        return assignTaskInternal(request, scope);
+    }
+
+    private PreparationTaskDto assignTaskInternal(CreatePreparationTaskRequest request, DepartmentScope scope) {
         if (request.getActivityId() == null) {
             throw new BadRequestException("Activity ID is required");
         }
+        guardManagerActivityAccess(request.getActivityId(), scope);
         Activity activity = getActiveActivity(request.getActivityId());
         if (!activity.isHasPreparation()) {
             throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
@@ -451,6 +504,17 @@ public class PreparationServiceImpl implements PreparationService {
     @Override
     @Transactional(readOnly = true)
     public List<WorkloadWarningDto> getWorkloadWarnings(Long activityId) {
+        return getWorkloadWarningsInternal(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WorkloadWarningDto> getWorkloadWarnings(Long activityId, DepartmentScope scope) {
+        return getWorkloadWarningsInternal(activityId, scope);
+    }
+
+    private List<WorkloadWarningDto> getWorkloadWarningsInternal(Long activityId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
         Activity activity = getActiveActivity(activityId);
         if (!activity.isHasPreparation()) {
             throw new FeatureNotEnabledException("Preparation feature is not enabled for this activity");
@@ -558,6 +622,27 @@ public class PreparationServiceImpl implements PreparationService {
 
     @Override
     @Transactional
+    public void addOrganizer(Long activityId, Long studentId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        addOrganizer(activityId, studentId);
+    }
+
+    @Override
+    @Transactional
+    public BulkAddOrganizersResultDto addOrganizers(Long activityId, List<Long> studentIds, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        return addOrganizers(activityId, studentIds);
+    }
+
+    @Override
+    @Transactional
+    public void removeOrganizer(Long activityId, Long studentId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        removeOrganizer(activityId, studentId);
+    }
+
+    @Override
+    @Transactional
     public void removeOrganizer(Long activityId, Long studentId) {
         long deleted = activityOrganizerRepository.deleteByActivityIdAndStudentId(activityId, studentId);
         if (deleted == 0) {
@@ -590,6 +675,13 @@ public class PreparationServiceImpl implements PreparationService {
 
     @Override
     @Transactional
+    public void grantPrepSupervisor(Long activityId, Long studentId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        grantPrepSupervisor(activityId, studentId);
+    }
+
+    @Override
+    @Transactional
     public void revokePrepSupervisor(Long activityId, Long studentId) {
         ActivityOrganizer organizer = activityOrganizerRepository
                 .findByActivityIdAndStudentId(activityId, studentId)
@@ -597,6 +689,13 @@ public class PreparationServiceImpl implements PreparationService {
                     "Student is not an organizer of this activity"));
         organizer.setPrepSupervisor(false);
         activityOrganizerRepository.save(organizer);
+    }
+
+    @Override
+    @Transactional
+    public void revokePrepSupervisor(Long activityId, Long studentId, DepartmentScope scope) {
+        guardManagerActivityAccess(activityId, scope);
+        revokePrepSupervisor(activityId, studentId);
     }
 
     private Activity getActiveActivity(Long activityId) {
@@ -680,5 +779,11 @@ public class PreparationServiceImpl implements PreparationService {
 
     private BigDecimal zeroIfNull(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private void guardManagerActivityAccess(Long activityId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
     }
 }

@@ -11,6 +11,7 @@ import vn.campuslife.entity.EventArticle;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public interface EventArticleRepository extends JpaRepository<EventArticle, Long>, JpaSpecificationExecutor<EventArticle> {
@@ -70,4 +71,12 @@ public interface EventArticleRepository extends JpaRepository<EventArticle, Long
 
     @Query(value = "SELECT ea FROM EventArticle ea JOIN ea.tags t WHERE ea.isPublished = true AND t.slug = :tagSlug ORDER BY ea.isPinned DESC, ea.priority DESC, ea.publishedAt DESC", countQuery = "SELECT COUNT(ea) FROM EventArticle ea JOIN ea.tags t WHERE ea.isPublished = true AND t.slug = :tagSlug")
     Page<EventArticle> findPublishedArticlesByTag(@Param("tagSlug") String tagSlug, Pageable pageable);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(ea) > 0 THEN true ELSE false END
+            FROM EventArticle ea
+            WHERE ea.id = :articleId
+              AND ea.ownerDepartment.id IN :deptIds
+            """)
+    boolean existsByIdAndOwnerDepartmentIds(@Param("articleId") Long articleId, @Param("deptIds") Set<Long> deptIds);
 }

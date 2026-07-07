@@ -1,5 +1,6 @@
 package vn.campuslife.controller.student;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -8,6 +9,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.StudentService;
 
 @RestController
@@ -25,13 +28,14 @@ public class StudentController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortBy,
-            @RequestParam(defaultValue = "asc") String sortDir) {
+            @RequestParam(defaultValue = "asc") String sortDir,
+            HttpServletRequest httpRequest) {
         try {
             Sort sort = sortDir.equalsIgnoreCase("desc") ?
                     Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
             Pageable pageable = PageRequest.of(page, size, sort);
 
-            Response response = studentService.getAllStudents(pageable);
+            Response response = studentService.getAllStudents(pageable, currentScope(httpRequest));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -46,10 +50,11 @@ public class StudentController {
     public ResponseEntity<Response> searchStudents(
             @RequestParam String keyword,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            HttpServletRequest httpRequest) {
         try {
             Pageable pageable = PageRequest.of(page, size, Sort.by("fullName").ascending());
-            Response response = studentService.searchStudents(keyword, pageable);
+            Response response = studentService.searchStudents(keyword, pageable, currentScope(httpRequest));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -63,10 +68,11 @@ public class StudentController {
     @GetMapping("/without-class")
     public ResponseEntity<Response> getStudentsWithoutClass(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            HttpServletRequest httpRequest) {
         try {
             Pageable pageable = PageRequest.of(page, size, Sort.by("fullName").ascending());
-            Response response = studentService.getStudentsWithoutClass(pageable);
+            Response response = studentService.getStudentsWithoutClass(pageable, currentScope(httpRequest));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -81,10 +87,11 @@ public class StudentController {
     public ResponseEntity<Response> getStudentsByDepartment(
             @PathVariable Long departmentId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            HttpServletRequest httpRequest) {
         try {
             Pageable pageable = PageRequest.of(page, size, Sort.by("fullName").ascending());
-            Response response = studentService.getStudentsByDepartment(departmentId, pageable);
+            Response response = studentService.getStudentsByDepartment(departmentId, pageable, currentScope(httpRequest));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -96,9 +103,9 @@ public class StudentController {
      * Lấy thông tin sinh viên theo ID
      */
     @GetMapping("/{studentId}")
-    public ResponseEntity<Response> getStudentById(@PathVariable Long studentId) {
+    public ResponseEntity<Response> getStudentById(@PathVariable Long studentId, HttpServletRequest httpRequest) {
         try {
-            Response response = studentService.getStudentById(studentId);
+            Response response = studentService.getStudentById(studentId, currentScope(httpRequest));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -110,14 +117,18 @@ public class StudentController {
      * Lấy thông tin sinh viên theo username
      */
     @GetMapping("/username/{username}")
-    public ResponseEntity<Response> getStudentByUsername(@PathVariable String username) {
+    public ResponseEntity<Response> getStudentByUsername(@PathVariable String username, HttpServletRequest httpRequest) {
         try {
-            Response response = studentService.getStudentByUsername(username);
+            Response response = studentService.getStudentByUsername(username, currentScope(httpRequest));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to get student: " + e.getMessage(), null));
         }
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
     }
 }
 

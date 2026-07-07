@@ -12,6 +12,9 @@ import vn.campuslife.model.Response;
 import vn.campuslife.model.score.ScoreBreakdownResponse;
 import vn.campuslife.model.statistics.*;
 import vn.campuslife.repository.*;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.StatisticsService;
 
 import java.math.BigDecimal;
@@ -37,6 +40,263 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final SemesterRepository semesterRepository;
     private final DepartmentRepository departmentRepository;
     private final ScoreEntryRepository scoreEntryRepository;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
+
+    @Override
+    public Response getDashboardOverview(Long studentId, DepartmentScope scope) {
+        if (scope == null || !scope.manager()) {
+            return getDashboardOverview(studentId);
+        }
+        try {
+            DashboardOverviewResponse response = new DashboardOverviewResponse();
+            List<Activity> activities = activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()));
+            List<Student> students = studentRepository.findAll(DepartmentScopeSpec.student(scope.departmentIds()));
+            List<ActivitySeries> series = activitySeriesRepository.findAll(DepartmentScopeSpec.activitySeries(scope.departmentIds()));
+            List<ActivityRegistration> registrations =
+                    activityRegistrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds()));
+            List<ActivityParticipation> participations =
+                    activityParticipationRepository.findAll(DepartmentScopeSpec.activityParticipation(scope.departmentIds()));
+
+            response.setTotalActivities((long) activities.size());
+            response.setTotalStudents((long) students.size());
+            response.setTotalSeries((long) series.size());
+            response.setTotalMiniGames(0L);
+            response.setMonthlyRegistrations((long) registrations.size());
+            response.setMonthlyParticipations((long) participations.size());
+            response.setAverageParticipationRate(registrations.isEmpty()
+                    ? 0.0
+                    : (double) participations.size() / registrations.size());
+            response.setTopActivities(List.of());
+            response.setTopStudents(List.of());
+            return Response.success("Dashboard overview retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Error getting scoped dashboard overview: {}", e.getMessage(), e);
+            return Response.error("Failed to get dashboard overview: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Response getActivityStatistics(String activityType, String scoreType, Long departmentId,
+            LocalDateTime startDate, LocalDateTime endDate, DepartmentScope scope) {
+        if (scope == null || !scope.manager()) {
+            return getActivityStatistics(activityType, scoreType, departmentId, startDate, endDate);
+        }
+        try {
+            Set<Long> deptFilter = departmentAuthorizationService.managerDepartmentFilter(scope, departmentId);
+            List<Activity> activities = activityRepository.findAll(DepartmentScopeSpec.activity(deptFilter));
+            ActivityStatisticsResponse response = new ActivityStatisticsResponse();
+            response.setTotalActivities((long) activities.size());
+
+            Map<ActivityType, Long> countByType = new HashMap<>();
+            for (ActivityType type : ActivityType.values()) {
+                countByType.put(type, activities.stream().filter(activity -> activity.getType() == type).count());
+            }
+            response.setCountByType(countByType);
+            Map<String, Long> countByStatus = new HashMap<>();
+            countByStatus.put("draft", activities.stream().filter(Activity::isDraft).count());
+            countByStatus.put("published", activities.stream().filter(activity -> !activity.isDraft()).count());
+            countByStatus.put("deleted", 0L);
+            response.setCountByStatus(countByStatus);
+
+            Map<Long, Long> countByDepartment = new HashMap<>();
+            for (Long deptId : deptFilter) {
+                countByDepartment.put(deptId, activities.stream()
+                        .filter(activity -> activity.getOrganizers().stream().anyMatch(dept -> deptId.equals(dept.getId())))
+                        .count());
+            }
+            response.setCountByDepartment(countByDepartment);
+            response.setTopActivitiesByRegistrations(List.of());
+            response.setParticipationRates(List.of());
+            response.setActivitiesInSeries(activities.stream().filter(activity -> activity.getSeriesId() != null).count());
+            response.setStandaloneActivities(activities.stream().filter(activity -> activity.getSeriesId() == null).count());
+            return Response.success("Activity statistics retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Error getting scoped activity statistics: {}", e.getMessage(), e);
+            return Response.error("Failed to get activity statistics: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Response getStudentStatistics(Long departmentId, Long classId, Long semesterId, DepartmentScope scope) {
+        if (scope == null || !scope.manager()) {
+            return getStudentStatistics(departmentId, classId, semesterId);
+        }
+        try {
+            Set<Long> deptFilter = departmentAuthorizationService.managerDepartmentFilter(scope, departmentId);
+            if (classId != null) {
+                departmentAuthorizationService.requireStudentClassAccess(classId, scope);
+            }
+            List<Student> students = studentRepository.findAll(DepartmentScopeSpec.student(deptFilter));
+            if (classId != null) {
+                students = students.stream()
+                        .filter(student -> student.getStudentClass() != null
+                                && classId.equals(student.getStudentClass().getId()))
+                        .collect(Collectors.toList());
+            }
+            StudentStatisticsResponse response = new StudentStatisticsResponse();
+            response.setTotalStudents((long) students.size());
+            Map<Long, Long> countByDepartment = new HashMap<>();
+            for (Long deptId : deptFilter) {
+                countByDepartment.put(deptId, students.stream()
+                        .filter(student -> student.getDepartment() != null && deptId.equals(student.getDepartment().getId()))
+                        .count());
+            }
+            response.setCountByDepartment(countByDepartment);
+            response.setCountByClass(new HashMap<>());
+            response.setTopParticipants(List.of());
+            response.setInactiveStudents(List.of());
+            response.setLowParticipationRateStudents(List.of());
+            return Response.success("Student statistics retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Error getting scoped student statistics: {}", e.getMessage(), e);
+            return Response.error("Failed to get student statistics: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Response getScoreStatistics(String scoreType, Long semesterId, Long departmentId,
+            Long classId, Long studentId, DepartmentScope scope) {
+        if (scope == null || !scope.manager()) {
+            return getScoreStatistics(scoreType, semesterId, departmentId, classId, studentId);
+        }
+        try {
+            if (studentId != null) {
+                departmentAuthorizationService.requireStudentAccess(studentId, scope);
+            }
+            Set<Long> deptFilter = departmentAuthorizationService.managerDepartmentFilter(scope, departmentId);
+            if (classId != null) {
+                departmentAuthorizationService.requireStudentClassAccess(classId, scope);
+            }
+
+            List<StudentScore> scores = studentScoreRepository.findAll(DepartmentScopeSpec.studentScore(deptFilter));
+            if (semesterId != null) {
+                scores = scores.stream()
+                        .filter(score -> score.getSemester() != null && semesterId.equals(score.getSemester().getId()))
+                        .collect(Collectors.toList());
+            }
+            if (scoreType != null) {
+                scores = scores.stream()
+                        .filter(score -> score.getScoreType().name().equals(scoreType))
+                        .collect(Collectors.toList());
+            }
+            if (classId != null) {
+                scores = scores.stream()
+                        .filter(score -> score.getStudent().getStudentClass() != null
+                                && classId.equals(score.getStudent().getStudentClass().getId()))
+                        .collect(Collectors.toList());
+            }
+            if (studentId != null) {
+                scores = scores.stream()
+                        .filter(score -> studentId.equals(score.getStudent().getId()))
+                        .collect(Collectors.toList());
+            }
+
+            ScoreStatisticsResponse response = new ScoreStatisticsResponse();
+            Map<ScoreType, ScoreStatisticsResponse.ScoreTypeStatistics> statisticsByType = new HashMap<>();
+            for (ScoreType type : ScoreType.values()) {
+                List<StudentScore> typeScores = scores.stream()
+                        .filter(score -> score.getScoreType() == type)
+                        .collect(Collectors.toList());
+                if (typeScores.isEmpty()) {
+                    continue;
+                }
+                List<BigDecimal> values = typeScores.stream()
+                        .map(StudentScore::getScore)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                BigDecimal sum = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal avg = values.isEmpty()
+                        ? BigDecimal.ZERO
+                        : sum.divide(BigDecimal.valueOf(values.size()), 2, java.math.RoundingMode.HALF_UP);
+                ScoreStatisticsResponse.ScoreTypeStatistics stats = new ScoreStatisticsResponse.ScoreTypeStatistics();
+                stats.setScoreType(type);
+                stats.setAverageScore(avg);
+                stats.setMaxScore(values.stream().max(BigDecimal::compareTo).orElse(BigDecimal.ZERO));
+                stats.setMinScore(values.stream().min(BigDecimal::compareTo).orElse(BigDecimal.ZERO));
+                stats.setTotalStudents((long) typeScores.size());
+                statisticsByType.put(type, stats);
+            }
+            response.setStatisticsByType(statisticsByType);
+            response.setTopStudents(scores.stream()
+                    .sorted((a, b) -> nullSafeScore(b).compareTo(nullSafeScore(a)))
+                    .limit(10)
+                    .map(this::toTopStudentScoreItem)
+                    .collect(Collectors.toList()));
+            response.setAverageByDepartment(new HashMap<>());
+            response.setAverageByClass(new HashMap<>());
+            response.setAverageBySemester(new HashMap<>());
+            response.setScoreDistribution(new HashMap<>());
+            return Response.success("Score statistics retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Error getting scoped score statistics: {}", e.getMessage(), e);
+            return Response.error("Failed to get score statistics: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Response getScoreBreakdown(Long semesterId, Long studentId, Long departmentId, DepartmentScope scope) {
+        if (scope == null || !scope.manager()) {
+            return getScoreBreakdown(semesterId, studentId, departmentId);
+        }
+        try {
+            if (studentId != null) {
+                departmentAuthorizationService.requireStudentAccess(studentId, scope);
+            }
+            Set<Long> deptFilter = departmentAuthorizationService.managerDepartmentFilter(scope, departmentId);
+            List<ScoreEntry> entries = scoreEntryRepository.findAll(DepartmentScopeSpec.scoreEntry(deptFilter));
+            if (semesterId != null) {
+                entries = entries.stream()
+                        .filter(entry -> entry.getSemester() != null && semesterId.equals(entry.getSemester().getId()))
+                        .collect(Collectors.toList());
+            }
+            if (studentId != null) {
+                entries = entries.stream()
+                        .filter(entry -> entry.getStudent() != null && studentId.equals(entry.getStudent().getId()))
+                        .collect(Collectors.toList());
+            }
+
+            ScoreBreakdownResponse response = new ScoreBreakdownResponse();
+            response.setSemesterId(semesterId);
+            response.setStudentId(studentId);
+            response.setBreakdowns(entries.stream()
+                    .collect(Collectors.groupingBy(ScoreEntry::getSourceType))
+                    .entrySet()
+                    .stream()
+                    .map(entry -> {
+                        ScoreBreakdownResponse.SourceBreakdown breakdown = new ScoreBreakdownResponse.SourceBreakdown();
+                        breakdown.setSourceType(entry.getKey());
+                        breakdown.setEntryCount((long) entry.getValue().size());
+                        breakdown.setTotalPoints(entry.getValue().stream()
+                                .map(ScoreEntry::getPoints)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add));
+                        return breakdown;
+                    })
+                    .collect(Collectors.toList()));
+            return Response.success("Score breakdown retrieved successfully", response);
+        } catch (Exception e) {
+            logger.error("Error getting scoped score breakdown: {}", e.getMessage(), e);
+            return Response.error("Failed to get score breakdown: " + e.getMessage());
+        }
+    }
+
+    private BigDecimal nullSafeScore(StudentScore score) {
+        return score.getScore() != null ? score.getScore() : BigDecimal.ZERO;
+    }
+
+    private ScoreStatisticsResponse.TopStudentScoreItem toTopStudentScoreItem(StudentScore score) {
+        ScoreStatisticsResponse.TopStudentScoreItem item = new ScoreStatisticsResponse.TopStudentScoreItem();
+        item.setStudentId(score.getStudent().getId());
+        item.setStudentName(score.getStudent().getFullName());
+        item.setStudentCode(score.getStudent().getStudentCode());
+        item.setScoreType(score.getScoreType());
+        item.setScore(nullSafeScore(score));
+        if (score.getSemester() != null) {
+            item.setSemesterId(score.getSemester().getId());
+            item.setSemesterName(score.getSemester().getName());
+        }
+        return item;
+    }
 
     @Override
     public Response getDashboardOverview(Long studentId) {
