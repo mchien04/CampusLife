@@ -2,6 +2,7 @@ package vn.campuslife.service;
 
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentScope;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,7 +13,11 @@ public interface ScoreService {
 
     Response viewScores(Long studentId, Long semesterId);
 
+    Response viewScores(Long studentId, Long semesterId, DepartmentScope scope);
+
     Response getTotalScore(Long studentId, Long semesterId);
+
+    Response getTotalScore(Long studentId, Long semesterId, DepartmentScope scope);
 
     /**
      * Lấy bảng xếp hạng điểm sinh viên
@@ -26,6 +31,9 @@ public interface ScoreService {
      */
     Response getStudentRanking(Long semesterId, ScoreType scoreType, Long departmentId, Long classId, String sortOrder);
 
+    Response getStudentRanking(Long semesterId, ScoreType scoreType, Long departmentId, Long classId, String sortOrder,
+                               DepartmentScope scope);
+
     /**
      * Rà soát và tính lại điểm cho một student
      * Bao gồm: điểm từ ActivityParticipation (minigame, activity thường) và
@@ -37,6 +45,8 @@ public interface ScoreService {
      */
     Response recalculateStudentScore(Long studentId, Long semesterId);
 
+    Response recalculateStudentScore(Long studentId, Long semesterId, DepartmentScope scope);
+
     /**
      * Rà soát và tính lại điểm cho tất cả students
      * 
@@ -44,6 +54,8 @@ public interface ScoreService {
      * @return Kết quả rà soát và cập nhật
      */
     Response recalculateAllStudentScores(Long semesterId);
+
+    Response recalculateAllStudentScores(Long semesterId, DepartmentScope scope);
 
     /**
      * Xem lịch sử điểm của student
@@ -59,4 +71,7 @@ public interface ScoreService {
      */
     Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId,
                              LocalDateTime startDate, LocalDateTime endDate, String keyword);
+
+    Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId,
+                             LocalDateTime startDate, LocalDateTime endDate, String keyword, DepartmentScope scope);
 }

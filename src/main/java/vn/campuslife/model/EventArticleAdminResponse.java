@@ -1,5 +1,6 @@
 package vn.campuslife.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,6 +17,7 @@ public class EventArticleAdminResponse {
     private Long activityId;
     private String activityName;
     private ArticleType articleType;
+    @JsonProperty("isPrimary")
     private boolean isPrimary;
     private String title;
     private String slug;

@@ -7,6 +7,7 @@ import vn.campuslife.model.activity.ActivityResponse;
 import vn.campuslife.model.activity.ActivityPresetPreviewResponse;
 import vn.campuslife.model.activity.CreateActivityRequest;
 import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentScope;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -15,17 +16,27 @@ import java.util.List;
 public interface ActivityService {
     Response createActivity(CreateActivityRequest request);
 
+    Response createActivity(CreateActivityRequest request, DepartmentScope scope);
+
     Response getAllActivities();
 
     Response getAllActivities(String username); // username can be null for public access
+
+    Response getAllActivities(String username, DepartmentScope scope); // username can be null for public access
 
     Response getActivityById(Long id);
 
     Response getActivityById(Long id, String username); // username can be null for public access
 
+    Response getActivityById(Long id, String username, DepartmentScope scope); // username can be null for public access
+
     Response updateActivity(Long id, CreateActivityRequest request);
 
+    Response updateActivity(Long id, CreateActivityRequest request, DepartmentScope scope);
+
     Response deleteActivity(Long id);
+
+    Response deleteActivity(Long id, DepartmentScope scope);
 
     List<ActivityPresetDefinitionResponse> getActivityPresetDefinitions();
 
@@ -36,6 +47,8 @@ public interface ActivityService {
     List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end);
 
     List<ActivityResponse> getActivitiesForDepartment(Long departmentId);
+
+    List<ActivityResponse> getActivitiesForDepartment(Long departmentId, DepartmentScope scope);
 
     List<ActivityResponse> listForCurrentUser(String username);
 
@@ -55,8 +68,13 @@ public interface ActivityService {
     Response publishActivity(Long id);
     Response unpublishActivity(Long id);
 
+    Response publishActivity(Long id, DepartmentScope scope);
+    Response unpublishActivity(Long id, DepartmentScope scope);
+
     // Copy activity with optional offset days
     Response copyActivity(Long id, Integer offsetDays);
+
+    Response copyActivity(Long id, Integer offsetDays, DepartmentScope scope);
     //tìm kiếm sự kiện
     List<ActivityResponse> searchUpcomingEvents(String keyword);
     //Sự kiện trong tháng
@@ -67,5 +85,7 @@ public interface ActivityService {
      * @return Response với số lượng activity đã được cập nhật
      */
     Response backfillCheckInCodes();
+
+    Response backfillCheckInCodes(DepartmentScope scope);
 
 }

@@ -28,6 +28,10 @@ public class StudentScore {
     private Student student;
 
     @ManyToOne
+    @JoinColumn(name = "student_department_id_at_award")
+    private Department studentDepartmentAtAward;
+
+    @ManyToOne
     @JoinColumn(name = "semester_id", nullable = false)
     private Semester semester;
 
@@ -47,4 +51,11 @@ public class StudentScore {
 
     @LastModifiedDate
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    void captureStudentDepartmentSnapshot() {
+        if (studentDepartmentAtAward == null && student != null) {
+            studentDepartmentAtAward = student.getDepartment();
+        }
+    }
 }

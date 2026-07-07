@@ -15,5 +15,7 @@ public class UpdateStudentAccountRequest {
     private String email;        // Optional
     private String studentCode;  // Optional
     private String fullName;     // Optional
+    /** Admin/Manager có thể gán hoặc đổi khoa */
+    private Long departmentId;
 }
 

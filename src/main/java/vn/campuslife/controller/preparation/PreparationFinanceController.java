@@ -1,5 +1,6 @@
 package vn.campuslife.controller.preparation;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,8 @@ import vn.campuslife.enumeration.AllocationAdjustmentStatus;
 import vn.campuslife.enumeration.ExpenseStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.preparation.*;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.PreparationFinanceService;
 
@@ -27,15 +30,24 @@ public class PreparationFinanceController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> upsertActivityBudget(
             @PathVariable Long activityId,
-            @RequestBody @Valid UpsertActivityBudgetRequest request) {
-        ActivityBudgetDto dto = financeService.upsertActivityBudget(activityId, request);
+            @RequestBody @Valid UpsertActivityBudgetRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        ActivityBudgetDto dto = hasManagerScope(scope)
+                ? financeService.upsertActivityBudget(activityId, request, scope)
+                : financeService.upsertActivityBudget(activityId, request);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/activities/{activityId}/budget")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
-    public ResponseEntity<Response> getActivityBudget(@PathVariable Long activityId) {
-        ActivityBudgetDto dto = financeService.getActivityBudget(activityId);
+    public ResponseEntity<Response> getActivityBudget(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        ActivityBudgetDto dto = hasManagerScope(scope)
+                ? financeService.getActivityBudget(activityId, scope)
+                : financeService.getActivityBudget(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -43,8 +55,12 @@ public class PreparationFinanceController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication)")
     public ResponseEntity<Response> allocateTaskAmount(
             @PathVariable Long taskId,
-            @RequestBody @Valid AllocateTaskAmountRequest request) {
-        PreparationTaskDto dto = financeService.allocateTaskAmount(taskId, request);
+            @RequestBody @Valid AllocateTaskAmountRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        PreparationTaskDto dto = hasManagerScope(scope)
+                ? financeService.allocateTaskAmount(taskId, request, scope)
+                : financeService.allocateTaskAmount(taskId, request);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -63,8 +79,12 @@ public class PreparationFinanceController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> listAllocationAdjustmentRequests(
             @PathVariable Long activityId,
-            @RequestParam(required = false) AllocationAdjustmentStatus status) {
-        List<AllocationAdjustmentRequestDto> dtos = financeService.listAllocationAdjustmentRequests(activityId, status);
+            @RequestParam(required = false) AllocationAdjustmentStatus status,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<AllocationAdjustmentRequestDto> dtos = hasManagerScope(scope)
+                ? financeService.listAllocationAdjustmentRequests(activityId, status, scope)
+                : financeService.listAllocationAdjustmentRequests(activityId, status);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
@@ -73,43 +93,71 @@ public class PreparationFinanceController {
     public ResponseEntity<Response> adminDecisionAllocationAdjustment(
             @PathVariable Long requestId,
             @RequestBody @Valid AdminDecisionAllocationAdjustmentRequest request,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
         AllocationAdjustmentRequestDto dto;
         if (Boolean.TRUE.equals(request.getApproved())
                 && request.getSources() != null
                 && !request.getSources().isEmpty()) {
-            dto = financeService.adminDecisionAllocationAdjustmentMulti(
-                    requestId,
-                    request.getSources(),
-                    authentication.getName());
+            dto = hasManagerScope(scope)
+                    ? financeService.adminDecisionAllocationAdjustmentMulti(
+                            requestId, request.getSources(), authentication.getName(), scope)
+                    : financeService.adminDecisionAllocationAdjustmentMulti(
+                            requestId, request.getSources(), authentication.getName());
         } else {
-            dto = financeService.adminDecisionAllocationAdjustment(
-                    requestId,
-                    Boolean.TRUE.equals(request.getApproved()),
-                    request.getCategoryId(),
-                    authentication.getName());
+            dto = hasManagerScope(scope)
+                    ? financeService.adminDecisionAllocationAdjustment(
+                            requestId,
+                            Boolean.TRUE.equals(request.getApproved()),
+                            request.getCategoryId(),
+                            authentication.getName(),
+                            scope)
+                    : financeService.adminDecisionAllocationAdjustment(
+                            requestId,
+                            Boolean.TRUE.equals(request.getApproved()),
+                            request.getCategoryId(),
+                            authentication.getName());
         }
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/allocation-adjustments/{requestId}/source-suggestions")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isAllocationAdjustmentPrepSupervisor(#requestId, authentication)")
-    public ResponseEntity<Response> suggestAllocationAdjustmentSources(@PathVariable Long requestId) {
-        List<AllocationSourceSuggestionDto> dtos = financeService.suggestAllocationAdjustmentSources(requestId);
+    public ResponseEntity<Response> suggestAllocationAdjustmentSources(
+            @PathVariable Long requestId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<AllocationSourceSuggestionDto> dtos = hasManagerScope(scope)
+                ? financeService.suggestAllocationAdjustmentSources(requestId, scope)
+                : financeService.suggestAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @GetMapping("/allocation-adjustments/{requestId}/source-plan")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isAllocationAdjustmentPrepSupervisor(#requestId, authentication)")
-    public ResponseEntity<Response> planAllocationAdjustmentSources(@PathVariable Long requestId) {
-        List<AllocationAdjustmentSourcePlanDto> dtos = financeService.planAllocationAdjustmentSources(requestId);
+    public ResponseEntity<Response> planAllocationAdjustmentSources(
+            @PathVariable Long requestId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<AllocationAdjustmentSourcePlanDto> dtos = hasManagerScope(scope)
+                ? financeService.planAllocationAdjustmentSources(requestId, scope)
+                : financeService.planAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @PostMapping("/tasks/{taskId}/members/{studentId}")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
-    public ResponseEntity<Response> addTaskMember(@PathVariable Long taskId, @PathVariable Long studentId) {
-        financeService.addTaskMember(taskId, studentId);
+    public ResponseEntity<Response> addTaskMember(
+            @PathVariable Long taskId,
+            @PathVariable Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        if (hasManagerScope(scope)) {
+            financeService.addTaskMember(taskId, studentId, scope);
+        } else {
+            financeService.addTaskMember(taskId, studentId);
+        }
         return ResponseEntity.ok(Response.success("OK"));
     }
 
@@ -128,11 +176,14 @@ public class PreparationFinanceController {
     public ResponseEntity<Response> adminDecisionFundAdvance(
             @PathVariable Long fundAdvanceId,
             @RequestBody @Valid ApproveFundAdvanceRequest request,
-            Authentication authentication) {
-        FundAdvanceDto dto = financeService.adminDecisionFundAdvance(
-                fundAdvanceId,
-                Boolean.TRUE.equals(request.getApproved()),
-                authentication.getName());
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        FundAdvanceDto dto = hasManagerScope(scope)
+                ? financeService.adminDecisionFundAdvance(
+                        fundAdvanceId, Boolean.TRUE.equals(request.getApproved()), authentication.getName(), scope)
+                : financeService.adminDecisionFundAdvance(
+                        fundAdvanceId, Boolean.TRUE.equals(request.getApproved()), authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -140,15 +191,24 @@ public class PreparationFinanceController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isFundAdvancePrepSupervisor(#fundAdvanceId, authentication)")
     public ResponseEntity<Response> adminReturnFundAdvance(
             @PathVariable Long fundAdvanceId,
-            Authentication authentication) {
-        FundAdvanceDto dto = financeService.adminReturnFundAdvance(fundAdvanceId, authentication.getName());
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        FundAdvanceDto dto = hasManagerScope(scope)
+                ? financeService.adminReturnFundAdvance(fundAdvanceId, authentication.getName(), scope)
+                : financeService.adminReturnFundAdvance(fundAdvanceId, authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/tasks/{taskId}/fund-advances")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskLeader(#taskId, authentication)")
-    public ResponseEntity<Response> listFundAdvances(@PathVariable Long taskId) {
-        List<FundAdvanceDto> dtos = financeService.listFundAdvancesByTask(taskId);
+    public ResponseEntity<Response> listFundAdvances(
+            @PathVariable Long taskId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<FundAdvanceDto> dtos = hasManagerScope(scope)
+                ? financeService.listFundAdvancesByTask(taskId, scope)
+                : financeService.listFundAdvancesByTask(taskId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
@@ -163,8 +223,13 @@ public class PreparationFinanceController {
 
     @GetMapping("/tasks/{taskId}/allocation-sources")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isTaskPrepSupervisor(#taskId, authentication) or @preparationFinanceSecurity.isTaskMember(#taskId, authentication)")
-    public ResponseEntity<Response> listTaskAllocationSources(@PathVariable Long taskId) {
-        List<TaskAllocationSourceDto> dtos = financeService.listTaskAllocationSources(taskId);
+    public ResponseEntity<Response> listTaskAllocationSources(
+            @PathVariable Long taskId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<TaskAllocationSourceDto> dtos = hasManagerScope(scope)
+                ? financeService.listTaskAllocationSources(taskId, scope)
+                : financeService.listTaskAllocationSources(taskId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
@@ -193,8 +258,12 @@ public class PreparationFinanceController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication)")
     public ResponseEntity<Response> listFundAdvanceDebts(
             @PathVariable Long activityId,
-            @RequestParam(required = false) Long studentId) {
-        List<FundAdvanceDebtDto> dtos = financeService.listFundAdvanceDebts(activityId, studentId);
+            @RequestParam(required = false) Long studentId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<FundAdvanceDebtDto> dtos = hasManagerScope(scope)
+                ? financeService.listFundAdvanceDebts(activityId, studentId, scope)
+                : financeService.listFundAdvanceDebts(activityId, studentId);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
@@ -236,9 +305,14 @@ public class PreparationFinanceController {
     public ResponseEntity<Response> adminDecision(
             @PathVariable Long expenseId,
             @RequestBody @Valid ApproveExpenseRequest request,
-            Authentication authentication) {
-        ExpenseDto dto = financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
-                authentication.getName());
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        ExpenseDto dto = hasManagerScope(scope)
+                ? financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
+                        authentication.getName(), scope)
+                : financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
+                        authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
@@ -246,30 +320,56 @@ public class PreparationFinanceController {
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
     public ResponseEntity<Response> listExpenses(
             @PathVariable Long activityId,
-            @RequestParam(required = false) ExpenseStatus status) {
-        List<ExpenseDto> dtos = financeService.listExpensesByActivity(activityId, status);
+            @RequestParam(required = false) ExpenseStatus status,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<ExpenseDto> dtos = hasManagerScope(scope)
+                ? financeService.listExpensesByActivity(activityId, status, scope)
+                : financeService.listExpensesByActivity(activityId, status);
         return ResponseEntity.ok(Response.success("OK", dtos));
     }
 
     @GetMapping("/activities/{activityId}/financial-report")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
-    public ResponseEntity<Response> getFinancialReport(@PathVariable Long activityId) {
-        FinancialReportDto dto = financeService.getFinancialReport(activityId);
+    public ResponseEntity<Response> getFinancialReport(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        FinancialReportDto dto = hasManagerScope(scope)
+                ? financeService.getFinancialReport(activityId, scope)
+                : financeService.getFinancialReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/activities/{activityId}/reports/finance-overview")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
-    public ResponseEntity<Response> getFinanceOverviewReport(@PathVariable Long activityId) {
-        FinanceOverviewReportDto dto = financeService.getFinanceOverviewReport(activityId);
+    public ResponseEntity<Response> getFinanceOverviewReport(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        FinanceOverviewReportDto dto = hasManagerScope(scope)
+                ? financeService.getFinanceOverviewReport(activityId, scope)
+                : financeService.getFinanceOverviewReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
 
     @GetMapping("/activities/{activityId}/reports/cash-flow")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationFinanceSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
-    public ResponseEntity<Response> getCashFlowReport(@PathVariable Long activityId) {
-        CashFlowReportDto dto = financeService.getCashFlowReport(activityId);
+    public ResponseEntity<Response> getCashFlowReport(
+            @PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        CashFlowReportDto dto = hasManagerScope(scope)
+                ? financeService.getCashFlowReport(activityId, scope)
+                : financeService.getCashFlowReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
     }
-}
 
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
+    }
+}

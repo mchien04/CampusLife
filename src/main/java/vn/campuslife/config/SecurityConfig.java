@@ -1,6 +1,7 @@
 package vn.campuslife.config;
 
 import org.springframework.http.HttpMethod;
+import vn.campuslife.filter.DepartmentContextFilter;
 import vn.campuslife.filter.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,13 +27,16 @@ import org.springframework.web.cors.CorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final DepartmentContextFilter departmentContextFilter;
     private final UserDetailsService userDetailsService;
     private final CorsConfigurationSource corsConfigurationSource;
 
     public SecurityConfig(@Lazy JwtAuthenticationFilter jwtAuthenticationFilter,
+            @Lazy DepartmentContextFilter departmentContextFilter,
             @Lazy UserDetailsService userDetailsService,
             CorsConfigurationSource corsConfigurationSource) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.departmentContextFilter = departmentContextFilter;
         this.userDetailsService = userDetailsService;
         this.corsConfigurationSource = corsConfigurationSource;
     }
@@ -71,10 +75,13 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password", "/api/auth/reset-password")
                         .permitAll()
                         .requestMatchers("/api/test/**").permitAll()
-                        .requestMatchers("/api/upload/**").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/upload/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/upload/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/departments/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/articles/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/articles/*/track-view",
+                                "/api/articles/*/track-share").permitAll()
 
                         // Check-in endpoints - place early to avoid pattern conflicts
                         .requestMatchers(HttpMethod.POST, "/api/registrations/checkin").authenticated()
@@ -83,13 +90,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/test").authenticated()
 
                         // Specific admin endpoints - must be before general /api/admin/** rule
-                        // Departments - Admin and Manager can access
-                        .requestMatchers("/api/admin/departments/**").hasAnyRole("ADMIN", "MANAGER")
-                        // Users Management - Admin and Manager can access
-                        .requestMatchers("/api/admin/users/**").hasAnyRole("ADMIN", "MANAGER")
+                        // Department and manager assignment administration is ADMIN-only.
+                        .requestMatchers("/api/admin/departments/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/articles/**").hasAnyRole("ADMIN", "MANAGER")
                         // Student Account Management - Admin only
-                        .requestMatchers("/api/admin/students/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/students/**").hasAnyRole("ADMIN", "MANAGER")
                         // Admin-only endpoints (general rule - must be last)
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
@@ -160,7 +166,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/activities/**").hasAnyRole("ADMIN", "MANAGER")
 
                         // Hien thi participations
-                        .requestMatchers(HttpMethod.GET, "/api/participations").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/participations").hasAnyRole("ADMIN", "MANAGER")
                         // Tasks and Assignments
                         .requestMatchers(HttpMethod.GET, "/api/assignments/my").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/assignments/activity/*/student/*").hasRole("STUDENT")
@@ -174,7 +180,7 @@ public class SecurityConfig {
                         // Check-in endpoints (already defined above, but keep validate/debug here)
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/debug").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/registrations/checkin/validate").authenticated()
-                        .requestMatchers(HttpMethod.GET, "api/registrations/search").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/registrations/search").hasAnyRole("ADMIN", "MANAGER")
 
                         // Other specific routes
                         .requestMatchers(HttpMethod.GET, "/api/registrations/my", "/api/registrations/my/**")
@@ -294,7 +300,8 @@ public class SecurityConfig {
                         // Default
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(departmentContextFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

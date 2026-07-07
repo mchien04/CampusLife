@@ -1,8 +1,13 @@
 package vn.campuslife.service.impl;
 
 import lombok.RequiredArgsConstructor;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.campuslife.config.UploadProperties;
@@ -23,6 +28,9 @@ import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.SemesterHelperService;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.enumeration.NotificationType;
 
@@ -53,6 +61,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     private final UserRepository userRepository;
     private final PreparationTaskMemberRepository preparationTaskMemberRepository;
     private final ActivityOrganizerRepository activityOrganizerRepository;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
@@ -252,9 +261,19 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     @Override
     public Response getActivityRegistrations(Long activityId) {
+        return getActivityRegistrations(activityId, null);
+    }
+
+    @Override
+    public Response getActivityRegistrations(Long activityId, DepartmentScope scope) {
         try {
-            List<ActivityRegistration> registrations = registrationRepository
-                    .findByActivityIdAndActivityIsDeletedFalse(activityId);
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
+            List<ActivityRegistration> registrations = scope != null && scope.manager()
+                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("activity").get("id"), activityId)))
+                    : registrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
 
             List<ActivityRegistrationResponse> responses = registrations.stream()
                     .map(this::toRegistrationResponse)
@@ -269,8 +288,16 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     @Override
     public Response getSeriesRegistrations(Long seriesId) {
+        return getSeriesRegistrations(seriesId, null);
+    }
+
+    @Override
+    public Response getSeriesRegistrations(Long seriesId, DepartmentScope scope) {
         try {
-            List<ActivityRegistration> registrations = registrationRepository.findBySeriesId(seriesId);
+            List<ActivityRegistration> registrations = scope != null && scope.manager()
+                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("seriesId"), seriesId)))
+                    : registrationRepository.findBySeriesId(seriesId);
 
             // Lọc unique students (có thể có nhiều registrations cho cùng 1 student trong
             // series)
@@ -296,6 +323,12 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional
     public Response updateRegistrationStatus(Long registrationId, String status) {
+        return updateRegistrationStatus(registrationId, status, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateRegistrationStatus(Long registrationId, String status, DepartmentScope scope) {
         try {
             Optional<ActivityRegistration> registrationOpt = registrationRepository.findById(registrationId);
             if (registrationOpt.isEmpty()) {
@@ -303,6 +336,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             ActivityRegistration registration = registrationOpt.get();
+            guardRegistrationAccess(registration, scope);
             RegistrationStatus previousStatus = registration.getStatus();
             RegistrationStatus newStatus = RegistrationStatus.valueOf(status.toUpperCase());
             if (newStatus == RegistrationStatus.APPROVED
@@ -392,13 +426,20 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     @Override
     public Response getRegistrationById(Long registrationId) {
+        return getRegistrationById(registrationId, null);
+    }
+
+    @Override
+    public Response getRegistrationById(Long registrationId, DepartmentScope scope) {
         try {
             Optional<ActivityRegistration> registrationOpt = registrationRepository.findById(registrationId);
             if (registrationOpt.isEmpty()) {
                 return new Response(false, "Registration not found", null);
             }
 
-            ActivityRegistrationResponse response = toRegistrationResponse(registrationOpt.get());
+            ActivityRegistration registration = registrationOpt.get();
+            guardRegistrationAccess(registration, scope);
+            ActivityRegistrationResponse response = toRegistrationResponse(registration);
             return new Response(true, "Registration retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to retrieve registration: {}", e.getMessage(), e);
@@ -582,10 +623,17 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
      */
     @Transactional
     public Response gradeCompletion(Long participationId, boolean isCompleted, String notes) {
+        return gradeCompletion(participationId, isCompleted, notes, null);
+    }
+
+    @Override
+    @Transactional
+    public Response gradeCompletion(Long participationId, boolean isCompleted, String notes, DepartmentScope scope) {
         try {
             ActivityParticipation participation = participationRepository
                     .findById(participationId)
                     .orElseThrow(() -> new RuntimeException("Participation not found"));
+            guardRegistrationAccess(participation.getRegistration(), scope);
 
             // Block grading if activity is draft
             if (participation.getRegistration().getActivity().isDraft()) {
@@ -703,8 +751,19 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional(readOnly = true)
     public Response getParticipationReport(Long activityId) {
-        List<ActivityRegistration> eligibleRegs = registrationRepository
-                .findByActivityIdAndActivityIsDeletedFalse(activityId)
+        return getParticipationReport(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getParticipationReport(Long activityId, DepartmentScope scope) {
+        if (scope != null) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
+        List<ActivityRegistration> eligibleRegs = (scope != null && scope.manager()
+                ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                        .and((root, query, cb) -> cb.equal(root.get("activity").get("id"), activityId)))
+                : registrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId))
                 .stream()
                 .filter(reg -> reg.getStatus() == RegistrationStatus.APPROVED
                         || reg.getStatus() == RegistrationStatus.ATTENDED)
@@ -713,7 +772,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         Set<ParticipationType> attendedStates = EnumSet.of(
                 ParticipationType.ATTENDED,
                 ParticipationType.COMPLETED);
-        Set<Long> attendedStudentIds = participationRepository.findByActivityId(activityId).stream()
+        List<ActivityParticipation> participations = scope != null && scope.manager()
+                ? participationRepository.findAll(DepartmentScopeSpec.activityParticipation(scope.departmentIds())
+                        .and((root, query, cb) -> cb.equal(root.get("registration").get("activity").get("id"), activityId)))
+                : participationRepository.findByActivityId(activityId);
+        Set<Long> attendedStudentIds = participations.stream()
                 .filter(ap -> attendedStates.contains(ap.getParticipationType()))
                 .map(ap -> ap.getRegistration().getStudent().getId())
                 .collect(Collectors.toSet());
@@ -822,9 +885,19 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional
     public Response backfillMissingParticipations() {
+        return backfillMissingParticipations(null);
+    }
+
+    @Override
+    @Transactional
+    public Response backfillMissingParticipations(DepartmentScope scope) {
         try {
-            List<ActivityRegistration> registrationsWithoutParticipation = registrationRepository
-                    .findApprovedRegistrationsWithoutParticipation();
+            List<ActivityRegistration> registrationsWithoutParticipation = scope != null && scope.manager()
+                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                            .and((root, query, cb) -> cb.and(
+                                    cb.equal(root.get("status"), RegistrationStatus.APPROVED),
+                                    cb.not(cb.exists(participationExistsSubquery(query, cb, root))))))
+                    : registrationRepository.findApprovedRegistrationsWithoutParticipation();
 
             if (registrationsWithoutParticipation.isEmpty()) {
                 return Response.success("Không có registration nào cần backfill", null);
@@ -867,7 +940,16 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional(readOnly = true)
     public Response getActivityParticipations(Long activityId) {
+        return getActivityParticipations(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getActivityParticipations(Long activityId, DepartmentScope scope) {
         try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             // Validate activity exists
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
             if (activityOpt.isEmpty()) {
@@ -875,7 +957,10 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             }
 
             // Lấy tất cả participations theo activityId
-            List<ActivityParticipation> participations = participationRepository.findByActivityId(activityId);
+            List<ActivityParticipation> participations = scope != null && scope.manager()
+                    ? participationRepository.findAll(DepartmentScopeSpec.activityParticipation(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("registration").get("activity").get("id"), activityId)))
+                    : participationRepository.findByActivityId(activityId);
 
             // Convert to response
             List<ActivityParticipationResponse> responses = participations.stream()
@@ -909,6 +994,25 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.getCheckOutTime());
     }
 
+    private void guardRegistrationAccess(ActivityRegistration registration, DepartmentScope scope) {
+        if (scope == null) {
+            return;
+        }
+        departmentAuthorizationService.requireActivityAccess(registration.getActivity().getId(), scope);
+        departmentAuthorizationService.requireStudentAccess(registration.getStudent().getId(), scope);
+    }
+
+    private Subquery<Integer> participationExistsSubquery(
+            CriteriaQuery<?> query,
+            CriteriaBuilder cb,
+            Root<ActivityRegistration> registrationRoot) {
+        Subquery<Integer> subquery = query.subquery(Integer.class);
+        Root<ActivityParticipation> participation = subquery.from(ActivityParticipation.class);
+        subquery.select(cb.literal(1))
+                .where(cb.equal(participation.get("registration").get("id"), registrationRoot.get("id")));
+        return subquery;
+    }
+
     /**
      * Lấy danh sách Đăng ký của sinh theo status
      */
@@ -935,7 +1039,25 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
      * Tìm kiếm
      */
     public Response search(String keyword, RegistrationStatus status) {
-        List<ActivityRegistration> registrations = registrationRepository.search(keyword, status);
+        return search(keyword, status, null);
+    }
+
+    @Override
+    public Response search(String keyword, RegistrationStatus status, DepartmentScope scope) {
+        List<ActivityRegistration> registrations;
+        if (scope != null && scope.manager()) {
+            Specification<ActivityRegistration> spec = DepartmentScopeSpec.activityRegistration(scope.departmentIds());
+            if (keyword != null && !keyword.isBlank()) {
+                String k = "%" + keyword.toLowerCase() + "%";
+                spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("activity").get("name")), k));
+            }
+            if (status != null) {
+                spec = spec.and((root, query, cb) -> cb.equal(root.get("status"), status));
+            }
+            registrations = registrationRepository.findAll(spec);
+        } else {
+            registrations = registrationRepository.search(keyword, status);
+        }
 
         List<ActivityRegistrationResponse> responses = registrations.stream()
                 .map(this::toRegistrationResponse)

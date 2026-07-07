@@ -15,6 +15,8 @@ import vn.campuslife.model.activity.StandardActivityUpdateRequest;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.ScoreEntryRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
@@ -43,6 +45,7 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ReminderScheduleService reminderScheduleService;
     private final ActivityRegistrationAutoService autoRegisterService;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     private final StandardActivityValidator validator;
     private final StandardActivityMapper mapper;
@@ -50,18 +53,27 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     @Override
     @Transactional
     public Response createActivity(StandardActivityCreateRequest request) {
+        return createActivityInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createActivity(StandardActivityCreateRequest request, DepartmentScope scope) {
+        return createActivityInternal(request, scope);
+    }
+
+    private Response createActivityInternal(StandardActivityCreateRequest request, DepartmentScope scope) {
         try {
             scorePresetService.applyActivityPreset(request);
             validator.validate(request);
 
-            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            Set<Department> organizers = resolveOrganizersForScope(request.getOrganizerIds(), scope);
 
             Activity entity = mapper.toEntity(request);
             entity.setOrganizers(organizers);
 
             Activity saved = activityRepository.save(entity);
 
-            // Generate checkInCode
             if (saved.getCheckInCode() == null || saved.getCheckInCode().isBlank()) {
                 String random = UUID.randomUUID().toString().substring(0, 8).toUpperCase().replace("-", "");
                 String checkInCode = String.format("ACT-%06d-%s", saved.getId(), random);
@@ -89,7 +101,20 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     @Override
     @Transactional
     public Response updateActivity(Long id, StandardActivityUpdateRequest request) {
+        return updateActivityInternal(id, request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateActivity(Long id, StandardActivityUpdateRequest request, DepartmentScope scope) {
+        return updateActivityInternal(id, request, scope);
+    }
+
+    private Response updateActivityInternal(Long id, StandardActivityUpdateRequest request, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireActivityAccess(id, scope);
+            }
             Optional<Activity> opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty()) {
                 return Response.error("Activity not found");
@@ -120,7 +145,7 @@ public class StandardActivityServiceImpl implements StandardActivityService {
             mapper.applyUpdate(existing, request);
 
             if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
-                existing.setOrganizers(resolveOrganizers(request.getOrganizerIds()));
+                existing.setOrganizers(resolveOrganizersForScope(request.getOrganizerIds(), scope));
             }
 
             Activity saved = activityRepository.save(existing);
@@ -144,7 +169,21 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Response getActivity(Long id) {
+        return getActivityInternal(id, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getActivity(Long id, DepartmentScope scope) {
+        return getActivityInternal(id, scope);
+    }
+
+    private Response getActivityInternal(Long id, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(id, scope);
+        }
         Optional<Activity> opt = activityRepository.findByIdAndIsDeletedFalse(id);
         if (opt.isEmpty()) {
             return Response.error("Activity not found");
@@ -153,7 +192,9 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     }
 
     private Set<Department> resolveOrganizers(List<Long> organizerIds) {
-        if (organizerIds == null || organizerIds.isEmpty()) return new LinkedHashSet<>();
+        if (organizerIds == null || organizerIds.isEmpty()) {
+            return new LinkedHashSet<>();
+        }
         var deps = departmentRepository.findAllById(organizerIds);
         var found = deps.stream().map(Department::getId).collect(Collectors.toSet());
         var missing = organizerIds.stream().filter(id -> !found.contains(id)).collect(Collectors.toList());
@@ -161,5 +202,22 @@ public class StandardActivityServiceImpl implements StandardActivityService {
             throw new IllegalArgumentException("Department ids not found: " + missing);
         }
         return new LinkedHashSet<>(deps);
+    }
+
+    private Set<Department> resolveOrganizersForScope(List<Long> organizerIds, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return resolveOrganizers(organizerIds);
+        }
+        Set<Long> managerDepartmentIds = scope.departmentIds();
+        if (organizerIds == null || organizerIds.isEmpty()) {
+            if (managerDepartmentIds.size() == 1) {
+                return resolveOrganizers(List.copyOf(managerDepartmentIds));
+            }
+            throw new IllegalArgumentException("Manager quản lý nhiều Khoa phải chọn organizerIds trong scope");
+        }
+        if (!managerDepartmentIds.containsAll(new LinkedHashSet<>(organizerIds))) {
+            throw new IllegalArgumentException("Organizer departments must be within manager scope");
+        }
+        return resolveOrganizers(organizerIds);
     }
 }

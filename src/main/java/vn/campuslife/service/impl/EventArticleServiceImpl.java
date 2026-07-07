@@ -12,6 +12,7 @@ import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ArticleType;
 import vn.campuslife.enumeration.ReactionType;
 import vn.campuslife.exception.BadRequestException;
+import vn.campuslife.exception.ForbiddenException;
 import vn.campuslife.exception.ResourceNotFoundException;
 import vn.campuslife.model.ArticleCategoryRequest;
 import vn.campuslife.model.ArticleCategoryResponse;
@@ -28,6 +29,9 @@ import vn.campuslife.model.EventArticleAdminResponse;
 import vn.campuslife.model.EventArticleUpsertRequest;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.EventArticleService;
 import vn.campuslife.service.StudentService;
@@ -58,6 +62,8 @@ public class EventArticleServiceImpl implements EventArticleService {
     private final ArticleReactionRepository articleReactionRepository;
     private final ArticleCommentRepository articleCommentRepository;
     private final vn.campuslife.service.NotificationService notificationService;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
+    private final DepartmentRepository departmentRepository;
 
     @org.springframework.beans.factory.annotation.Value("${app.upload.public-url:http://localhost:8080}")
     private String publicUrl;
@@ -392,7 +398,22 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional
     public EventArticleAdminResponse createArticle(EventArticleUpsertRequest request) {
+        return createArticleInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public EventArticleAdminResponse createArticle(EventArticleUpsertRequest request, DepartmentScope scope) {
+        return createArticleInternal(request, scope);
+    }
+
+    private EventArticleAdminResponse createArticleInternal(EventArticleUpsertRequest request, DepartmentScope scope) {
         validateUpsertRequest(request, true);
+        if (scope != null && scope.manager() && !scope.admin()) {
+            if (request.getActivityId() != null) {
+                departmentAuthorizationService.requireActivityAccess(request.getActivityId(), scope);
+            }
+        }
 
         String slug = normalizeSlug(request.getSlug());
         if (eventArticleRepository.existsBySlug(slug)) {
@@ -414,6 +435,7 @@ public class EventArticleServiceImpl implements EventArticleService {
         article.setPinned(request.isPinned());
         article.setPriority(request.getPriority());
         article.setArticleType(request.getArticleType() != null ? request.getArticleType() : ArticleType.ANNOUNCEMENT);
+        article.setOwnerDepartment(resolveOwnerDepartment(request, scope));
 
         if (request.getActivityId() != null) {
             Activity activity = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId())
@@ -452,6 +474,19 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional
     public EventArticleAdminResponse updateArticle(Long articleId, EventArticleUpsertRequest request) {
+        return updateArticleInternal(articleId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public EventArticleAdminResponse updateArticle(Long articleId, EventArticleUpsertRequest request, DepartmentScope scope) {
+        return updateArticleInternal(articleId, request, scope);
+    }
+
+    private EventArticleAdminResponse updateArticleInternal(Long articleId, EventArticleUpsertRequest request, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         validateUpsertRequest(request, false);
 
         EventArticle article = eventArticleRepository.findById(articleId)
@@ -461,6 +496,10 @@ public class EventArticleServiceImpl implements EventArticleService {
         Long newActivityId = request.getActivityId();
 
         boolean activityChanged = !Objects.equals(oldActivityId, newActivityId);
+
+        if (scope != null && scope.manager() && !scope.admin() && activityChanged && newActivityId != null) {
+            departmentAuthorizationService.requireActivityAccess(newActivityId, scope);
+        }
 
         if (activityChanged) {
             if (newActivityId != null) {
@@ -571,6 +610,19 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional
     public EventArticleAdminResponse publishArticle(Long articleId) {
+        return publishArticleInternal(articleId, null);
+    }
+
+    @Override
+    @Transactional
+    public EventArticleAdminResponse publishArticle(Long articleId, DepartmentScope scope) {
+        return publishArticleInternal(articleId, scope);
+    }
+
+    private EventArticleAdminResponse publishArticleInternal(Long articleId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         EventArticle article = eventArticleRepository.findById(articleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
 
@@ -606,6 +658,19 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional
     public EventArticleAdminResponse unpublishArticle(Long articleId) {
+        return unpublishArticleInternal(articleId, null);
+    }
+
+    @Override
+    @Transactional
+    public EventArticleAdminResponse unpublishArticle(Long articleId, DepartmentScope scope) {
+        return unpublishArticleInternal(articleId, scope);
+    }
+
+    private EventArticleAdminResponse unpublishArticleInternal(Long articleId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         EventArticle article = eventArticleRepository.findById(articleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
 
@@ -621,6 +686,19 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional(readOnly = true)
     public EventArticleAdminResponse getArticleById(Long articleId) {
+        return getArticleByIdInternal(articleId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public EventArticleAdminResponse getArticleById(Long articleId, DepartmentScope scope) {
+        return getArticleByIdInternal(articleId, scope);
+    }
+
+    private EventArticleAdminResponse getArticleByIdInternal(Long articleId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         EventArticle article = eventArticleRepository.findById(articleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
         return toAdminResponse(article);
@@ -629,13 +707,44 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional(readOnly = true)
     public List<EventArticleAdminResponse> getArticlesByActivityId(Long activityId) {
+        return getArticlesByActivityIdInternal(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EventArticleAdminResponse> getArticlesByActivityId(Long activityId, DepartmentScope scope) {
+        return getArticlesByActivityIdInternal(activityId, scope);
+    }
+
+    private List<EventArticleAdminResponse> getArticlesByActivityIdInternal(Long activityId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
         List<EventArticle> articles = eventArticleRepository.findByActivityId(activityId);
+        if (scope != null && scope.manager() && !scope.admin()) {
+            articles = articles.stream()
+                    .filter(article -> departmentAuthorizationService.canAccessEventArticle(article.getId(), scope))
+                    .collect(Collectors.toList());
+        }
         return articles.stream().map(this::toAdminResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional
     public EventArticleAdminResponse setPrimaryArticle(Long articleId) {
+        return setPrimaryArticleInternal(articleId, null);
+    }
+
+    @Override
+    @Transactional
+    public EventArticleAdminResponse setPrimaryArticle(Long articleId, DepartmentScope scope) {
+        return setPrimaryArticleInternal(articleId, scope);
+    }
+
+    private EventArticleAdminResponse setPrimaryArticleInternal(Long articleId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         EventArticle target = eventArticleRepository.findById(articleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
 
@@ -669,26 +778,40 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional(readOnly = true)
     public ArticleStatisticsResponse getArticleStatistics() {
+        return buildArticleStatistics(eventArticleRepository.findAll());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ArticleStatisticsResponse getArticleStatistics(DepartmentScope scope) {
+        if (scope == null || scope.admin() || !scope.manager()) {
+            return getArticleStatistics();
+        }
+        List<EventArticle> articles = eventArticleRepository.findAll(DepartmentScopeSpec.eventArticle(scope.departmentIds()));
+        return buildArticleStatistics(articles);
+    }
+
+    private ArticleStatisticsResponse buildArticleStatistics(List<EventArticle> articles) {
         ArticleStatisticsResponse stats = new ArticleStatisticsResponse();
 
-        long total = eventArticleRepository.count();
-        long published = eventArticleRepository.countPublishedArticles();
+        long total = articles.size();
+        long published = articles.stream().filter(EventArticle::isPublished).count();
 
         stats.setTotalArticles(total);
         stats.setPublishedArticles(published);
         stats.setDraftArticles(total - published);
-        stats.setTotalViews(
-                eventArticleRepository.sumTotalViews() != null ? eventArticleRepository.sumTotalViews() : 0L);
+        stats.setTotalViews(articles.stream()
+                .filter(EventArticle::isPublished)
+                .mapToLong(EventArticle::getViewCount)
+                .sum());
 
-        eventArticleRepository.findAll().forEach(a -> {
-            stats.setTotalWishlists(stats.getTotalWishlists() + a.getWishlistCount());
-        });
+        articles.forEach(a -> stats.setTotalWishlists(stats.getTotalWishlists() + a.getWishlistCount()));
 
-        stats.setFeaturedArticles(eventArticleRepository.countFeaturedArticles());
-        stats.setPinnedArticles(eventArticleRepository.findAll().stream().filter(EventArticle::isPinned).count());
+        stats.setFeaturedArticles(articles.stream().filter(EventArticle::isFeatured).count());
+        stats.setPinnedArticles(articles.stream().filter(EventArticle::isPinned).count());
 
         List<Map<String, Object>> topViewed = new ArrayList<>();
-        eventArticleRepository.findAll().stream()
+        articles.stream()
                 .filter(EventArticle::isPublished)
                 .sorted((a, b) -> Long.compare(b.getViewCount(), a.getViewCount()))
                 .limit(5)
@@ -703,7 +826,7 @@ public class EventArticleServiceImpl implements EventArticleService {
         stats.setTopViewedArticles(topViewed);
 
         List<Map<String, Object>> recent = new ArrayList<>();
-        eventArticleRepository.findAll().stream()
+        articles.stream()
                 .filter(EventArticle::isPublished)
                 .sorted((a, b) -> {
                     if (a.getPublishedAt() == null && b.getPublishedAt() == null)
@@ -726,7 +849,7 @@ public class EventArticleServiceImpl implements EventArticleService {
         stats.setRecentlyPublished(recent);
 
         Map<String, Long> byCategory = new HashMap<>();
-        eventArticleRepository.findAll().stream()
+        articles.stream()
                 .filter(ea -> ea.getCategory() != null)
                 .forEach(ea -> {
                     String name = ea.getCategory().getName();
@@ -834,6 +957,19 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional
     public ArticleImageResponse addImageToArticle(Long articleId, ArticleImageRequest request) {
+        return addImageToArticleInternal(articleId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public ArticleImageResponse addImageToArticle(Long articleId, ArticleImageRequest request, DepartmentScope scope) {
+        return addImageToArticleInternal(articleId, request, scope);
+    }
+
+    private ArticleImageResponse addImageToArticleInternal(Long articleId, ArticleImageRequest request, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         EventArticle article = eventArticleRepository.findById(articleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
 
@@ -850,6 +986,19 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional
     public void removeImageFromArticle(Long articleId, Long imageId) {
+        removeImageFromArticleInternal(articleId, imageId, null);
+    }
+
+    @Override
+    @Transactional
+    public void removeImageFromArticle(Long articleId, Long imageId, DepartmentScope scope) {
+        removeImageFromArticleInternal(articleId, imageId, scope);
+    }
+
+    private void removeImageFromArticleInternal(Long articleId, Long imageId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireEventArticleAccess(articleId, scope);
+        }
         ArticleImage image = imageRepository.findById(imageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Image not found: " + imageId));
         if (!image.getArticle().getId().equals(articleId)) {
@@ -1093,6 +1242,32 @@ public class EventArticleServiceImpl implements EventArticleService {
         return (str == null || str.isBlank()) ? null : str.trim();
     }
 
+    private Department resolveOwnerDepartment(EventArticleUpsertRequest request, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            if (request.getOwnerDepartmentId() == null) {
+                return null;
+            }
+            return departmentRepository.findById(request.getOwnerDepartmentId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Department not found: " + request.getOwnerDepartmentId()));
+        }
+
+        Long ownerDepartmentId = request.getOwnerDepartmentId();
+        if (ownerDepartmentId == null) {
+            if (scope.departmentIds().size() == 1) {
+                ownerDepartmentId = scope.departmentIds().iterator().next();
+            } else {
+                throw new BadRequestException("Manager with multiple departments must specify ownerDepartmentId");
+            }
+        }
+        if (!scope.departmentIds().contains(ownerDepartmentId)) {
+            throw new ForbiddenException("Access denied");
+        }
+        final Long resolvedOwnerDepartmentId = ownerDepartmentId;
+        return departmentRepository.findById(resolvedOwnerDepartmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Department not found: " + resolvedOwnerDepartmentId));
+    }
+
     private LocalDateTime parseDateTime(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) {
             return null;
@@ -1262,19 +1437,43 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional(readOnly = true)
     public Page<ArticleListResponse> getFilteredArticlesForAdmin(
-            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            String status, Long activityId, Long categoryId, ArticleType articleType,
             Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
             int page, int size) {
-            
+        return getFilteredArticlesForAdminInternal(
+                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ArticleListResponse> getFilteredArticlesForAdmin(
+            String status, Long activityId, Long categoryId, ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            int page, int size, DepartmentScope scope) {
+        return getFilteredArticlesForAdminInternal(
+                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size, scope);
+    }
+
+    private Page<ArticleListResponse> getFilteredArticlesForAdminInternal(
+            String status, Long activityId, Long categoryId, ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            int page, int size, DepartmentScope scope) {
+
         LocalDateTime from = parseDateTime(dateFrom);
         LocalDateTime to = parseDateTime(dateTo);
-        
+
         Pageable pageable = PageRequest.of(page, size);
-        org.springframework.data.jpa.domain.Specification<EventArticle> spec = 
+        org.springframework.data.jpa.domain.Specification<EventArticle> spec =
                 vn.campuslife.repository.specification.ArticleSpecification.filterArticles(
-                        status, activityId, categoryId, articleType, featured, pinned, primary, search, from, to
-                );
-                
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, from, to);
+
+        if (scope != null && scope.manager() && !scope.admin()) {
+            if (activityId != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
+            spec = spec.and(DepartmentScopeSpec.eventArticle(scope.departmentIds()));
+        }
+
         Page<EventArticle> articles = eventArticleRepository.findAll(spec, pageable);
         return articles.map(a -> toListResponse(a, null));
     }
@@ -1282,17 +1481,41 @@ public class EventArticleServiceImpl implements EventArticleService {
     @Override
     @Transactional(readOnly = true)
     public byte[] exportArticlesToExcel(
-            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            String status, Long activityId, Long categoryId, ArticleType articleType,
             Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo) {
-            
+        return exportArticlesToExcelInternal(
+                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] exportArticlesToExcel(
+            String status, Long activityId, Long categoryId, ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            DepartmentScope scope) {
+        return exportArticlesToExcelInternal(
+                status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, scope);
+    }
+
+    private byte[] exportArticlesToExcelInternal(
+            String status, Long activityId, Long categoryId, ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            DepartmentScope scope) {
+
         LocalDateTime from = parseDateTime(dateFrom);
         LocalDateTime to = parseDateTime(dateTo);
-        
-        org.springframework.data.jpa.domain.Specification<EventArticle> spec = 
+
+        org.springframework.data.jpa.domain.Specification<EventArticle> spec =
                 vn.campuslife.repository.specification.ArticleSpecification.filterArticles(
-                        status, activityId, categoryId, articleType, featured, pinned, primary, search, from, to
-                );
-                
+                        status, activityId, categoryId, articleType, featured, pinned, primary, search, from, to);
+
+        if (scope != null && scope.manager() && !scope.admin()) {
+            if (activityId != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
+            spec = spec.and(DepartmentScopeSpec.eventArticle(scope.departmentIds()));
+        }
+
         List<EventArticle> articles = eventArticleRepository.findAll(spec);
         
         try (org.apache.poi.ss.usermodel.Workbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook();

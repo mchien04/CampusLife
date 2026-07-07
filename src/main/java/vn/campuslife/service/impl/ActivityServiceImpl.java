@@ -38,6 +38,9 @@ import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.util.TicketCodeUtils;
 import vn.campuslife.util.UrlUtils;
 
@@ -73,10 +76,17 @@ public class ActivityServiceImpl implements ActivityService {
     private final ScoreEntryRepository scoreEntryRepository;
     private final ActivityRegistrationAutoService autoRegisterService;
     private final UploadProperties uploadProperties;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
     public Response createActivity(CreateActivityRequest request) {
+        return createActivity(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createActivity(CreateActivityRequest request, DepartmentScope scope) {
         try {
             scorePresetService.applyActivityPreset(request);
 
@@ -84,7 +94,7 @@ public class ActivityServiceImpl implements ActivityService {
             if (err != null)
                 return new Response(false, err, null);
 
-            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            Set<Department> organizers = resolveOrganizersForScope(request, scope);
 
             Activity a = new Activity();
             applyRequestToEntity(request, a);
@@ -129,10 +139,17 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional
     public Response publishActivity(Long id) {
+        return publishActivity(id, null);
+    }
+
+    @Override
+    @Transactional
+    public Response publishActivity(Long id, DepartmentScope scope) {
         var opt = activityRepository.findByIdAndIsDeletedFalse(id);
         if (opt.isEmpty())
             return new Response(false, "Activity not found", null);
         Activity a = opt.get();
+        guardActivityWrite(a, scope, true);
 
         // Kiểm tra xem activity có đang là draft không
         boolean wasDraft = a.isDraft();
@@ -161,10 +178,17 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional
     public Response unpublishActivity(Long id) {
+        return unpublishActivity(id, null);
+    }
+
+    @Override
+    @Transactional
+    public Response unpublishActivity(Long id, DepartmentScope scope) {
         var opt = activityRepository.findByIdAndIsDeletedFalse(id);
         if (opt.isEmpty())
             return new Response(false, "Activity not found", null);
         Activity a = opt.get();
+        guardActivityWrite(a, scope, true);
         a.setDraft(true);
         Activity saved = activityRepository.save(a);
         return new Response(true, "Activity unpublished", toResponse(saved));
@@ -173,10 +197,17 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional
     public Response copyActivity(Long id, Integer offsetDays) {
+        return copyActivity(id, offsetDays, null);
+    }
+
+    @Override
+    @Transactional
+    public Response copyActivity(Long id, Integer offsetDays, DepartmentScope scope) {
         var opt = activityRepository.findByIdAndIsDeletedFalse(id);
         if (opt.isEmpty())
             return new Response(false, "Activity not found", null);
         Activity src = opt.get();
+        guardActivityWrite(src, scope, true);
         int days = (offsetDays == null) ? 0 : offsetDays.intValue();
 
         Activity copy = new Activity();
@@ -244,14 +275,21 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public Response getAllActivities(String username) {
+        return getAllActivities(username, null);
+    }
+
+    @Override
+    public Response getAllActivities(String username, DepartmentScope scope) {
         try {
-            var list = activityRepository.findByIsDeletedFalseOrderByStartDateAsc();
+            var list = scope != null && scope.manager()
+                    ? activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()))
+                    : activityRepository.findByIsDeletedFalseOrderByStartDateAsc();
 
             // Filter drafts for students (non-admin/manager users)
-            boolean isAdminOrManager = false;
+            boolean isAdminOrManager = scope != null && (scope.admin() || scope.manager());
             if (username != null) {
                 Optional<User> userOpt = userRepository.findByUsername(username);
-                isAdminOrManager = userOpt.map(user -> user.getRole() == Role.ADMIN ||
+                isAdminOrManager = isAdminOrManager || userOpt.map(user -> user.getRole() == Role.ADMIN ||
                         user.getRole() == Role.MANAGER)
                         .orElse(false);
             }
@@ -276,6 +314,11 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public Response getActivityById(Long id, String username) {
+        return getActivityById(id, username, null);
+    }
+
+    @Override
+    public Response getActivityById(Long id, String username, DepartmentScope scope) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty())
@@ -283,11 +326,16 @@ public class ActivityServiceImpl implements ActivityService {
 
             Activity activity = opt.get();
 
+            if (scope != null && scope.manager()
+                    && !departmentAuthorizationService.canAccessActivity(id, scope)) {
+                return new Response(false, "Activity not found", null);
+            }
+
             // Block students from viewing drafts
-            boolean isAdminOrManager = false;
+            boolean isAdminOrManager = scope != null && (scope.admin() || scope.manager());
             if (username != null) {
                 Optional<User> userOpt = userRepository.findByUsername(username);
-                isAdminOrManager = userOpt.map(user -> user.getRole() == Role.ADMIN ||
+                isAdminOrManager = isAdminOrManager || userOpt.map(user -> user.getRole() == Role.ADMIN ||
                         user.getRole() == Role.MANAGER)
                         .orElse(false);
             }
@@ -306,12 +354,19 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional
     public Response updateActivity(Long id, CreateActivityRequest request) {
+        return updateActivity(id, request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateActivity(Long id, CreateActivityRequest request, DepartmentScope scope) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
 
             Activity a = opt.get();
+            guardActivityWrite(a, scope, false);
 
             if (request.getType() != null && request.getType() != a.getType()) {
                 long activeEntries = scoreEntryRepository.countByActivityIdAndStatus(id, ScoreEntryStatus.ACTIVE);
@@ -330,7 +385,7 @@ public class ActivityServiceImpl implements ActivityService {
 
             applyRequestToEntity(request, a);
 
-            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            Set<Department> organizers = resolveOrganizersForScope(request, scope);
             a.getOrganizers().clear();
             a.getOrganizers().addAll(organizers);
 
@@ -368,12 +423,19 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional
     public Response deleteActivity(Long id) {
+        return deleteActivity(id, null);
+    }
+
+    @Override
+    @Transactional
+    public Response deleteActivity(Long id, DepartmentScope scope) {
         try {
             var opt = activityRepository.findByIdAndIsDeletedFalse(id);
             if (opt.isEmpty())
                 return new Response(false, "Activity not found", null);
 
             Activity a = opt.get();
+            guardActivityWrite(a, scope, true);
             a.setDeleted(true);
             activityRepository.save(a);
             return new Response(true, "Activity deleted successfully", null);
@@ -409,6 +471,19 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public List<ActivityResponse> getActivitiesForDepartment(Long departmentId) {
+        return getActivitiesForDepartment(departmentId, null);
+    }
+
+    @Override
+    public List<ActivityResponse> getActivitiesForDepartment(Long departmentId, DepartmentScope scope) {
+        if (scope != null && scope.manager()) {
+            Set<Long> deptFilter = departmentAuthorizationService.managerDepartmentFilter(scope, departmentId);
+            return deptFilter.stream()
+                    .flatMap(deptId -> activityRepository.findForDepartment(deptId).stream())
+                    .distinct()
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+        }
         return activityRepository.findForDepartment(departmentId).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
@@ -578,6 +653,43 @@ public class ActivityServiceImpl implements ActivityService {
             throw new IllegalArgumentException("Department ids not found: " + missing);
         }
         return new LinkedHashSet<>(deps);
+    }
+
+    private Set<Department> resolveOrganizersForScope(CreateActivityRequest request, DepartmentScope scope) {
+        List<Long> organizerIds = request.getOrganizerIds();
+        if (scope == null || !scope.manager()) {
+            return resolveOrganizers(organizerIds);
+        }
+
+        Set<Long> managerDepartmentIds = scope.departmentIds();
+        if (organizerIds == null || organizerIds.isEmpty()) {
+            if (managerDepartmentIds.size() == 1) {
+                return resolveOrganizers(List.copyOf(managerDepartmentIds));
+            }
+            throw new IllegalArgumentException("Manager quản lý nhiều Khoa phải chọn organizerIds trong scope");
+        }
+
+        Set<Long> requestedIds = new LinkedHashSet<>(organizerIds);
+        if (!managerDepartmentIds.containsAll(requestedIds)) {
+            throw new IllegalArgumentException("Organizer departments must be within manager scope");
+        }
+        return resolveOrganizers(organizerIds);
+    }
+
+    private void guardActivityWrite(Activity activity, DepartmentScope scope, boolean adminOnlyForMultiDepartment) {
+        if (scope == null || scope.admin()) {
+            return;
+        }
+        departmentAuthorizationService.requireActivityAccess(activity.getId(), scope);
+        if (!scope.manager()) {
+            throw new IllegalArgumentException("Access denied");
+        }
+        Set<Long> organizerIds = activity.getOrganizers() == null
+                ? Set.of()
+                : activity.getOrganizers().stream().map(Department::getId).collect(Collectors.toSet());
+        if (adminOnlyForMultiDepartment && (organizerIds.size() != 1 || !scope.departmentIds().containsAll(organizerIds))) {
+            throw new IllegalArgumentException("Only ADMIN can perform this action on multi-department activities");
+        }
     }
 
     private ActivityResponse toResponse(Activity a) {
@@ -795,9 +907,17 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional
     public Response backfillCheckInCodes() {
+        return backfillCheckInCodes(null);
+    }
+
+    @Override
+    @Transactional
+    public Response backfillCheckInCodes(DepartmentScope scope) {
         try {
             // Lấy tất cả activities chưa có checkInCode
-            List<Activity> activitiesWithoutCode = activityRepository.findAll().stream()
+            List<Activity> activitiesWithoutCode = (scope != null && scope.manager()
+                    ? activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()))
+                    : activityRepository.findAll()).stream()
                     .filter(a -> !a.isDeleted())
                     .filter(a -> a.getCheckInCode() == null || a.getCheckInCode().isBlank())
                     .collect(Collectors.toList());

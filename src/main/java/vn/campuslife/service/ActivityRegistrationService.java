@@ -5,6 +5,7 @@ import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.model.activity.ActivityRegistrationRequest;
+import vn.campuslife.security.department.DepartmentScope;
 
 import java.util.List;
 
@@ -30,20 +31,28 @@ public interface ActivityRegistrationService {
      */
     Response getActivityRegistrations(Long activityId);
 
+    Response getActivityRegistrations(Long activityId, DepartmentScope scope);
+
     /**
      * Lấy danh sách đăng ký theo chuỗi sự kiện (series)
      */
     Response getSeriesRegistrations(Long seriesId);
+
+    Response getSeriesRegistrations(Long seriesId, DepartmentScope scope);
 
     /**
      * Cập nhật trạng thái đăng ký (Admin/Manager)
      */
     Response updateRegistrationStatus(Long registrationId, String status);
 
+    Response updateRegistrationStatus(Long registrationId, String status, DepartmentScope scope);
+
     /**
      * Lấy chi tiết đăng ký
      */
     Response getRegistrationById(Long registrationId);
+
+    Response getRegistrationById(Long registrationId, DepartmentScope scope);
 
     /**
      * Kiểm tra sinh viên đã đăng ký sự kiện chưa
@@ -83,10 +92,14 @@ public interface ActivityRegistrationService {
      */
     Response getParticipationReport(Long activityId);
 
+    Response getParticipationReport(Long activityId, DepartmentScope scope);
+
     /**
      * Chấm điểm completion (đạt/không đạt)
      */
     Response gradeCompletion(Long participationId, boolean isCompleted, String notes);
+
+    Response gradeCompletion(Long participationId, boolean isCompleted, String notes, DepartmentScope scope);
 
     /**
      * Validate/lookup ticketCode để preview thông tin trước khi check-in
@@ -99,10 +112,14 @@ public interface ActivityRegistrationService {
      */
     Response backfillMissingParticipations();
 
+    Response backfillMissingParticipations(DepartmentScope scope);
+
     /**
      * Lấy danh sách participations theo activityId
      */
     Response getActivityParticipations(Long activityId);
+
+    Response getActivityParticipations(Long activityId, DepartmentScope scope);
 
     /**
      * Lấy danh sách Đăng ký của sinh theo status
@@ -113,4 +130,6 @@ public interface ActivityRegistrationService {
      * Tìm kiếm
      */
     Response search(String keyword, RegistrationStatus status);
+
+    Response search(String keyword, RegistrationStatus status, DepartmentScope scope);
 }

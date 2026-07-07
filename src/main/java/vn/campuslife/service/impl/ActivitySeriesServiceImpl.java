@@ -32,6 +32,9 @@ import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.DepartmentRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ActivityRegistrationAutoService;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.ReminderScheduleService;
@@ -72,6 +75,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     private final vn.campuslife.repository.SemesterRepository semesterRepository;
     private final vn.campuslife.service.validator.SeriesChildActivityValidator seriesChildValidator;
     private final vn.campuslife.service.mapper.SeriesChildActivityMapper seriesChildMapper;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
@@ -714,8 +718,20 @@ series.setPresetCode(presetCode);
     @Override
     @Transactional(readOnly = true)
     public Response getAllSeries() {
+        return getAllSeriesInternal(null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getAllSeries(DepartmentScope scope) {
+        return getAllSeriesInternal(scope);
+    }
+
+    private Response getAllSeriesInternal(DepartmentScope scope) {
         try {
-            List<ActivitySeries> seriesList = seriesRepository.findByIsDeletedFalse();
+            List<ActivitySeries> seriesList = scope != null && scope.manager() && !scope.admin()
+                    ? seriesRepository.findAll(DepartmentScopeSpec.activitySeries(scope.departmentIds()))
+                    : seriesRepository.findByIsDeletedFalse();
 
             // Thêm totalActivities vào mỗi series
             List<Map<String, Object>> seriesWithCount = seriesList.stream()
@@ -759,7 +775,20 @@ series.setPresetCode(presetCode);
     @Override
     @Transactional(readOnly = true)
     public Response getSeriesById(Long seriesId) {
+        return getSeriesByIdInternal(seriesId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesById(Long seriesId, DepartmentScope scope) {
+        return getSeriesByIdInternal(seriesId, scope);
+    }
+
+    private Response getSeriesByIdInternal(Long seriesId, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+            }
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
@@ -774,7 +803,20 @@ series.setPresetCode(presetCode);
     @Override
     @Transactional(readOnly = true)
     public Response getActivitiesInSeries(Long seriesId) {
+        return getActivitiesInSeriesInternal(seriesId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getActivitiesInSeries(Long seriesId, DepartmentScope scope) {
+        return getActivitiesInSeriesInternal(seriesId, scope);
+    }
+
+    private Response getActivitiesInSeriesInternal(Long seriesId, DepartmentScope scope) {
         try {
+            if (scope != null && scope.manager() && !scope.admin()) {
+                departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+            }
             Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
@@ -1512,6 +1554,176 @@ if (presetCode != null) {
             logger.error("Failed to delete series: {}", e.getMessage(), e);
             return Response.error("Failed to delete series: " + e.getMessage());
         }
+    }
+
+    @Override
+    @Transactional
+    public Response createSeries(String name, String description, String milestonePointsJson, ScoreType scoreType,
+            Long mainActivityId, LocalDateTime registrationStartDate, LocalDateTime registrationDeadline,
+            Boolean requiresApproval, Integer ticketQuantity, Boolean minimumRequirementEnabled,
+            Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
+            vn.campuslife.enumeration.ScoreRuleAudience audience, List<Long> departmentIds,
+            Boolean isImportant, Boolean mandatoryForFacultyStudents, Boolean isDraft,
+            vn.campuslife.enumeration.SeriesPresetCode presetCode, DepartmentScope scope) {
+        validateSeriesDepartmentsForScope(departmentIds, scope);
+        if (scope != null && scope.manager() && !scope.admin() && mainActivityId != null) {
+            departmentAuthorizationService.requireActivityAccess(mainActivityId, scope);
+        }
+        return createSeries(name, description, milestonePointsJson, scoreType, mainActivityId,
+                registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, targetSemesterId,
+                audience, departmentIds, isImportant, mandatoryForFacultyStudents, isDraft, presetCode);
+    }
+
+    @Override
+    @Transactional
+    public Response createActivityInSeries(Long seriesId, String name, String description, LocalDateTime startDate,
+            LocalDateTime endDate, String location, Integer order, String shareLink, String bannerUrl,
+            String benefits, String requirements, String contactInfo, List<Long> organizerIds,
+            vn.campuslife.enumeration.ActivityType type, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        List<Long> scopedOrganizerIds = normalizeOrganizerIds(organizerIds, scope);
+        return createActivityInSeries(seriesId, name, description, startDate, endDate, location, order, shareLink,
+                bannerUrl, benefits, requirements, contactInfo, scopedOrganizerIds, type);
+    }
+
+    @Override
+    @Transactional
+    public Response addActivityToSeries(Long activityId, Long seriesId, Integer order, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        return addActivityToSeries(activityId, seriesId, order);
+    }
+
+    @Override
+    @Transactional
+    public Response calculateMilestonePoints(Long studentId, Long seriesId, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        departmentAuthorizationService.requireStudentAccess(studentId, scope);
+        return calculateMilestonePoints(studentId, seriesId);
+    }
+
+    @Override
+    @Transactional
+    public Response createSeriesActivity(Long seriesId, vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request,
+            DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
+            validateOrganizerIdsInScope(request.getOrganizerIds(), scope);
+        } else {
+            request.setOrganizerIds(new ArrayList<>(normalizeOrganizerIds(null, scope)));
+        }
+        return createSeriesActivity(seriesId, request);
+    }
+
+    @Override
+    @Transactional
+    public Response updateSeriesActivity(Long seriesId, Long activityId,
+            vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
+            validateOrganizerIdsInScope(request.getOrganizerIds(), scope);
+        }
+        return updateSeriesActivity(seriesId, activityId, request);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesActivity(Long seriesId, Long activityId, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        return getSeriesActivity(seriesId, activityId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getStudentProgress(Long seriesId, Long studentId, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        departmentAuthorizationService.requireStudentAccess(studentId, scope);
+        return getStudentProgress(seriesId, studentId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesProgress(Long seriesId, Integer page, Integer size, String keyword, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        return getSeriesProgress(seriesId, page, size, keyword);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getSeriesOverview(Long seriesId, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        return getSeriesOverview(seriesId);
+    }
+
+    @Override
+    @Transactional
+    public Response updateSeries(Long seriesId, String name, String description, String milestonePointsJson,
+            vn.campuslife.enumeration.ScoreType scoreType, Long mainActivityId, LocalDateTime registrationStartDate,
+            LocalDateTime registrationDeadline, Boolean requiresApproval, Integer ticketQuantity,
+            Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints,
+            Long targetSemesterId, vn.campuslife.enumeration.ScoreRuleAudience audience, List<Long> departmentIds,
+            Boolean isImportant, Boolean mandatoryForFacultyStudents, Boolean isDraft,
+            vn.campuslife.enumeration.SeriesPresetCode presetCode, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        validateSeriesDepartmentsForScope(departmentIds, scope);
+        if (scope != null && scope.manager() && !scope.admin() && mainActivityId != null) {
+            departmentAuthorizationService.requireActivityAccess(mainActivityId, scope);
+        }
+        return updateSeries(seriesId, name, description, milestonePointsJson, scoreType, mainActivityId,
+                registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
+                minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, targetSemesterId,
+                audience, departmentIds, isImportant, mandatoryForFacultyStudents, isDraft, presetCode);
+    }
+
+    @Override
+    @Transactional
+    public Response deleteSeries(Long seriesId, DepartmentScope scope) {
+        departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        return deleteSeries(seriesId);
+    }
+
+    private void validateSeriesDepartmentsForScope(List<Long> departmentIds, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return;
+        }
+        if (departmentIds == null || departmentIds.isEmpty()) {
+            if (scope.departmentIds().size() == 1) {
+                return;
+            }
+            throw new IllegalArgumentException("Manager with multiple departments must specify departmentIds within scope");
+        }
+        if (!scope.departmentIds().containsAll(new HashSet<>(departmentIds))) {
+            throw new IllegalArgumentException("Target departments must be within manager scope");
+        }
+    }
+
+    private void validateOrganizerIdsInScope(List<Long> organizerIds, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return;
+        }
+        if (organizerIds == null || organizerIds.isEmpty()) {
+            return;
+        }
+        if (!scope.departmentIds().containsAll(new HashSet<>(organizerIds))) {
+            throw new IllegalArgumentException("Organizer departments must be within manager scope");
+        }
+    }
+
+    private List<Long> normalizeOrganizerIds(List<Long> organizerIds, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return organizerIds;
+        }
+        if (organizerIds != null && !organizerIds.isEmpty()) {
+            validateOrganizerIdsInScope(organizerIds, scope);
+            return organizerIds;
+        }
+        if (scope.departmentIds().size() == 1) {
+            return List.copyOf(scope.departmentIds());
+        }
+        throw new IllegalArgumentException("Manager with multiple departments must specify organizerIds within scope");
     }
 
     private SeriesResponse toSeriesResponse(ActivitySeries series) {

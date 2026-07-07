@@ -1,11 +1,14 @@
 package vn.campuslife.controller.score;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.RecalculationJobService;
 import vn.campuslife.service.ScoreService;
 import vn.campuslife.service.StudentService;
@@ -24,14 +27,22 @@ public class ScoreController {
     // Deprecated: training score by criteria removed
 
     @GetMapping("/student/{studentId}/semester/{semesterId}")
-    public ResponseEntity<Response> viewScores(@PathVariable Long studentId, @PathVariable Long semesterId) {
-        Response resp = scoreService.viewScores(studentId, semesterId);
+    public ResponseEntity<Response> viewScores(@PathVariable Long studentId, @PathVariable Long semesterId,
+            HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response resp = hasManagerScope(scope)
+                ? scoreService.viewScores(studentId, semesterId, scope)
+                : scoreService.viewScores(studentId, semesterId);
         return ResponseEntity.ok(resp);
     }
 
     @GetMapping("/student/{studentId}/semester/{semesterId}/total")
-    public ResponseEntity<Response> getTotalScore(@PathVariable Long studentId, @PathVariable Long semesterId) {
-        Response resp = scoreService.getTotalScore(studentId, semesterId);
+    public ResponseEntity<Response> getTotalScore(@PathVariable Long studentId, @PathVariable Long semesterId,
+            HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        Response resp = hasManagerScope(scope)
+                ? scoreService.getTotalScore(studentId, semesterId, scope)
+                : scoreService.getTotalScore(studentId, semesterId);
         return ResponseEntity.ok(resp);
     }
 
@@ -51,7 +62,8 @@ public class ScoreController {
             @RequestParam(required = false) String scoreType,
             @RequestParam(required = false) Long departmentId,
             @RequestParam(required = false) Long classId,
-            @RequestParam(required = false, defaultValue = "DESC") String sortOrder) {
+            @RequestParam(required = false, defaultValue = "DESC") String sortOrder,
+            HttpServletRequest request) {
         try {
             ScoreType scoreTypeEnum = null;
             if (scoreType != null && !scoreType.isBlank()) {
@@ -63,7 +75,10 @@ public class ScoreController {
                 }
             }
 
-            Response resp = scoreService.getStudentRanking(semesterId, scoreTypeEnum, departmentId, classId, sortOrder);
+            DepartmentScope scope = currentScope(request);
+            Response resp = hasManagerScope(scope)
+                    ? scoreService.getStudentRanking(semesterId, scoreTypeEnum, departmentId, classId, sortOrder, scope)
+                    : scoreService.getStudentRanking(semesterId, scoreTypeEnum, departmentId, classId, sortOrder);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -82,9 +97,13 @@ public class ScoreController {
     @PostMapping("/recalculate/student/{studentId}")
     public ResponseEntity<Response> recalculateStudentScore(
             @PathVariable Long studentId,
-            @RequestParam(required = false) Long semesterId) {
+            @RequestParam(required = false) Long semesterId,
+            HttpServletRequest request) {
         try {
-            Response resp = scoreService.recalculateStudentScore(studentId, semesterId);
+            DepartmentScope scope = currentScope(request);
+            Response resp = hasManagerScope(scope)
+                    ? scoreService.recalculateStudentScore(studentId, semesterId, scope)
+                    : scoreService.recalculateStudentScore(studentId, semesterId);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -100,9 +119,13 @@ public class ScoreController {
      */
     @PostMapping("/recalculate/all")
     public ResponseEntity<Response> recalculateAllStudentScores(
-            @RequestParam(required = false) Long semesterId) {
+            @RequestParam(required = false) Long semesterId,
+            HttpServletRequest request) {
         try {
-            Response resp = scoreService.recalculateAllStudentScores(semesterId);
+            DepartmentScope scope = currentScope(request);
+            Response resp = hasManagerScope(scope)
+                    ? scoreService.recalculateAllStudentScores(semesterId, scope)
+                    : scoreService.recalculateAllStudentScores(semesterId);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -131,7 +154,8 @@ public class ScoreController {
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String keyword,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
             // Get requesting student ID if user is a student
             Long requestingStudentId = null;
@@ -163,8 +187,12 @@ public class ScoreController {
                 endDateTime = LocalDateTime.parse(endDate);
             }
 
-            Response resp = scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId,
-                    startDateTime, endDateTime, keyword);
+            DepartmentScope scope = currentScope(request);
+            Response resp = hasManagerScope(scope)
+                    ? scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId,
+                            startDateTime, endDateTime, keyword, scope)
+                    : scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId,
+                            startDateTime, endDateTime, keyword);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -182,8 +210,15 @@ public class ScoreController {
     @PostMapping("/recalculate/async")
     public ResponseEntity<Response> startAsyncRecalculation(
             @RequestParam(required = false) Long semesterId,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
+            if (hasManagerScope(currentScope(request))) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false,
+                                "Async recalculation for MANAGER requires persisted DepartmentScopeSnapshot and is not enabled yet",
+                                null));
+            }
             Long createdBy = null;
             if (authentication != null) {
                 // Try to resolve user ID if available
@@ -229,5 +264,13 @@ public class ScoreController {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to retry job: " + e.getMessage(), null));
         }
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

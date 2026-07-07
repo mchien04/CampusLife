@@ -10,5 +10,7 @@ public class UpdateUserRequest {
     private String password; // Có thể null nếu không muốn đổi mật khẩu
     private Role role; // ADMIN hoặc MANAGER
     private Boolean isActivated; // Có thể null
+    /** Cập nhật khoa quản lý khi role = MANAGER (replace toàn bộ danh sách) */
+    private java.util.List<Long> departmentIds;
 }
 

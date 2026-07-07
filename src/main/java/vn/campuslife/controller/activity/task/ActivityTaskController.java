@@ -1,5 +1,6 @@
 package vn.campuslife.controller.activity.task;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -7,6 +8,8 @@ import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.task.CreateActivityTaskRequest;
 import vn.campuslife.model.activity.task.TaskAssignmentRequest;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityTaskService;
 
 @RestController
@@ -20,8 +23,12 @@ public class ActivityTaskController {
      * Tạo nhiệm vụ mới
      */
     @PostMapping
-    public ResponseEntity<Response> createTask(@RequestBody @Valid CreateActivityTaskRequest request) {
-        Response response = activityTaskService.createTask(request);
+    public ResponseEntity<Response> createTask(@RequestBody @Valid CreateActivityTaskRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.createTask(request, scope)
+                : activityTaskService.createTask(request);
         return ResponseEntity.status(response.isStatus() ? 201 : 400).body(response);
     }
 
@@ -29,8 +36,11 @@ public class ActivityTaskController {
      * Lấy danh sách nhiệm vụ theo hoạt động
      */
     @GetMapping("/activity/{activityId}")
-    public ResponseEntity<Response> getTasksByActivity(@PathVariable Long activityId) {
-        Response response = activityTaskService.getTasksByActivity(activityId);
+    public ResponseEntity<Response> getTasksByActivity(@PathVariable Long activityId, HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.getTasksByActivity(activityId, scope)
+                : activityTaskService.getTasksByActivity(activityId);
         return ResponseEntity.ok(response);
     }
 
@@ -38,8 +48,11 @@ public class ActivityTaskController {
      * Lấy chi tiết nhiệm vụ
      */
     @GetMapping("/{taskId}")
-    public ResponseEntity<Response> getTaskById(@PathVariable Long taskId) {
-        Response response = activityTaskService.getTaskById(taskId);
+    public ResponseEntity<Response> getTaskById(@PathVariable Long taskId, HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.getTaskById(taskId, scope)
+                : activityTaskService.getTaskById(taskId);
         return ResponseEntity.ok(response);
     }
 
@@ -48,8 +61,12 @@ public class ActivityTaskController {
      */
     @PutMapping("/{taskId}")
     public ResponseEntity<Response> updateTask(@PathVariable Long taskId,
-            @RequestBody @Valid CreateActivityTaskRequest request) {
-        Response response = activityTaskService.updateTask(taskId, request);
+            @RequestBody @Valid CreateActivityTaskRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.updateTask(taskId, request, scope)
+                : activityTaskService.updateTask(taskId, request);
         return ResponseEntity.ok(response);
     }
 
@@ -57,8 +74,11 @@ public class ActivityTaskController {
      * Xóa nhiệm vụ
      */
     @DeleteMapping("/{taskId}")
-    public ResponseEntity<Response> deleteTask(@PathVariable Long taskId) {
-        Response response = activityTaskService.deleteTask(taskId);
+    public ResponseEntity<Response> deleteTask(@PathVariable Long taskId, HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.deleteTask(taskId, scope)
+                : activityTaskService.deleteTask(taskId);
         return ResponseEntity.ok(response);
     }
 
@@ -66,8 +86,12 @@ public class ActivityTaskController {
      * Phân công nhiệm vụ cho sinh viên
      */
     @PostMapping("/assign")
-    public ResponseEntity<Response> assignTask(@RequestBody @Valid TaskAssignmentRequest request) {
-        Response response = activityTaskService.assignTask(request);
+    public ResponseEntity<Response> assignTask(@RequestBody @Valid TaskAssignmentRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.assignTask(request, scope)
+                : activityTaskService.assignTask(request);
         return ResponseEntity.ok(response);
     }
 
@@ -75,8 +99,11 @@ public class ActivityTaskController {
      * Lấy danh sách phân công theo nhiệm vụ
      */
     @GetMapping("/{taskId}/assignments")
-    public ResponseEntity<Response> getTaskAssignments(@PathVariable Long taskId) {
-        Response response = activityTaskService.getTaskAssignments(taskId);
+    public ResponseEntity<Response> getTaskAssignments(@PathVariable Long taskId, HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.getTaskAssignments(taskId, scope)
+                : activityTaskService.getTaskAssignments(taskId);
         return ResponseEntity.ok(response);
     }
 
@@ -84,8 +111,12 @@ public class ActivityTaskController {
      * Tự động phân công nhiệm vụ bắt buộc
      */
     @PostMapping("/auto-assign/{activityId}")
-    public ResponseEntity<Response> autoAssignMandatoryTasks(@PathVariable Long activityId) {
-        Response response = activityTaskService.autoAssignMandatoryTasks(activityId);
+    public ResponseEntity<Response> autoAssignMandatoryTasks(@PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.autoAssignMandatoryTasks(activityId, scope)
+                : activityTaskService.autoAssignMandatoryTasks(activityId);
         return ResponseEntity.ok(response);
     }
 
@@ -93,8 +124,12 @@ public class ActivityTaskController {
      * Lấy danh sách sinh viên đăng ký cho activity để phân công nhiệm vụ
      */
     @GetMapping("/activity/{activityId}/registered-students")
-    public ResponseEntity<Response> getRegisteredStudentsForActivity(@PathVariable Long activityId) {
-        Response response = activityTaskService.getRegisteredStudentsForActivity(activityId);
+    public ResponseEntity<Response> getRegisteredStudentsForActivity(@PathVariable Long activityId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.getRegisteredStudentsForActivity(activityId, scope)
+                : activityTaskService.getRegisteredStudentsForActivity(activityId);
         return ResponseEntity.ok(response);
     }
 
@@ -103,8 +138,12 @@ public class ActivityTaskController {
      */
     @PostMapping("/assign-to-registered/{activityId}")
     public ResponseEntity<Response> assignTaskToRegisteredStudents(@PathVariable Long activityId,
-            @RequestParam Long taskId) {
-        Response response = activityTaskService.assignTaskToRegisteredStudents(activityId, taskId);
+            @RequestParam Long taskId,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = hasManagerScope(scope)
+                ? activityTaskService.assignTaskToRegisteredStudents(activityId, taskId, scope)
+                : activityTaskService.assignTaskToRegisteredStudents(activityId, taskId);
         return ResponseEntity.ok(response);
     }
 
@@ -116,6 +155,14 @@ public class ActivityTaskController {
     public ResponseEntity<Response> checkOverdueAssignments() {
         Response response = activityTaskService.checkAndUpdateOverdueAssignments();
         return ResponseEntity.ok(response);
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

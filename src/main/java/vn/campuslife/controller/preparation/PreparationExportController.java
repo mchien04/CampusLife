@@ -1,5 +1,6 @@
 package vn.campuslife.controller.preparation;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -11,6 +12,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.PreparationExportService;
 
 @RestController
@@ -24,8 +27,12 @@ public class PreparationExportController {
     public ResponseEntity<byte[]> exportFinancial(
             @PathVariable Long activityId,
             @RequestParam(defaultValue = "xlsx") String format,
-            Authentication authentication) {
-        PreparationExportService.ExportFile file = exportService.exportFinancial(activityId, format);
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        PreparationExportService.ExportFile file = hasManagerScope(scope)
+                ? exportService.exportFinancial(activityId, format, scope)
+                : exportService.exportFinancial(activityId, format);
         return fileResponse(file);
     }
 
@@ -34,8 +41,12 @@ public class PreparationExportController {
     public ResponseEntity<byte[]> exportOperational(
             @PathVariable Long activityId,
             @RequestParam(defaultValue = "xlsx") String format,
-            Authentication authentication) {
-        PreparationExportService.ExportFile file = exportService.exportOperational(activityId, format);
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        PreparationExportService.ExportFile file = hasManagerScope(scope)
+                ? exportService.exportOperational(activityId, format, scope)
+                : exportService.exportOperational(activityId, format);
         return fileResponse(file);
     }
 
@@ -44,8 +55,12 @@ public class PreparationExportController {
     public ResponseEntity<byte[]> exportAudit(
             @PathVariable Long activityId,
             @RequestParam(defaultValue = "xlsx") String format,
-            Authentication authentication) {
-        PreparationExportService.ExportFile file = exportService.exportAudit(activityId, format);
+            Authentication authentication,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        PreparationExportService.ExportFile file = hasManagerScope(scope)
+                ? exportService.exportAudit(activityId, format, scope)
+                : exportService.exportAudit(activityId, format);
         return fileResponse(file);
     }
 
@@ -55,5 +70,12 @@ public class PreparationExportController {
         headers.setContentType(MediaType.parseMediaType(file.contentType()));
         return ResponseEntity.ok().headers(headers).body(file.bytes());
     }
-}
 
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
+    }
+}

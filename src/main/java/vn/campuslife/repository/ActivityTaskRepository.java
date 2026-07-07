@@ -2,6 +2,7 @@ package vn.campuslife.repository;
 
 import vn.campuslife.entity.ActivityTask;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ActivityTaskRepository extends JpaRepository<ActivityTask, Long> {
+public interface ActivityTaskRepository extends JpaRepository<ActivityTask, Long>, JpaSpecificationExecutor<ActivityTask> {
 
     /**
      * Lấy danh sách nhiệm vụ theo activity ID (chỉ lấy activity chưa bị xóa)

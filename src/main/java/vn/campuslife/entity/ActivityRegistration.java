@@ -28,6 +28,10 @@ public class ActivityRegistration {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
+    @ManyToOne
+    @JoinColumn(name = "student_department_id_at_registration")
+    private Department studentDepartmentAtRegistration;
+
     // Nếu đăng ký này được tạo thông qua đăng ký chuỗi sự kiện,
     // seriesId sẽ trỏ tới ActivitySeries tương ứng. Activity đơn lẻ: null.
     @Column(name = "series_id")
@@ -46,4 +50,11 @@ public class ActivityRegistration {
 
     @Column(nullable = false)
     private boolean hasCancelledBefore = false;
+
+    @PrePersist
+    void captureStudentDepartmentSnapshot() {
+        if (studentDepartmentAtRegistration == null && student != null) {
+            studentDepartmentAtRegistration = student.getDepartment();
+        }
+    }
 }

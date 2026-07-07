@@ -23,6 +23,9 @@ import vn.campuslife.repository.ActivityTaskRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ActivityTaskService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
@@ -50,11 +53,21 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     private final TaskSubmissionRepository taskSubmissionRepository;
     private final ReminderScheduleService reminderScheduleService;
     private final ScoreRuleEngine scoreRuleEngine;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
     public Response createTask(CreateActivityTaskRequest request) {
+        return createTask(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createTask(CreateActivityTaskRequest request, DepartmentScope scope) {
         try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(request.getActivityId(), scope);
+            }
             // Validate activity exists and not deleted
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
             if (activityOpt.isEmpty()) {
@@ -78,7 +91,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
             ActivityTask savedTask = activityTaskRepository.save(task);
             reminderScheduleService.syncTaskRemindersForTask(savedTask);
-            ActivityTaskResponse response = toTaskResponse(savedTask);
+            ActivityTaskResponse response = toTaskResponse(savedTask, scope);
 
             return new Response(true, "Task created successfully", response);
         } catch (Exception e) {
@@ -89,7 +102,15 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
     @Override
     public Response getTasksByActivity(Long activityId) {
+        return getTasksByActivity(activityId, null);
+    }
+
+    @Override
+    public Response getTasksByActivity(Long activityId, DepartmentScope scope) {
         try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             // Validate activity exists
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
             if (activityOpt.isEmpty()) {
@@ -98,7 +119,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
             List<ActivityTask> tasks = activityTaskRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
             List<ActivityTaskResponse> taskResponses = tasks.stream()
-                    .map(this::toTaskResponse)
+                    .map(task -> toTaskResponse(task, scope))
                     .collect(Collectors.toList());
 
             return new Response(true, "Tasks retrieved successfully", taskResponses);
@@ -110,13 +131,20 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
     @Override
     public Response getTaskById(Long taskId) {
+        return getTaskById(taskId, null);
+    }
+
+    @Override
+    public Response getTaskById(Long taskId, DepartmentScope scope) {
         try {
             Optional<ActivityTask> taskOpt = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId);
             if (taskOpt.isEmpty()) {
                 return new Response(false, "Task not found", null);
             }
 
-            ActivityTaskResponse response = toTaskResponse(taskOpt.get());
+            ActivityTask task = taskOpt.get();
+            guardTaskAccess(task, scope);
+            ActivityTaskResponse response = toTaskResponse(task, scope);
             return new Response(true, "Task retrieved successfully", response);
         } catch (Exception e) {
             logger.error("Failed to retrieve task {}: {}", taskId, e.getMessage(), e);
@@ -127,6 +155,12 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Override
     @Transactional
     public Response updateTask(Long taskId, CreateActivityTaskRequest request) {
+        return updateTask(taskId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response updateTask(Long taskId, CreateActivityTaskRequest request, DepartmentScope scope) {
         try {
             Optional<ActivityTask> taskOpt = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId);
             if (taskOpt.isEmpty()) {
@@ -134,12 +168,16 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             ActivityTask task = taskOpt.get();
+            guardTaskAccess(task, scope);
 
             // Validate activity if changed
             if (!task.getActivity().getId().equals(request.getActivityId())) {
                 Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
                 if (activityOpt.isEmpty()) {
                     return new Response(false, "Activity not found", null);
+                }
+                if (scope != null) {
+                    departmentAuthorizationService.requireActivityAccess(request.getActivityId(), scope);
                 }
                 task.setActivity(activityOpt.get());
             }
@@ -157,7 +195,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
             ActivityTask savedTask = activityTaskRepository.save(task);
             reminderScheduleService.syncTaskRemindersForTask(savedTask);
-            ActivityTaskResponse response = toTaskResponse(savedTask);
+            ActivityTaskResponse response = toTaskResponse(savedTask, scope);
 
             return new Response(true, "Task updated successfully", response);
         } catch (Exception e) {
@@ -169,11 +207,18 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Override
     @Transactional
     public Response deleteTask(Long taskId) {
+        return deleteTask(taskId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response deleteTask(Long taskId, DepartmentScope scope) {
         try {
             Optional<ActivityTask> taskOpt = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId);
             if (taskOpt.isEmpty()) {
                 return new Response(false, "Task not found", null);
             }
+            guardTaskAccess(taskOpt.get(), scope);
 
             // Check if task has assignments
             List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(taskId);
@@ -192,6 +237,12 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Override
     @Transactional
     public Response assignTask(TaskAssignmentRequest request) {
+        return assignTask(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response assignTask(TaskAssignmentRequest request, DepartmentScope scope) {
         try {
             // Validate task exists
             Optional<ActivityTask> taskOpt = activityTaskRepository
@@ -201,6 +252,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             ActivityTask task = taskOpt.get();
+            guardTaskAccess(task, scope);
 
             // Validate owning activity is valid
             Activity owningActivity = task.getActivity();
@@ -224,6 +276,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             if (students.size() != request.getStudentIds().size()) {
                 return new Response(false, "Some students not found", null);
             }
+            validateStudentsInScope(request.getStudentIds(), scope);
 
             // Create assignments - luôn set status PENDING khi phân công
             List<TaskAssignment> assignments = students.stream()
@@ -278,9 +331,19 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
     @Override
     public Response getStudentTasks(Long studentId) {
+        return getStudentTasks(studentId, null);
+    }
+
+    @Override
+    public Response getStudentTasks(Long studentId, DepartmentScope scope) {
         try {
-            List<TaskAssignment> assignments = taskAssignmentRepository
-                    .findByStudentIdAndTaskActivityIsDeletedFalse(studentId);
+            if (scope != null) {
+                departmentAuthorizationService.requireStudentAccess(studentId, scope);
+            }
+            List<TaskAssignment> assignments = scope != null && scope.manager()
+                    ? taskAssignmentRepository.findAll(DepartmentScopeSpec.taskAssignment(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("student").get("id"), studentId)))
+                    : taskAssignmentRepository.findByStudentIdAndTaskActivityIsDeletedFalse(studentId);
             List<TaskAssignmentResponse> responses = assignments.stream()
                     .map(this::toAssignmentResponse)
                     .collect(Collectors.toList());
@@ -294,8 +357,19 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
     @Override
     public Response getTaskAssignments(Long taskId) {
+        return getTaskAssignments(taskId, null);
+    }
+
+    @Override
+    public Response getTaskAssignments(Long taskId, DepartmentScope scope) {
         try {
-            List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(taskId);
+            ActivityTask task = activityTaskRepository.findByIdAndActivityIsDeletedFalse(taskId)
+                    .orElseThrow(() -> new RuntimeException("Task not found"));
+            guardTaskAccess(task, scope);
+            List<TaskAssignment> assignments = scope != null && scope.manager()
+                    ? taskAssignmentRepository.findAll(DepartmentScopeSpec.taskAssignment(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("task").get("id"), taskId)))
+                    : taskAssignmentRepository.findByTaskId(taskId);
             List<TaskAssignmentResponse> responses = assignments.stream()
                     .map(this::toAssignmentResponse)
                     .collect(Collectors.toList());
@@ -310,11 +384,18 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Override
     @Transactional
     public Response removeTaskAssignment(Long assignmentId) {
+        return removeTaskAssignment(assignmentId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response removeTaskAssignment(Long assignmentId, DepartmentScope scope) {
         try {
             Optional<TaskAssignment> assignmentOpt = taskAssignmentRepository.findById(assignmentId);
             if (assignmentOpt.isEmpty()) {
                 return new Response(false, "Task assignment not found", null);
             }
+            guardAssignmentAccess(assignmentOpt.get(), scope);
 
             taskAssignmentRepository.deleteById(assignmentId);
             reminderScheduleService.cancelPendingTaskRemindersForAssignment(assignmentOpt.get());
@@ -328,7 +409,16 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Override
     @Transactional
     public Response autoAssignMandatoryTasks(Long activityId) {
+        return autoAssignMandatoryTasks(activityId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response autoAssignMandatoryTasks(Long activityId, DepartmentScope scope) {
         try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
             if (activityOpt.isEmpty()) {
                 return new Response(false, "Activity not found", null);
@@ -346,9 +436,11 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             // Get students from organizing departments
-            List<Long> departmentIds = activity.getOrganizers().stream()
-                    .map(department -> department.getId())
-                    .collect(Collectors.toList());
+            List<Long> departmentIds = scope != null && scope.manager()
+                    ? new ArrayList<>(scope.departmentIds())
+                    : activity.getOrganizers().stream()
+                            .map(department -> department.getId())
+                            .collect(Collectors.toList());
 
             List<Student> students = studentRepository.findByDepartmentIdInAndIsDeletedFalse(departmentIds);
 
@@ -378,6 +470,10 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     }
 
     private ActivityTaskResponse toTaskResponse(ActivityTask task) {
+        return toTaskResponse(task, null);
+    }
+
+    private ActivityTaskResponse toTaskResponse(ActivityTask task, DepartmentScope scope) {
         ActivityTaskResponse response = new ActivityTaskResponse();
         response.setId(task.getId());
         response.setName(task.getName());
@@ -388,7 +484,10 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         response.setCreatedAt(task.getCreatedAt());
 
         // Get assignments for this task
-        List<TaskAssignment> assignments = taskAssignmentRepository.findByTaskId(task.getId());
+        List<TaskAssignment> assignments = scope != null && scope.manager()
+                ? taskAssignmentRepository.findAll(DepartmentScopeSpec.taskAssignment(scope.departmentIds())
+                        .and((root, query, cb) -> cb.equal(root.get("task").get("id"), task.getId())))
+                : taskAssignmentRepository.findByTaskId(task.getId());
         response.setAssignments(assignments.stream()
                 .map(this::toAssignmentResponse)
                 .collect(Collectors.toList()));
@@ -426,9 +525,44 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         return response;
     }
 
+    private void guardTaskAccess(ActivityTask task, DepartmentScope scope) {
+        if (scope == null) {
+            return;
+        }
+        departmentAuthorizationService.requireActivityAccess(task.getActivity().getId(), scope);
+    }
+
+    private void guardAssignmentAccess(TaskAssignment assignment, DepartmentScope scope) {
+        if (scope == null) {
+            return;
+        }
+        departmentAuthorizationService.requireActivityAccess(assignment.getTask().getActivity().getId(), scope);
+        departmentAuthorizationService.requireStudentAccess(assignment.getStudent().getId(), scope);
+    }
+
+    private void validateStudentsInScope(List<Long> studentIds, DepartmentScope scope) {
+        if (scope == null || !scope.manager()) {
+            return;
+        }
+        List<Long> rejectedStudentIds = studentIds.stream()
+                .filter(studentId -> !studentRepository.existsActiveByIdAndDepartmentIds(studentId, scope.departmentIds()))
+                .toList();
+        if (!rejectedStudentIds.isEmpty()) {
+            throw new IllegalArgumentException("Students outside manager scope: " + rejectedStudentIds);
+        }
+    }
+
     @Override
     public Response getRegisteredStudentsForActivity(Long activityId) {
+        return getRegisteredStudentsForActivity(activityId, null);
+    }
+
+    @Override
+    public Response getRegisteredStudentsForActivity(Long activityId, DepartmentScope scope) {
         try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             // Validate activity exists
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
             if (activityOpt.isEmpty()) {
@@ -436,8 +570,10 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             }
 
             // Get registered students for this activity
-            List<ActivityRegistration> registrations = activityRegistrationRepository
-                    .findByActivityIdAndActivityIsDeletedFalse(activityId);
+            List<ActivityRegistration> registrations = scope != null && scope.manager()
+                    ? activityRegistrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("activity").get("id"), activityId)))
+                    : activityRegistrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
 
             List<Map<String, Object>> students = registrations.stream()
                     .map(registration -> {
@@ -469,7 +605,16 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     @Override
     @Transactional
     public Response assignTaskToRegisteredStudents(Long activityId, Long taskId) {
+        return assignTaskToRegisteredStudents(activityId, taskId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response assignTaskToRegisteredStudents(Long activityId, Long taskId, DepartmentScope scope) {
         try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
             // Validate activity exists
             Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
             if (activityOpt.isEmpty()) {
@@ -486,8 +631,10 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             ActivityTask task = taskOpt.get();
 
             // Get registered students for this activity
-            List<ActivityRegistration> registrations = activityRegistrationRepository
-                    .findByActivityIdAndActivityIsDeletedFalse(activityId);
+            List<ActivityRegistration> registrations = scope != null && scope.manager()
+                    ? activityRegistrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                            .and((root, query, cb) -> cb.equal(root.get("activity").get("id"), activityId)))
+                    : activityRegistrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
 
             if (registrations.isEmpty()) {
                 return new Response(false, "No registered students found for this activity", null);
@@ -602,9 +749,22 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
 
     @Override
     public Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId) {
+        return getAssignmentsByActivityAndStudent(activityId, studentId, null);
+    }
+
+    @Override
+    public Response getAssignmentsByActivityAndStudent(Long activityId, Long studentId, DepartmentScope scope) {
         try {
-            List<TaskAssignment> assignments = taskAssignmentRepository.findByActivityIdAndStudentId(activityId,
-                    studentId);
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+                departmentAuthorizationService.requireStudentAccess(studentId, scope);
+            }
+            List<TaskAssignment> assignments = scope != null && scope.manager()
+                    ? taskAssignmentRepository.findAll(DepartmentScopeSpec.taskAssignment(scope.departmentIds())
+                            .and((root, query, cb) -> cb.and(
+                                    cb.equal(root.get("task").get("activity").get("id"), activityId),
+                                    cb.equal(root.get("student").get("id"), studentId))))
+                    : taskAssignmentRepository.findByActivityIdAndStudentId(activityId, studentId);
 
             if (assignments.isEmpty()) {
                 return new Response(false, "No task assignments found for this student in the activity", null);

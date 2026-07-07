@@ -13,12 +13,15 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.*;
+import vn.campuslife.exception.ForbiddenException;
 import vn.campuslife.model.EmailAttachmentResponse;
 import vn.campuslife.model.EmailHistoryResponse;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.SendEmailRequest;
 import vn.campuslife.model.SendNotificationOnlyRequest;
 import vn.campuslife.repository.*;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.EmailService;
 import vn.campuslife.service.NotificationService;
 import vn.campuslife.util.EmailUtil;
@@ -51,6 +54,7 @@ public class EmailServiceImpl implements EmailService {
     private final DepartmentRepository departmentRepository;
     private final NotificationService notificationService;
     private final UploadProperties uploadProperties;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
@@ -60,7 +64,18 @@ public class EmailServiceImpl implements EmailService {
     @Override
     @Transactional
     public Response sendEmail(SendEmailRequest request, Long senderId, MultipartFile[] attachments) {
+        return sendEmailInternal(request, senderId, attachments, null);
+    }
+
+    @Override
+    @Transactional
+    public Response sendEmail(SendEmailRequest request, Long senderId, MultipartFile[] attachments, DepartmentScope scope) {
+        return sendEmailInternal(request, senderId, attachments, scope);
+    }
+
+    private Response sendEmailInternal(SendEmailRequest request, Long senderId, MultipartFile[] attachments, DepartmentScope scope) {
         try {
+            validateRecipientScope(request, scope);
             // Validate sender
             Optional<User> senderOpt = userRepository.findById(senderId);
             if (senderOpt.isEmpty()) {
@@ -136,6 +151,7 @@ public class EmailServiceImpl implements EmailService {
                         emailHistory.setErrorMessage("Failed to send email");
                         overallStatus = EmailStatus.PARTIAL;
                     }
+                    applyEmailHistoryDepartmentMetadata(emailHistory, recipient, request, scope);
 
                     // Create notification if requested
                     if (request.getCreateNotification() != null && request.getCreateNotification()) {
@@ -170,7 +186,9 @@ public class EmailServiceImpl implements EmailService {
                                     notificationContent,
                                     notificationType,
                                     actionUrl,
-                                    metadata.isEmpty() ? null : metadata);
+                                    metadata.isEmpty() ? null : metadata,
+                                    resolveSenderDepartmentId(scope, request.getRecipientType(), request.getDepartmentId()),
+                                    resolveTargetDepartmentIdsForRecipient(request, scope, recipient));
                             emailHistory.setNotificationCreated(true);
                         } catch (Exception e) {
                             logger.error("Failed to create notification for user {}: {}", recipient.getId(),
@@ -203,6 +221,7 @@ public class EmailServiceImpl implements EmailService {
                     emailHistory.setSentAt(LocalDateTime.now());
                     emailHistory.setStatus(EmailStatus.FAILED);
                     emailHistory.setErrorMessage(e.getMessage());
+                    applyEmailHistoryDepartmentMetadata(emailHistory, recipient, request, scope);
                     emailHistories.add(emailHistory);
                 }
             }
@@ -242,7 +261,18 @@ public class EmailServiceImpl implements EmailService {
     @Override
     @Transactional
     public Response sendNotificationOnly(SendNotificationOnlyRequest request) {
+        return sendNotificationOnlyInternal(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response sendNotificationOnly(SendNotificationOnlyRequest request, DepartmentScope scope) {
+        return sendNotificationOnlyInternal(request, scope);
+    }
+
+    private Response sendNotificationOnlyInternal(SendNotificationOnlyRequest request, DepartmentScope scope) {
         try {
+            validateNotificationRecipientScope(request, scope);
             // Validate request
             if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
                 return Response.error("Title is required");
@@ -283,6 +313,8 @@ public class EmailServiceImpl implements EmailService {
                 metadata.put("seriesId", request.getSeriesId());
             }
 
+            Long senderDepartmentId = resolveSenderDepartmentId(scope, request.getRecipientType(), request.getDepartmentId());
+
             for (User recipient : recipients) {
                 try {
                     // Build template variables
@@ -298,7 +330,9 @@ public class EmailServiceImpl implements EmailService {
                             processedContent,
                             request.getType(),
                             actionUrl,
-                            metadata.isEmpty() ? null : metadata);
+                            metadata.isEmpty() ? null : metadata,
+                            senderDepartmentId,
+                            resolveTargetDepartmentIdsForNotification(request, scope, recipient));
                     successCount++;
                 } catch (Exception e) {
                     logger.error("Failed to send notification to user {}: {}", recipient.getId(), e.getMessage());
@@ -322,9 +356,22 @@ public class EmailServiceImpl implements EmailService {
 
     @Override
     public Response getEmailHistory(Long senderId, Pageable pageable) {
+        return getEmailHistoryInternal(senderId, pageable, null);
+    }
+
+    @Override
+    public Response getEmailHistory(Long senderId, Pageable pageable, DepartmentScope scope) {
+        return getEmailHistoryInternal(senderId, pageable, scope);
+    }
+
+    private Response getEmailHistoryInternal(Long senderId, Pageable pageable, DepartmentScope scope) {
         try {
-            Page<EmailHistory> emailHistories = emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId,
-                    pageable);
+            // Lịch sử email luôn giới hạn theo người gửi hiện tại (senderId).
+            // Với MANAGER, đây chính là các email trong phạm vi khoa của họ vì họ chỉ gửi
+            // được tới đối tượng trong scope (đã validate lúc gửi). Không lọc thêm theo
+            // department metadata vì cột đó chưa được backfill và sẽ loại bỏ toàn bộ kết quả.
+            Page<EmailHistory> emailHistories =
+                    emailHistoryRepository.findBySenderIdOrderBySentAtDesc(senderId, pageable);
             List<EmailHistoryResponse> responses = emailHistories.getContent().stream()
                     .map(this::toEmailHistoryResponse)
                     .collect(Collectors.toList());
@@ -543,6 +590,77 @@ public class EmailServiceImpl implements EmailService {
         }
 
         return recipients;
+    }
+
+    private void validateRecipientScope(SendEmailRequest request, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return;
+        }
+        validateRecipientTypeScope(
+                request.getRecipientType(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getRecipientIds(),
+                scope);
+    }
+
+    private void validateNotificationRecipientScope(SendNotificationOnlyRequest request, DepartmentScope scope) {
+        if (scope == null || !scope.manager() || scope.admin()) {
+            return;
+        }
+        validateRecipientTypeScope(
+                request.getRecipientType(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getRecipientIds(),
+                scope);
+    }
+
+    private void validateRecipientTypeScope(
+            RecipientType recipientType,
+            Long activityId,
+            Long seriesId,
+            Long departmentId,
+            Long classId,
+            List<Long> recipientIds,
+            DepartmentScope scope) {
+        if (recipientType == null) {
+            throw new ForbiddenException("Access denied");
+        }
+        switch (recipientType) {
+            case ALL_STUDENTS -> throw new ForbiddenException("Access denied");
+            case BY_DEPARTMENT -> {
+                if (departmentId == null || !scope.departmentIds().contains(departmentId)) {
+                    throw new ForbiddenException("Access denied");
+                }
+            }
+            case BY_CLASS -> {
+                if (classId == null) {
+                    throw new ForbiddenException("Access denied");
+                }
+                StudentClass studentClass = studentClassRepository.findById(classId)
+                        .orElseThrow(() -> new ForbiddenException("Access denied"));
+                if (studentClass.getDepartment() == null
+                        || !scope.departmentIds().contains(studentClass.getDepartment().getId())) {
+                    throw new ForbiddenException("Access denied");
+                }
+            }
+            case BULK -> {
+                if (recipientIds != null) {
+                    for (Long userId : recipientIds) {
+                        Student student = studentRepository.findByUserIdAndIsDeletedFalse(userId)
+                                .orElseThrow(() -> new ForbiddenException("Access denied"));
+                        departmentAuthorizationService.requireStudentAccess(student.getId(), scope);
+                    }
+                }
+            }
+            case ACTIVITY_REGISTRATIONS -> departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            case SERIES_REGISTRATIONS -> departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        }
     }
 
     private Map<String, String> buildTemplateVariables(User recipient, SendEmailRequest request) {
@@ -773,5 +891,111 @@ public class EmailServiceImpl implements EmailService {
         response.setFileSize(attachment.getFileSize());
         response.setContentType(attachment.getContentType());
         return response;
+    }
+
+    private void applyEmailHistoryDepartmentMetadata(EmailHistory emailHistory, User recipient,
+                                                     SendEmailRequest request, DepartmentScope scope) {
+        Long senderDeptId = resolveSenderDepartmentId(scope, request.getRecipientType(), request.getDepartmentId());
+        if (senderDeptId != null) {
+            departmentRepository.findById(senderDeptId).ifPresent(emailHistory::setSenderDepartment);
+        }
+        resolveRecipientDepartment(recipient).ifPresent(emailHistory::setRecipientDepartmentAtSend);
+        Set<Department> targets = resolveTargetDepartmentsForRecipient(request, scope, recipient);
+        if (!targets.isEmpty()) {
+            emailHistory.setTargetDepartments(targets);
+        }
+    }
+
+    private Long resolveSenderDepartmentId(DepartmentScope scope, RecipientType recipientType, Long requestDepartmentId) {
+        if (recipientType == RecipientType.BY_DEPARTMENT && requestDepartmentId != null) {
+            return requestDepartmentId;
+        }
+        if (scope != null && scope.manager() && !scope.departmentIds().isEmpty()) {
+            return scope.departmentIds().iterator().next();
+        }
+        return null;
+    }
+
+    private Optional<Department> resolveRecipientDepartment(User recipient) {
+        return studentRepository.findByUserIdAndIsDeletedFalse(recipient.getId())
+                .map(Student::getDepartment)
+                .filter(Objects::nonNull);
+    }
+
+    private Set<Department> resolveTargetDepartmentsForRecipient(SendEmailRequest request, DepartmentScope scope,
+                                                                 User recipient) {
+        return toDepartmentEntities(resolveTargetDepartmentIdsForRecipient(request, scope, recipient));
+    }
+
+    private Set<Long> resolveTargetDepartmentIdsForRecipient(SendEmailRequest request, DepartmentScope scope,
+                                                           User recipient) {
+        return resolveTargetDepartmentIds(
+                request.getRecipientType(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                scope,
+                recipient);
+    }
+
+    private Set<Long> resolveTargetDepartmentIdsForNotification(SendNotificationOnlyRequest request,
+                                                                DepartmentScope scope, User recipient) {
+        return resolveTargetDepartmentIds(
+                request.getRecipientType(),
+                request.getDepartmentId(),
+                request.getClassId(),
+                request.getActivityId(),
+                request.getSeriesId(),
+                scope,
+                recipient);
+    }
+
+    private Set<Long> resolveTargetDepartmentIds(RecipientType recipientType, Long departmentId, Long classId,
+                                                 Long activityId, Long seriesId, DepartmentScope scope,
+                                                 User recipient) {
+        Set<Long> ids = new LinkedHashSet<>();
+        switch (recipientType) {
+            case BY_DEPARTMENT -> {
+                if (departmentId != null) {
+                    ids.add(departmentId);
+                }
+            }
+            case BY_CLASS -> {
+                if (classId != null) {
+                    studentClassRepository.findById(classId)
+                            .map(StudentClass::getDepartment)
+                            .map(Department::getId)
+                            .ifPresent(ids::add);
+                }
+            }
+            case ACTIVITY_REGISTRATIONS -> {
+                if (activityId != null) {
+                    activityRepository.findById(activityId).ifPresent(activity ->
+                            activity.getOrganizers().stream()
+                                    .map(Department::getId)
+                                    .forEach(ids::add));
+                }
+            }
+            case SERIES_REGISTRATIONS -> {
+                if (scope != null && scope.manager()) {
+                    ids.addAll(scope.departmentIds());
+                }
+            }
+            case BULK -> resolveRecipientDepartment(recipient)
+                    .map(Department::getId)
+                    .ifPresent(ids::add);
+            default -> {
+            }
+        }
+        return ids;
+    }
+
+    private Set<Department> toDepartmentEntities(Set<Long> departmentIds) {
+        Set<Department> departments = new LinkedHashSet<>();
+        for (Long departmentId : departmentIds) {
+            departmentRepository.findById(departmentId).ifPresent(departments::add);
+        }
+        return departments;
     }
 }

@@ -1,5 +1,6 @@
 package vn.campuslife.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -15,6 +16,7 @@ public class ArticleCategoryResponse {
     private String description;
     private String slug;
     private int displayOrder;
+    @JsonProperty("isActive")
     private boolean isActive;
     private LocalDateTime createdAt;
 }

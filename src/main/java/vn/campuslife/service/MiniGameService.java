@@ -3,20 +3,22 @@ package vn.campuslife.service;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.quiz.CreateMiniGameRequest;
 import vn.campuslife.model.activity.quiz.UpdateMiniGameRequest;
+import vn.campuslife.security.department.DepartmentScope;
 
 import java.util.List;
 import java.util.Map;
 
 public interface MiniGameService {
-    /**
-     * Tạo minigame với quiz
-     */
     Response createMiniGame(CreateMiniGameRequest request);
+
+    Response createMiniGame(CreateMiniGameRequest request, DepartmentScope scope);
 
     /**
      * Lấy minigame theo activity ID
      */
     Response getMiniGameByActivity(Long activityId);
+
+    Response getMiniGameByActivity(Long activityId, DepartmentScope scope);
 
     /**
      * Student bắt đầu làm quiz
@@ -53,26 +55,27 @@ public interface MiniGameService {
      */
     Response updateMiniGame(Long miniGameId, UpdateMiniGameRequest request);
 
-    /**
-     * Xóa minigame (soft delete)
-     */
+    Response updateMiniGame(Long miniGameId, UpdateMiniGameRequest request, DepartmentScope scope);
+
     Response deleteMiniGame(Long miniGameId);
 
-    /**
-     * Lấy tất cả minigames (Admin/Manager)
-     */
+    Response deleteMiniGame(Long miniGameId, DepartmentScope scope);
+
     Response getAllMiniGames();
 
-    /**
-     * Kiểm tra xem activity đã có minigame/quiz chưa
-     */
+    Response getAllMiniGames(DepartmentScope scope);
+
     Response checkActivityHasQuiz(Long activityId);
+
+    Response checkActivityHasQuiz(Long activityId, DepartmentScope scope);
 
     /**
      * Lấy danh sách câu hỏi và options với đáp án đúng (cho admin/manager để chỉnh sửa)
      * Nếu chưa có quiz, trả về questions rỗng
      */
     Response getQuestionsForEdit(Long miniGameId);
+
+    Response getQuestionsForEdit(Long miniGameId, DepartmentScope scope);
 }
 
 

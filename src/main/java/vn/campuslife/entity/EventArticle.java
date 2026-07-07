@@ -86,6 +86,10 @@ public class EventArticle {
     @JoinColumn(name = "activity_id", nullable = true)
     private Activity activity;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_department_id")
+    private Department ownerDepartment;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "article_type", nullable = false, length = 30)
     private ArticleType articleType = ArticleType.ANNOUNCEMENT;

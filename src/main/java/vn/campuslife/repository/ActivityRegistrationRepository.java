@@ -3,6 +3,7 @@ package vn.campuslife.repository;
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.enumeration.RegistrationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,7 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @Repository
-public interface ActivityRegistrationRepository extends JpaRepository<ActivityRegistration, Long> {
+public interface ActivityRegistrationRepository extends JpaRepository<ActivityRegistration, Long>, JpaSpecificationExecutor<ActivityRegistration> {
 
     /**
      * Lấy danh sách đăng ký theo student ID

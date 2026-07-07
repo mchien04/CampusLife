@@ -1,6 +1,7 @@
 package vn.campuslife.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,7 +13,7 @@ import java.util.List;
 import java.util.Set;
 
 @Repository
-public interface FundAdvanceRepository extends JpaRepository<FundAdvance, Long> {
+public interface FundAdvanceRepository extends JpaRepository<FundAdvance, Long>, JpaSpecificationExecutor<FundAdvance> {
     List<FundAdvance> findByTaskIdAndStudentIdAndStatusOrderByCreatedAtAsc(Long taskId, Long studentId, FundAdvanceStatus status);
 
     List<FundAdvance> findByTaskIdAndStudentIdAndCategoryIdAndStatusOrderByCreatedAtAsc(Long taskId, Long studentId,

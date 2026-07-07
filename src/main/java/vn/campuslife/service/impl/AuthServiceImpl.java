@@ -17,6 +17,7 @@ import vn.campuslife.repository.PasswordResetTokenRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.service.StudentScoreInitService;
+import vn.campuslife.service.UserUniquenessHelper;
 import vn.campuslife.util.JwtUtil;
 import vn.campuslife.util.EmailUtil;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -110,11 +111,13 @@ public class AuthServiceImpl implements vn.campuslife.service.AuthService {
                 return new Response(false, "Password is required", null);
             }
 
-            // Check if username or email already exists
-            if (userRepository.findByUsername(request.getUsername()).isPresent()) {
+            UserUniquenessHelper.reclaimDeletedIdentifiers(
+                    userRepository, request.getUsername(), request.getEmail());
+
+            if (userRepository.existsByUsernameAndIsDeletedFalse(request.getUsername())) {
                 return new Response(false, "Username already exists", null);
             }
-            if (userRepository.findByEmail(request.getEmail()).isPresent()) {
+            if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
                 return new Response(false, "Email already exists", null);
             }
 

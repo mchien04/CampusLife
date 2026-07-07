@@ -25,4 +25,6 @@ public class StudentAccountResponse {
                                // xác trong getPendingAccounts)
     private LocalDateTime lastLogin; // Thời gian đăng nhập lần cuối (null nếu chưa đăng nhập)
     private LocalDateTime createdAt;
+    private Long departmentId;
+    private String departmentName;
 }

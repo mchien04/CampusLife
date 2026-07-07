@@ -1,6 +1,7 @@
 package vn.campuslife.service;
 
 import org.springframework.data.domain.Page;
+import vn.campuslife.security.department.DepartmentScope;
 
 import java.util.List;
 
@@ -40,22 +41,38 @@ public interface EventArticleService {
     // Admin/Manager CRUD
     vn.campuslife.model.EventArticleAdminResponse createArticle(vn.campuslife.model.EventArticleUpsertRequest request);
 
+    vn.campuslife.model.EventArticleAdminResponse createArticle(vn.campuslife.model.EventArticleUpsertRequest request, DepartmentScope scope);
+
     vn.campuslife.model.EventArticleAdminResponse updateArticle(Long articleId, vn.campuslife.model.EventArticleUpsertRequest request);
+
+    vn.campuslife.model.EventArticleAdminResponse updateArticle(Long articleId, vn.campuslife.model.EventArticleUpsertRequest request, DepartmentScope scope);
 
     vn.campuslife.model.EventArticleAdminResponse publishArticle(Long articleId);
 
+    vn.campuslife.model.EventArticleAdminResponse publishArticle(Long articleId, DepartmentScope scope);
+
     vn.campuslife.model.EventArticleAdminResponse unpublishArticle(Long articleId);
+
+    vn.campuslife.model.EventArticleAdminResponse unpublishArticle(Long articleId, DepartmentScope scope);
 
     vn.campuslife.model.EventArticleAdminResponse getArticleById(Long articleId);
 
+    vn.campuslife.model.EventArticleAdminResponse getArticleById(Long articleId, DepartmentScope scope);
+
     List<vn.campuslife.model.EventArticleAdminResponse> getArticlesByActivityId(Long activityId);
 
+    List<vn.campuslife.model.EventArticleAdminResponse> getArticlesByActivityId(Long activityId, DepartmentScope scope);
+
     vn.campuslife.model.EventArticleAdminResponse setPrimaryArticle(Long articleId);
+
+    vn.campuslife.model.EventArticleAdminResponse setPrimaryArticle(Long articleId, DepartmentScope scope);
 
     List<vn.campuslife.model.ArticleListResponse> getArticlesBySeriesId(Long seriesId);
 
     // Admin Statistics Dashboard
     vn.campuslife.model.ArticleStatisticsResponse getArticleStatistics();
+
+    vn.campuslife.model.ArticleStatisticsResponse getArticleStatistics(DepartmentScope scope);
 
     // Category Management
     List<vn.campuslife.model.ArticleCategoryResponse> getAllCategories();
@@ -78,7 +95,11 @@ public interface EventArticleService {
     // Image Management
     vn.campuslife.model.ArticleImageResponse addImageToArticle(Long articleId, vn.campuslife.model.ArticleImageRequest request);
 
+    vn.campuslife.model.ArticleImageResponse addImageToArticle(Long articleId, vn.campuslife.model.ArticleImageRequest request, DepartmentScope scope);
+
     void removeImageFromArticle(Long articleId, Long imageId);
+
+    void removeImageFromArticle(Long articleId, Long imageId, DepartmentScope scope);
 
     // Waitlist & Calendar
     vn.campuslife.model.Response registerForWaitlist(String slug, String username);
@@ -110,7 +131,17 @@ public interface EventArticleService {
             Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
             int page, int size);
 
+    org.springframework.data.domain.Page<vn.campuslife.model.ArticleListResponse> getFilteredArticlesForAdmin(
+            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            int page, int size, DepartmentScope scope);
+
     byte[] exportArticlesToExcel(
             String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
             Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo);
+
+    byte[] exportArticlesToExcel(
+            String status, Long activityId, Long categoryId, vn.campuslife.enumeration.ArticleType articleType,
+            Boolean featured, Boolean pinned, Boolean primary, String search, String dateFrom, String dateTo,
+            DepartmentScope scope);
 }

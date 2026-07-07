@@ -1,11 +1,14 @@
 package vn.campuslife.controller.activity.task;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
+import vn.campuslife.security.department.DepartmentRequestScope;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.TaskSubmissionService;
 import vn.campuslife.service.StudentService;
 import vn.campuslife.repository.UserRepository;
@@ -31,7 +34,8 @@ public class TaskSubmissionController {
             @RequestParam(required = false) String content,
             @RequestParam(required = false) List<MultipartFile> files,
             @RequestParam(required = false) List<MultipartFile> images,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
             Long studentId = getStudentIdFromAuth(authentication);
             if (studentId == null) {
@@ -95,9 +99,12 @@ public class TaskSubmissionController {
      * Lấy tất cả bài nộp của một task (Admin/Manager)
      */
     @GetMapping("/task/{taskId}")
-    public ResponseEntity<Response> getTaskSubmissions(@PathVariable Long taskId) {
+    public ResponseEntity<Response> getTaskSubmissions(@PathVariable Long taskId, HttpServletRequest request) {
         try {
-            Response response = taskSubmissionService.getTaskSubmissions(taskId);
+            DepartmentScope scope = currentScope(request);
+            Response response = hasManagerScope(scope)
+                    ? taskSubmissionService.getTaskSubmissions(taskId, scope)
+                    : taskSubmissionService.getTaskSubmissions(taskId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -112,7 +119,8 @@ public class TaskSubmissionController {
     public ResponseEntity<Response> gradeSubmission(@PathVariable Long submissionId,
             @RequestParam boolean isCompleted,
             @RequestParam(required = false) String feedback,
-            Authentication authentication) {
+            Authentication authentication,
+            HttpServletRequest request) {
         try {
             Long graderId = getUserIdFromAuth(authentication);
             if (graderId == null) {
@@ -120,7 +128,10 @@ public class TaskSubmissionController {
                         .body(new Response(false, "User not found", null));
             }
 
-            Response response = taskSubmissionService.gradeSubmission(submissionId, graderId, isCompleted, feedback);
+            DepartmentScope scope = currentScope(request);
+            Response response = hasManagerScope(scope)
+                    ? taskSubmissionService.gradeSubmission(submissionId, graderId, isCompleted, feedback, scope)
+                    : taskSubmissionService.gradeSubmission(submissionId, graderId, isCompleted, feedback);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -132,9 +143,12 @@ public class TaskSubmissionController {
      * Lấy chi tiết bài nộp
      */
     @GetMapping("/{submissionId}")
-    public ResponseEntity<Response> getSubmissionDetails(@PathVariable Long submissionId) {
+    public ResponseEntity<Response> getSubmissionDetails(@PathVariable Long submissionId, HttpServletRequest request) {
         try {
-            Response response = taskSubmissionService.getSubmissionDetails(submissionId);
+            DepartmentScope scope = currentScope(request);
+            Response response = hasManagerScope(scope)
+                    ? taskSubmissionService.getSubmissionDetails(submissionId, scope)
+                    : taskSubmissionService.getSubmissionDetails(submissionId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -166,9 +180,12 @@ public class TaskSubmissionController {
      * Lấy danh sách file đính kèm
      */
     @GetMapping("/{submissionId}/files")
-    public ResponseEntity<Response> getSubmissionFiles(@PathVariable Long submissionId) {
+    public ResponseEntity<Response> getSubmissionFiles(@PathVariable Long submissionId, HttpServletRequest request) {
         try {
-            Response response = taskSubmissionService.getSubmissionFiles(submissionId);
+            DepartmentScope scope = currentScope(request);
+            Response response = hasManagerScope(scope)
+                    ? taskSubmissionService.getSubmissionFiles(submissionId, scope)
+                    : taskSubmissionService.getSubmissionFiles(submissionId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -199,5 +216,13 @@ public class TaskSubmissionController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private DepartmentScope currentScope(HttpServletRequest request) {
+        return DepartmentRequestScope.get(request).orElse(null);
+    }
+
+    private boolean hasManagerScope(DepartmentScope scope) {
+        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

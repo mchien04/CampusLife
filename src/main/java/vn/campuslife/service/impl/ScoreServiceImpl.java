@@ -32,6 +32,9 @@ import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentScoreRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.repository.UserRepository;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ScoreService;
 import vn.campuslife.service.SemesterHelperService;
 import org.springframework.data.domain.Page;
@@ -68,6 +71,7 @@ public class ScoreServiceImpl implements ScoreService {
     private final ActivitySeriesRepository seriesRepository;
     private final SemesterHelperService semesterHelperService;
     private final vn.campuslife.service.ScoreEntryService scoreEntryService;
+    private final DepartmentAuthorizationService departmentAuthorizationService;
 
     @Override
     @Transactional
@@ -78,7 +82,13 @@ public class ScoreServiceImpl implements ScoreService {
 
     @Override
     public Response viewScores(Long studentId, Long semesterId) {
+        return viewScores(studentId, semesterId, null);
+    }
+
+    @Override
+    public Response viewScores(Long studentId, Long semesterId, DepartmentScope scope) {
         try {
+            guardStudentScoreAccess(studentId, scope);
             List<StudentScore> rows = studentScoreRepository.findByStudentAndSemester(studentId, semesterId);
 
             Map<ScoreType, List<StudentScore>> byType = rows.stream()
@@ -121,7 +131,13 @@ public class ScoreServiceImpl implements ScoreService {
 
     @Override
     public Response getTotalScore(Long studentId, Long semesterId) {
+        return getTotalScore(studentId, semesterId, null);
+    }
+
+    @Override
+    public Response getTotalScore(Long studentId, Long semesterId, DepartmentScope scope) {
         try {
+            guardStudentScoreAccess(studentId, scope);
             List<StudentScore> rows = studentScoreRepository.findByStudentAndSemester(studentId, semesterId);
 
             Map<ScoreType, BigDecimal> totalsByType = rows.stream()
@@ -159,7 +175,26 @@ public class ScoreServiceImpl implements ScoreService {
     @Override
     @Transactional(readOnly = true)
     public Response getStudentRanking(Long semesterId, ScoreType scoreType, Long departmentId, Long classId, String sortOrder) {
+        return getStudentRanking(semesterId, scoreType, departmentId, classId, sortOrder, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getStudentRanking(Long semesterId, ScoreType scoreType, Long departmentId, Long classId, String sortOrder,
+                                      DepartmentScope scope) {
         try {
+            Set<Long> managerDeptFilter = null;
+            if (scope != null && scope.manager()) {
+                managerDeptFilter = departmentAuthorizationService.managerDepartmentFilter(scope, departmentId);
+                if (classId != null) {
+                    departmentAuthorizationService.requireStudentClassAccess(classId, scope);
+                }
+                if (managerDeptFilter.size() == 1) {
+                    departmentId = managerDeptFilter.iterator().next();
+                } else {
+                    departmentId = null;
+                }
+            }
             // Validate semester
             Optional<Semester> semesterOpt = semesterRepository.findById(semesterId);
             if (semesterOpt.isEmpty()) {
@@ -184,6 +219,13 @@ public class ScoreServiceImpl implements ScoreService {
                 } else {
                     scores = studentScoreRepository.findBySemesterIdAndScoreTypeOrderByScoreDesc(
                             semesterId, scoreType);
+                }
+                if (managerDeptFilter != null && managerDeptFilter.size() > 1) {
+                    Set<Long> allowedDeptIds = managerDeptFilter;
+                    scores = scores.stream()
+                            .filter(score -> score.getStudent().getDepartment() != null
+                                    && allowedDeptIds.contains(score.getStudent().getDepartment().getId()))
+                            .collect(Collectors.toList());
                 }
 
                 // Reverse nếu sort ASC
@@ -229,17 +271,26 @@ public class ScoreServiceImpl implements ScoreService {
             } else {
                 // Xếp hạng theo tổng điểm tất cả loại
                 List<StudentScore> allScores = studentScoreRepository.findBySemesterIdOrderByScoreDesc(semesterId);
+                if (managerDeptFilter != null) {
+                    Set<Long> allowedDeptIds = managerDeptFilter;
+                    allScores = allScores.stream()
+                            .filter(score -> score.getStudent().getDepartment() != null
+                                    && allowedDeptIds.contains(score.getStudent().getDepartment().getId()))
+                            .collect(Collectors.toList());
+                }
 
                 // Group by student và tính tổng điểm
+                Long effectiveDepartmentId = departmentId;
+                Long effectiveClassId = classId;
                 Map<Long, BigDecimal> totalScoresByStudent = allScores.stream()
                         .filter(ss -> {
                             // Filter theo department và class nếu có
-                            if (departmentId != null && (ss.getStudent().getDepartment() == null 
-                                    || !ss.getStudent().getDepartment().getId().equals(departmentId))) {
+                            if (effectiveDepartmentId != null && (ss.getStudent().getDepartment() == null
+                                    || !ss.getStudent().getDepartment().getId().equals(effectiveDepartmentId))) {
                                 return false;
                             }
-                            if (classId != null && (ss.getStudent().getStudentClass() == null 
-                                    || !ss.getStudent().getStudentClass().getId().equals(classId))) {
+                            if (effectiveClassId != null && (ss.getStudent().getStudentClass() == null
+                                    || !ss.getStudent().getStudentClass().getId().equals(effectiveClassId))) {
                                 return false;
                             }
                             return true;
@@ -335,10 +386,23 @@ public class ScoreServiceImpl implements ScoreService {
         }
     }
 
+    private void guardStudentScoreAccess(Long studentId, DepartmentScope scope) {
+        if (scope != null) {
+            departmentAuthorizationService.requireStudentAccess(studentId, scope);
+        }
+    }
+
     @Override
     @Transactional
     public Response recalculateStudentScore(Long studentId, Long semesterId) {
+        return recalculateStudentScore(studentId, semesterId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response recalculateStudentScore(Long studentId, Long semesterId, DepartmentScope scope) {
         try {
+            guardStudentScoreAccess(studentId, scope);
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {
                 return Response.error("Student not found");
@@ -375,6 +439,12 @@ public class ScoreServiceImpl implements ScoreService {
     @Override
     @Transactional
     public Response recalculateAllStudentScores(Long semesterId) {
+        return recalculateAllStudentScores(semesterId, null);
+    }
+
+    @Override
+    @Transactional
+    public Response recalculateAllStudentScores(Long semesterId, DepartmentScope scope) {
         try {
             // Get semester
             Semester semester;
@@ -396,10 +466,12 @@ public class ScoreServiceImpl implements ScoreService {
             }
 
             // Get all active students
-            List<Student> students = studentRepository.findAll()
-                    .stream()
-                    .filter(s -> !s.isDeleted())
-                    .collect(Collectors.toList());
+            List<Student> students = scope != null && scope.manager()
+                    ? studentRepository.findAll(DepartmentScopeSpec.student(scope.departmentIds()))
+                    : studentRepository.findAll()
+                            .stream()
+                            .filter(s -> !s.isDeleted())
+                            .collect(Collectors.toList());
 
             Map<String, Object> result = new HashMap<>();
             result.put("semesterId", semester.getId());
@@ -412,7 +484,7 @@ public class ScoreServiceImpl implements ScoreService {
 
             for (Student student : students) {
                 try {
-                    Response recalcResponse = recalculateStudentScore(student.getId(), semester.getId());
+                    Response recalcResponse = recalculateStudentScore(student.getId(), semester.getId(), scope);
                     if (recalcResponse.isStatus()) {
                         successCount++;
                     } else {
@@ -452,7 +524,16 @@ public class ScoreServiceImpl implements ScoreService {
     @Transactional(readOnly = true)
     public Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId,
                                     LocalDateTime startDate, LocalDateTime endDate, String keyword) {
+        return getScoreHistory(studentId, semesterId, scoreType, page, size, requestingStudentId,
+                startDate, endDate, keyword, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Response getScoreHistory(Long studentId, Long semesterId, ScoreType scoreType, Integer page, Integer size, Long requestingStudentId,
+                                    LocalDateTime startDate, LocalDateTime endDate, String keyword, DepartmentScope scope) {
         try {
+            guardStudentScoreAccess(studentId, scope);
             // Validate student
             Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
             if (studentOpt.isEmpty()) {

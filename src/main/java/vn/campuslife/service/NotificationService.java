@@ -9,12 +9,16 @@ import vn.campuslife.model.Response;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface NotificationService {
 
     // Gửi thông báo cho một user
     Response sendNotification(Long userId, String title, String content, NotificationType type, String actionUrl,
             Map<String, Object> metadata);
+
+    Response sendNotification(Long userId, String title, String content, NotificationType type, String actionUrl,
+            Map<String, Object> metadata, Long senderDepartmentId, Set<Long> targetDepartmentIds);
 
     // Gửi thông báo cho nhiều user
     Response sendBulkNotification(List<Long> userIds, String title, String content, NotificationType type,

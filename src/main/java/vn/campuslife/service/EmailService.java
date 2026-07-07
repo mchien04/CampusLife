@@ -5,22 +5,20 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.SendEmailRequest;
 import vn.campuslife.model.SendNotificationOnlyRequest;
+import vn.campuslife.security.department.DepartmentScope;
 
 public interface EmailService {
-    /**
-     * Gửi email với nhiều tùy chọn người nhận
-     */
     Response sendEmail(SendEmailRequest request, Long senderId, MultipartFile[] attachments);
 
-    /**
-     * Chỉ tạo notification (không gửi email)
-     */
+    Response sendEmail(SendEmailRequest request, Long senderId, MultipartFile[] attachments, DepartmentScope scope);
+
     Response sendNotificationOnly(SendNotificationOnlyRequest request);
 
-    /**
-     * Lấy lịch sử email đã gửi
-     */
+    Response sendNotificationOnly(SendNotificationOnlyRequest request, DepartmentScope scope);
+
     Response getEmailHistory(Long senderId, Pageable pageable);
+
+    Response getEmailHistory(Long senderId, Pageable pageable, DepartmentScope scope);
 
     /**
      * Lấy chi tiết email đã gửi
