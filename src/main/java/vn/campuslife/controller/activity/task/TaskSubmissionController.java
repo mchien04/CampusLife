@@ -9,6 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.TaskSubmissionService;
 import vn.campuslife.service.StudentService;
 import vn.campuslife.repository.UserRepository;
@@ -23,6 +24,7 @@ import java.util.Optional;
 public class TaskSubmissionController {
 
     private final TaskSubmissionService taskSubmissionService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
     private final UserRepository userRepository;
 
@@ -102,7 +104,7 @@ public class TaskSubmissionController {
     public ResponseEntity<Response> getTaskSubmissions(@PathVariable Long taskId, HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? taskSubmissionService.getTaskSubmissions(taskId, scope)
                     : taskSubmissionService.getTaskSubmissions(taskId);
             return ResponseEntity.ok(response);
@@ -129,7 +131,7 @@ public class TaskSubmissionController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? taskSubmissionService.gradeSubmission(submissionId, graderId, isCompleted, feedback, scope)
                     : taskSubmissionService.gradeSubmission(submissionId, graderId, isCompleted, feedback);
             return ResponseEntity.ok(response);
@@ -146,7 +148,7 @@ public class TaskSubmissionController {
     public ResponseEntity<Response> getSubmissionDetails(@PathVariable Long submissionId, HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? taskSubmissionService.getSubmissionDetails(submissionId, scope)
                     : taskSubmissionService.getSubmissionDetails(submissionId);
             return ResponseEntity.ok(response);
@@ -183,7 +185,7 @@ public class TaskSubmissionController {
     public ResponseEntity<Response> getSubmissionFiles(@PathVariable Long submissionId, HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? taskSubmissionService.getSubmissionFiles(submissionId, scope)
                     : taskSubmissionService.getSubmissionFiles(submissionId);
             return ResponseEntity.ok(response);
@@ -220,9 +222,5 @@ public class TaskSubmissionController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

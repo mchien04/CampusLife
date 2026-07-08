@@ -177,14 +177,14 @@ public class DepartmentAuthorizationService {
         }
         if (!scope.departmentIds().contains(requestedDepartmentId)) {
             denyAccess("DepartmentFilter", requestedDepartmentId, scope, "department filter out of scope");
-            return properties.isAuditOnly() ? scope.departmentIds() : Set.of();
+            return properties.shouldDenyAccess() ? Set.of() : scope.departmentIds();
         }
         return Set.of(requestedDepartmentId);
     }
 
     private void denyAccess(String entityType, Long entityId, DepartmentScope scope, String reason) {
         auditService.logScopeViolation(entityType, entityId, scope, reason);
-        if (!properties.isAuditOnly()) {
+        if (properties.shouldDenyAccess()) {
             throw new ForbiddenException(ACCESS_DENIED);
         }
     }

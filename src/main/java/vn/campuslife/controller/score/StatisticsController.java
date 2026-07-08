@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.StatisticsService;
 import vn.campuslife.service.StudentService;
 
@@ -23,6 +24,7 @@ public class StatisticsController {
     private static final Logger logger = LoggerFactory.getLogger(StatisticsController.class);
 
     private final StatisticsService statisticsService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
 
     /**
@@ -43,7 +45,7 @@ public class StatisticsController {
                 }
             }
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getDashboardOverview(studentId, scope)
                     : statisticsService.getDashboardOverview(studentId);
             return ResponseEntity.ok(response);
@@ -77,7 +79,7 @@ public class StatisticsController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getActivityStatistics(activityType, scoreType, departmentId, start, end, scope)
                     : statisticsService.getActivityStatistics(activityType, scoreType, departmentId, start, end);
             return ResponseEntity.ok(response);
@@ -100,7 +102,7 @@ public class StatisticsController {
             HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getStudentStatistics(departmentId, classId, semesterId, scope)
                     : statisticsService.getStudentStatistics(departmentId, classId, semesterId);
             return ResponseEntity.ok(response);
@@ -136,7 +138,7 @@ public class StatisticsController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getScoreStatistics(scoreType, semesterId, departmentId, classId, studentId, scope)
                     : statisticsService.getScoreStatistics(scoreType, semesterId, departmentId, classId, studentId);
             return ResponseEntity.ok(response);
@@ -158,7 +160,7 @@ public class StatisticsController {
             HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getSeriesStatistics(seriesId, semesterId, scope)
                     : statisticsService.getSeriesStatistics(seriesId, semesterId);
             return ResponseEntity.ok(response);
@@ -190,7 +192,7 @@ public class StatisticsController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getMiniGameStatistics(miniGameId, start, end, scope)
                     : statisticsService.getMiniGameStatistics(miniGameId, start, end);
             return ResponseEntity.ok(response);
@@ -225,7 +227,7 @@ public class StatisticsController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? statisticsService.getScoreBreakdown(semesterId, studentId, departmentId, scope)
                     : statisticsService.getScoreBreakdown(semesterId, studentId, departmentId);
             return ResponseEntity.ok(response);
@@ -238,10 +240,6 @@ public class StatisticsController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

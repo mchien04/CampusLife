@@ -88,9 +88,9 @@ Các luồng này không cần khoa:
 
 - `POST /api/admin/students/upload-excel`
 - `POST /api/admin/students/bulk-create`
-- `POST /api/admin/students/create-multiple`
+- `POST /api/admin/students/create-multiple` (mỗi phần tử trong `students[]` có thể gửi `departmentId`)
 
-Sinh viên sẽ tự chọn khoa khi cập nhật profile sau khi đăng nhập.
+Sinh viên import Excel vẫn tự chọn khoa khi cập nhật profile sau khi đăng nhập.
 
 ### Tạo thủ công một sinh viên
 

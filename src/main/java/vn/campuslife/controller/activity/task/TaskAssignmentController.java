@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import vn.campuslife.model.Response;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.ActivityTaskService;
 import vn.campuslife.service.StudentService;
 
@@ -17,6 +18,7 @@ import vn.campuslife.service.StudentService;
 public class TaskAssignmentController {
 
     private final ActivityTaskService activityTaskService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
 
     /**
@@ -44,7 +46,7 @@ public class TaskAssignmentController {
     @GetMapping("/student/{studentId}")
     public ResponseEntity<Response> getStudentTasks(@PathVariable Long studentId, HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? activityTaskService.getStudentTasks(studentId, scope)
                 : activityTaskService.getStudentTasks(studentId);
         return ResponseEntity.ok(response);
@@ -66,7 +68,7 @@ public class TaskAssignmentController {
     @DeleteMapping("/{assignmentId}")
     public ResponseEntity<Response> removeTaskAssignment(@PathVariable Long assignmentId, HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? activityTaskService.removeTaskAssignment(assignmentId, scope)
                 : activityTaskService.removeTaskAssignment(assignmentId);
         return ResponseEntity.ok(response);
@@ -89,7 +91,7 @@ public class TaskAssignmentController {
             @PathVariable Long studentId,
             HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? activityTaskService.getAssignmentsByActivityAndStudent(activityId, studentId, scope)
                 : activityTaskService.getAssignmentsByActivityAndStudent(activityId, studentId);
         return ResponseEntity.ok(response);
@@ -97,9 +99,5 @@ public class TaskAssignmentController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

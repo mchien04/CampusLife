@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.PreparationExportService;
 
 @RestController
@@ -21,6 +22,7 @@ import vn.campuslife.service.PreparationExportService;
 @RequiredArgsConstructor
 public class PreparationExportController {
     private final PreparationExportService exportService;
+    private final DepartmentScopeRouting departmentScopeRouting;
 
     @GetMapping("/financial")
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER') or @preparationSecurity.isActivityPrepSupervisor(#activityId, authentication) or @preparationSecurity.isOrganizer(#activityId, authentication)")
@@ -30,7 +32,7 @@ public class PreparationExportController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        PreparationExportService.ExportFile file = hasManagerScope(scope)
+        PreparationExportService.ExportFile file = departmentScopeRouting.useManagerScopedPath(scope)
                 ? exportService.exportFinancial(activityId, format, scope)
                 : exportService.exportFinancial(activityId, format);
         return fileResponse(file);
@@ -44,7 +46,7 @@ public class PreparationExportController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        PreparationExportService.ExportFile file = hasManagerScope(scope)
+        PreparationExportService.ExportFile file = departmentScopeRouting.useManagerScopedPath(scope)
                 ? exportService.exportOperational(activityId, format, scope)
                 : exportService.exportOperational(activityId, format);
         return fileResponse(file);
@@ -58,7 +60,7 @@ public class PreparationExportController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        PreparationExportService.ExportFile file = hasManagerScope(scope)
+        PreparationExportService.ExportFile file = departmentScopeRouting.useManagerScopedPath(scope)
                 ? exportService.exportAudit(activityId, format, scope)
                 : exportService.exportAudit(activityId, format);
         return fileResponse(file);
@@ -73,9 +75,5 @@ public class PreparationExportController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

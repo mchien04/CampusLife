@@ -2,6 +2,9 @@ package vn.campuslife.controller.student;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -13,6 +16,7 @@ import vn.campuslife.model.student.CreateStudentRequest;
 import vn.campuslife.model.student.UpdateStudentAccountRequest;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.StudentAccountManagementService;
 
 @RestController
@@ -21,6 +25,7 @@ import vn.campuslife.service.StudentAccountManagementService;
 public class StudentAccountManagementController {
 
     private final StudentAccountManagementService studentAccountManagementService;
+    private final DepartmentScopeRouting departmentScopeRouting;
 
     @GetMapping("/validate")
     public ResponseEntity<Response> validateStudentAccount(
@@ -47,24 +52,33 @@ public class StudentAccountManagementController {
             @RequestBody CreateStudentRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? studentAccountManagementService.createStudent(request, scope)
                 : studentAccountManagementService.createStudent(request);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
     }
 
     @PostMapping("/create-multiple")
-    public ResponseEntity<Response> createMultipleStudents(@RequestBody CreateMultipleStudentsRequest request) {
-        Response response = studentAccountManagementService.createMultipleStudents(request);
+    public ResponseEntity<Response> createMultipleStudents(@RequestBody CreateMultipleStudentsRequest request,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? studentAccountManagementService.createMultipleStudents(request, scope)
+                : studentAccountManagementService.createMultipleStudents(request);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
     }
 
     @GetMapping("/pending")
-    public ResponseEntity<Response> getPendingAccounts(HttpServletRequest httpRequest) {
+    public ResponseEntity<Response> getPendingAccounts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Boolean credentialsSent,
+            HttpServletRequest httpRequest) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
-                ? studentAccountManagementService.getPendingAccounts(scope)
-                : studentAccountManagementService.getPendingAccounts();
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? studentAccountManagementService.getPendingAccounts(pageable, credentialsSent, scope)
+                : studentAccountManagementService.getPendingAccounts(pageable, credentialsSent);
         return ResponseEntity.ok(response);
     }
 
@@ -74,7 +88,7 @@ public class StudentAccountManagementController {
             @RequestBody UpdateStudentAccountRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? studentAccountManagementService.updateStudentAccount(studentId, request, scope)
                 : studentAccountManagementService.updateStudentAccount(studentId, request);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
@@ -84,7 +98,7 @@ public class StudentAccountManagementController {
     public ResponseEntity<Response> deleteStudentAccount(@PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? studentAccountManagementService.deleteStudentAccount(studentId, scope)
                 : studentAccountManagementService.deleteStudentAccount(studentId);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
@@ -94,7 +108,7 @@ public class StudentAccountManagementController {
     public ResponseEntity<Response> sendCredentials(@PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? studentAccountManagementService.sendCredentials(studentId, scope)
                 : studentAccountManagementService.sendCredentials(studentId);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
@@ -104,7 +118,7 @@ public class StudentAccountManagementController {
     public ResponseEntity<Response> bulkSendCredentials(@RequestBody BulkSendCredentialsRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? studentAccountManagementService.bulkSendCredentials(request, scope)
                 : studentAccountManagementService.bulkSendCredentials(request);
         return ResponseEntity.status(response.isStatus() ? 200 : 400).body(response);
@@ -112,9 +126,5 @@ public class StudentAccountManagementController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

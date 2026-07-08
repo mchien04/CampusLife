@@ -13,6 +13,7 @@ import vn.campuslife.model.TaskStatsRespone;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.PreparationService;
 import vn.campuslife.service.StudentService;
@@ -25,6 +26,7 @@ import java.util.List;
 public class PreparationController {
 
     private final PreparationService preparationService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService userService;
     private final FileUploadService fileUploadService;
 
@@ -35,7 +37,7 @@ public class PreparationController {
             @RequestParam boolean enabled,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             preparationService.togglePreparation(activityId, enabled, scope);
         } else {
             preparationService.togglePreparation(activityId, enabled);
@@ -49,7 +51,7 @@ public class PreparationController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        PreparationDashboardDto dashboard = hasManagerScope(scope)
+        PreparationDashboardDto dashboard = departmentScopeRouting.useManagerScopedPath(scope)
                 ? preparationService.getPreparationDashboard(activityId, scope)
                 : preparationService.getPreparationDashboard(activityId);
         return ResponseEntity.ok(Response.success("OK", dashboard));
@@ -61,7 +63,7 @@ public class PreparationController {
             @RequestParam List<Long> activityIds,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<PreparationSummaryResponse> summary = hasManagerScope(scope)
+        List<PreparationSummaryResponse> summary = departmentScopeRouting.useManagerScopedPath(scope)
                 ? preparationService.getPreparationsSummary(activityIds, scope)
                 : preparationService.getPreparationsSummary(activityIds);
         return ResponseEntity.ok(Response.success("OK", summary));
@@ -87,7 +89,7 @@ public class PreparationController {
             @PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             preparationService.addOrganizer(activityId, studentId, scope);
         } else {
             preparationService.addOrganizer(activityId, studentId);
@@ -102,7 +104,7 @@ public class PreparationController {
             @RequestBody @Valid BulkAddOrganizersRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        BulkAddOrganizersResultDto result = hasManagerScope(scope)
+        BulkAddOrganizersResultDto result = departmentScopeRouting.useManagerScopedPath(scope)
                 ? preparationService.addOrganizers(activityId, request.getStudentIds(), scope)
                 : preparationService.addOrganizers(activityId, request.getStudentIds());
         return ResponseEntity.ok(Response.success("OK", result));
@@ -115,7 +117,7 @@ public class PreparationController {
             @PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             preparationService.removeOrganizer(activityId, studentId, scope);
         } else {
             preparationService.removeOrganizer(activityId, studentId);
@@ -130,7 +132,7 @@ public class PreparationController {
             @RequestBody @Valid CreatePreparationTaskRequest req,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        PreparationTaskDto dto = hasManagerScope(scope)
+        PreparationTaskDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? preparationService.assignTask(new CreatePreparationTaskRequest(
                         activityId,
                         req.getOwnerId(),
@@ -223,7 +225,7 @@ public class PreparationController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<WorkloadWarningDto> warnings = hasManagerScope(scope)
+        List<WorkloadWarningDto> warnings = departmentScopeRouting.useManagerScopedPath(scope)
                 ? preparationService.getWorkloadWarnings(activityId, scope)
                 : preparationService.getWorkloadWarnings(activityId);
         return ResponseEntity.ok(Response.success("OK", warnings));
@@ -266,7 +268,7 @@ public class PreparationController {
             @PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             preparationService.grantPrepSupervisor(activityId, studentId, scope);
         } else {
             preparationService.grantPrepSupervisor(activityId, studentId);
@@ -281,7 +283,7 @@ public class PreparationController {
             @PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             preparationService.revokePrepSupervisor(activityId, studentId, scope);
         } else {
             preparationService.revokePrepSupervisor(activityId, studentId);
@@ -291,10 +293,6 @@ public class PreparationController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

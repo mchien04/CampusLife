@@ -104,13 +104,8 @@ public class StudentController {
      */
     @GetMapping("/{studentId}")
     public ResponseEntity<Response> getStudentById(@PathVariable Long studentId, HttpServletRequest httpRequest) {
-        try {
-            Response response = studentService.getStudentById(studentId, currentScope(httpRequest));
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                    .body(new Response(false, "Failed to get student: " + e.getMessage(), null));
-        }
+        Response response = studentService.getStudentById(studentId, currentScope(httpRequest));
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -118,13 +113,8 @@ public class StudentController {
      */
     @GetMapping("/username/{username}")
     public ResponseEntity<Response> getStudentByUsername(@PathVariable String username, HttpServletRequest httpRequest) {
-        try {
-            Response response = studentService.getStudentByUsername(username, currentScope(httpRequest));
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                    .body(new Response(false, "Failed to get student: " + e.getMessage(), null));
-        }
+        Response response = studentService.getStudentByUsername(username, currentScope(httpRequest));
+        return ResponseEntity.ok(response);
     }
 
     private DepartmentScope currentScope(HttpServletRequest request) {

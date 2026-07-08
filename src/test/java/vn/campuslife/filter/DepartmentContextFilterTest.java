@@ -12,6 +12,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import vn.campuslife.config.DepartmentScopeProperties;
 import vn.campuslife.exception.ForbiddenException;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
@@ -36,6 +38,8 @@ class DepartmentContextFilterTest {
     @Mock
     private FilterChain filterChain;
 
+    private final DepartmentScopeProperties properties = new DepartmentScopeProperties();
+
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
@@ -43,7 +47,8 @@ class DepartmentContextFilterTest {
 
     @Test
     void doFilterInternal_AuthenticatedRequest_AttachesDepartmentScope() throws Exception {
-        DepartmentContextFilter filter = new DepartmentContextFilter(resolver, new ObjectMapper());
+        properties.getEnforcement().setEnabled(true);
+        DepartmentContextFilter filter = new DepartmentContextFilter(resolver, properties, new ObjectMapper());
         UsernamePasswordAuthenticationToken authentication = authentication("manager", "ROLE_MANAGER");
         DepartmentScope scope = DepartmentScope.manager(Set.of(1L, 2L));
         SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -60,7 +65,8 @@ class DepartmentContextFilterTest {
 
     @Test
     void doFilterInternal_UnassignedManager_WritesForbiddenResponse() throws Exception {
-        DepartmentContextFilter filter = new DepartmentContextFilter(resolver, new ObjectMapper());
+        properties.getEnforcement().setEnabled(true);
+        DepartmentContextFilter filter = new DepartmentContextFilter(resolver, properties, new ObjectMapper());
         UsernamePasswordAuthenticationToken authentication = authentication("manager", "ROLE_MANAGER");
         SecurityContextHolder.getContext().setAuthentication(authentication);
         when(resolver.resolve(authentication))
@@ -74,6 +80,22 @@ class DepartmentContextFilterTest {
         assertEquals(403, response.getStatus());
         assertTrue(response.getContentAsString().contains(DepartmentScopeResolver.MANAGER_UNASSIGNED_MESSAGE));
         verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void doFilterInternal_ScopingDisabled_DoesNotAttachScope() throws Exception {
+        DepartmentContextFilter filter = new DepartmentContextFilter(resolver, properties, new ObjectMapper());
+        UsernamePasswordAuthenticationToken authentication = authentication("manager", "ROLE_MANAGER");
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/students");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, filterChain);
+
+        assertNull(request.getAttribute(DepartmentRequestScope.ATTRIBUTE_NAME));
+        verify(resolver, never()).resolve(authentication);
+        verify(filterChain).doFilter(request, response);
     }
 
     private UsernamePasswordAuthenticationToken authentication(String username, String role) {

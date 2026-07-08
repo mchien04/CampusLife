@@ -157,19 +157,14 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public Response getStudentById(Long studentId, DepartmentScope scope) {
-        try {
-            if (scope != null) {
-                departmentAuthorizationService.requireStudentAccess(studentId, scope);
-            }
-            Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
-            if (studentOpt.isEmpty()) {
-                return new Response(false, "Student not found", null);
-            }
-
-            return new Response(true, "Student retrieved successfully", studentOpt.get());
-        } catch (Exception e) {
-            return new Response(false, "Failed to get student: " + e.getMessage(), null);
+        if (scope != null) {
+            departmentAuthorizationService.requireStudentAccess(studentId, scope);
         }
+        Optional<Student> studentOpt = studentRepository.findByIdAndIsDeletedFalse(studentId);
+        if (studentOpt.isEmpty()) {
+            return new Response(false, "Student not found", null);
+        }
+        return new Response(true, "Student retrieved successfully", StudentResponse.fromEntity(studentOpt.get()));
     }
 
     @Override
@@ -179,19 +174,14 @@ public class StudentServiceImpl implements StudentService {
 
     @Override
     public Response getStudentByUsername(String username, DepartmentScope scope) {
-        try {
-            Optional<Student> studentOpt = studentRepository.findByUserUsernameAndIsDeletedFalse(username);
-            if (studentOpt.isEmpty()) {
-                return new Response(false, "Student not found", null);
-            }
-            if (scope != null) {
-                departmentAuthorizationService.requireStudentAccess(studentOpt.get().getId(), scope);
-            }
-
-            return new Response(true, "Student retrieved successfully", studentOpt.get());
-        } catch (Exception e) {
-            return new Response(false, "Failed to get student: " + e.getMessage(), null);
+        Optional<Student> studentOpt = studentRepository.findByUserUsernameAndIsDeletedFalse(username);
+        if (studentOpt.isEmpty()) {
+            return new Response(false, "Student not found", null);
         }
+        if (scope != null) {
+            departmentAuthorizationService.requireStudentAccess(studentOpt.get().getId(), scope);
+        }
+        return new Response(true, "Student retrieved successfully", StudentResponse.fromEntity(studentOpt.get()));
     }
 
     private Map<String, Object> pageResult(Page<Student> students) {

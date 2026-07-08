@@ -19,6 +19,7 @@ import vn.campuslife.model.EventArticleAdminResponse;
 import vn.campuslife.model.EventArticleUpsertRequest;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.ArticleCommentService;
 import vn.campuslife.service.EventArticleService;
 import vn.campuslife.service.StudentService;
@@ -32,6 +33,7 @@ import java.util.List;
 public class EventArticleAdminController {
 
     private final EventArticleService eventArticleService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
     private final ArticleCommentService articleCommentService;
 
@@ -51,7 +53,7 @@ public class EventArticleAdminController {
             @RequestParam(defaultValue = "10") int size,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Page<ArticleListResponse> articles = hasManagerScope(scope)
+        Page<ArticleListResponse> articles = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.getFilteredArticlesForAdmin(
                         status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, page, size, scope)
                 : eventArticleService.getFilteredArticlesForAdmin(
@@ -62,7 +64,7 @@ public class EventArticleAdminController {
     @GetMapping("/statistics")
     public ResponseEntity<ArticleStatisticsResponse> getStatistics(HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        ArticleStatisticsResponse stats = hasManagerScope(scope)
+        ArticleStatisticsResponse stats = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.getArticleStatistics(scope)
                 : eventArticleService.getArticleStatistics();
         return ResponseEntity.ok(stats);
@@ -73,7 +75,7 @@ public class EventArticleAdminController {
             @PathVariable Long articleId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse response = hasManagerScope(scope)
+        EventArticleAdminResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.getArticleById(articleId, scope)
                 : eventArticleService.getArticleById(articleId);
         return ResponseEntity.ok(response);
@@ -84,7 +86,7 @@ public class EventArticleAdminController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<EventArticleAdminResponse> response = hasManagerScope(scope)
+        List<EventArticleAdminResponse> response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.getArticlesByActivityId(activityId, scope)
                 : eventArticleService.getArticlesByActivityId(activityId);
         return ResponseEntity.ok(response);
@@ -95,7 +97,7 @@ public class EventArticleAdminController {
             @PathVariable Long articleId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse response = hasManagerScope(scope)
+        EventArticleAdminResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.setPrimaryArticle(articleId, scope)
                 : eventArticleService.setPrimaryArticle(articleId);
         return ResponseEntity.ok(response);
@@ -106,7 +108,7 @@ public class EventArticleAdminController {
             @RequestBody EventArticleUpsertRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse response = hasManagerScope(scope)
+        EventArticleAdminResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.createArticle(request, scope)
                 : eventArticleService.createArticle(request);
         return ResponseEntity.status(201).body(response);
@@ -118,7 +120,7 @@ public class EventArticleAdminController {
             @RequestBody EventArticleUpsertRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse response = hasManagerScope(scope)
+        EventArticleAdminResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.updateArticle(articleId, request, scope)
                 : eventArticleService.updateArticle(articleId, request);
         return ResponseEntity.ok(response);
@@ -129,7 +131,7 @@ public class EventArticleAdminController {
             @PathVariable Long articleId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse response = hasManagerScope(scope)
+        EventArticleAdminResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.publishArticle(articleId, scope)
                 : eventArticleService.publishArticle(articleId);
         return ResponseEntity.ok(response);
@@ -140,7 +142,7 @@ public class EventArticleAdminController {
             @PathVariable Long articleId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse response = hasManagerScope(scope)
+        EventArticleAdminResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.unpublishArticle(articleId, scope)
                 : eventArticleService.unpublishArticle(articleId);
         return ResponseEntity.ok(response);
@@ -152,7 +154,7 @@ public class EventArticleAdminController {
             @RequestBody ArticleImageRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        ArticleImageResponse response = hasManagerScope(scope)
+        ArticleImageResponse response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.addImageToArticle(articleId, request, scope)
                 : eventArticleService.addImageToArticle(articleId, request);
         return ResponseEntity.status(201).body(response);
@@ -164,7 +166,7 @@ public class EventArticleAdminController {
             @PathVariable Long imageId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             eventArticleService.removeImageFromArticle(articleId, imageId, scope);
         } else {
             eventArticleService.removeImageFromArticle(articleId, imageId);
@@ -239,7 +241,7 @@ public class EventArticleAdminController {
             HttpServletRequest httpRequest) {
 
         DepartmentScope scope = currentScope(httpRequest);
-        byte[] xlsxData = hasManagerScope(scope)
+        byte[] xlsxData = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.exportArticlesToExcel(
                         status, activityId, categoryId, articleType, featured, pinned, primary, search, dateFrom, dateTo, scope)
                 : eventArticleService.exportArticlesToExcel(
@@ -258,7 +260,7 @@ public class EventArticleAdminController {
             @RequestParam(defaultValue = "10") int size,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        EventArticleAdminResponse article = hasManagerScope(scope)
+        EventArticleAdminResponse article = departmentScopeRouting.useManagerScopedPath(scope)
                 ? eventArticleService.getArticleById(articleId, scope)
                 : eventArticleService.getArticleById(articleId);
         Page<ArticleCommentResponse> comments = articleCommentService.getArticleComments(article.getSlug(), true, page, size);
@@ -285,9 +287,5 @@ public class EventArticleAdminController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

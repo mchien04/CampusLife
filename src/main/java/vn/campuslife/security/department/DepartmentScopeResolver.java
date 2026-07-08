@@ -70,7 +70,7 @@ public class DepartmentScopeResolver {
                     .orElse(null);
             return DepartmentScope.student(studentId);
         }
-        return new DepartmentScope(false, false, null, Set.of());
+        return DepartmentScope.unscoped();
     }
 
     private void handleUnassignedManager(String username) {
@@ -78,7 +78,7 @@ public class DepartmentScopeResolver {
             logger.warn("Department scope audit-only violation: manager {} has no assigned department", username);
             return;
         }
-        if (properties.isEnforcementEnabled()) {
+        if (properties.shouldDenyAccess()) {
             throw new ForbiddenException(MANAGER_UNASSIGNED_MESSAGE);
         }
         logger.debug("Manager {} has no assigned department; enforcement disabled", username);

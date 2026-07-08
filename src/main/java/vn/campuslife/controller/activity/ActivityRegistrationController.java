@@ -14,6 +14,7 @@ import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.model.activity.ActivityRegistrationRequest;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.StudentService;
 
@@ -34,6 +35,7 @@ public class ActivityRegistrationController {
     private final Map<String, LocalDateTime> qrTokenCache = new ConcurrentHashMap<>();
 
     private final ActivityRegistrationService registrationService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
 
     /**
@@ -105,9 +107,9 @@ public class ActivityRegistrationController {
     @GetMapping("/activity/{activityId}")
     public ResponseEntity<Response> getActivityRegistrations(@PathVariable Long activityId, HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = scope == null
-                ? registrationService.getActivityRegistrations(activityId)
-                : registrationService.getActivityRegistrations(activityId, scope);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? registrationService.getActivityRegistrations(activityId, scope)
+                : registrationService.getActivityRegistrations(activityId);
         return ResponseEntity.ok(response);
     }
 
@@ -117,9 +119,9 @@ public class ActivityRegistrationController {
     @GetMapping("/series/{seriesId}")
     public ResponseEntity<Response> getSeriesRegistrations(@PathVariable Long seriesId, HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = scope == null
-                ? registrationService.getSeriesRegistrations(seriesId)
-                : registrationService.getSeriesRegistrations(seriesId, scope);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? registrationService.getSeriesRegistrations(seriesId, scope)
+                : registrationService.getSeriesRegistrations(seriesId);
         return ResponseEntity.ok(response);
     }
 
@@ -131,9 +133,9 @@ public class ActivityRegistrationController {
             @RequestParam String status,
             HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = scope == null
-                ? registrationService.updateRegistrationStatus(registrationId, status)
-                : registrationService.updateRegistrationStatus(registrationId, status, scope);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? registrationService.updateRegistrationStatus(registrationId, status, scope)
+                : registrationService.updateRegistrationStatus(registrationId, status);
         return ResponseEntity.ok(response);
     }
 
@@ -143,9 +145,9 @@ public class ActivityRegistrationController {
     @GetMapping("/{registrationId}")
     public ResponseEntity<Response> getRegistrationById(@PathVariable Long registrationId, HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response response = scope == null
-                ? registrationService.getRegistrationById(registrationId)
-                : registrationService.getRegistrationById(registrationId, scope);
+        Response response = departmentScopeRouting.useScopedPath(scope)
+                ? registrationService.getRegistrationById(registrationId, scope)
+                : registrationService.getRegistrationById(registrationId);
         return ResponseEntity.ok(response);
     }
 
@@ -319,9 +321,9 @@ public class ActivityRegistrationController {
             HttpServletRequest request) {
         System.out.println("Authorities: " + authentication.getAuthorities());
         DepartmentScope scope = currentScope(request);
-        return ResponseEntity.ok(scope == null
-                ? registrationService.getParticipationReport(activityId)
-                : registrationService.getParticipationReport(activityId, scope));
+        return ResponseEntity.ok(departmentScopeRouting.useManagerScopedPath(scope)
+                ? registrationService.getParticipationReport(activityId, scope)
+                : registrationService.getParticipationReport(activityId));
     }
 
     /**
@@ -336,9 +338,9 @@ public class ActivityRegistrationController {
             HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = scope == null
-                    ? registrationService.gradeCompletion(participationId, isCompleted, notes)
-                    : registrationService.gradeCompletion(participationId, isCompleted, notes, scope);
+            Response response = departmentScopeRouting.useScopedPath(scope)
+                    ? registrationService.gradeCompletion(participationId, isCompleted, notes, scope)
+                    : registrationService.gradeCompletion(participationId, isCompleted, notes);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -355,9 +357,9 @@ public class ActivityRegistrationController {
     public ResponseEntity<Response> backfillMissingParticipations(HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = scope == null
-                    ? registrationService.backfillMissingParticipations()
-                    : registrationService.backfillMissingParticipations(scope);
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                    ? registrationService.backfillMissingParticipations(scope)
+                    : registrationService.backfillMissingParticipations();
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -373,9 +375,9 @@ public class ActivityRegistrationController {
     public ResponseEntity<Response> getActivityParticipations(@PathVariable Long activityId, HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response response = scope == null
-                    ? registrationService.getActivityParticipations(activityId)
-                    : registrationService.getActivityParticipations(activityId, scope);
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                    ? registrationService.getActivityParticipations(activityId, scope)
+                    : registrationService.getActivityParticipations(activityId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -415,9 +417,9 @@ public class ActivityRegistrationController {
             HttpServletRequest request
     ) {
         DepartmentScope scope = currentScope(request);
-        return ResponseEntity.ok(scope == null
-                ? registrationService.search(keyword, status)
-                : registrationService.search(keyword, status, scope));
+        return ResponseEntity.ok(departmentScopeRouting.useManagerScopedPath(scope)
+                ? registrationService.search(keyword, status, scope)
+                : registrationService.search(keyword, status));
     }
 
     private DepartmentScope currentScope(HttpServletRequest request) {

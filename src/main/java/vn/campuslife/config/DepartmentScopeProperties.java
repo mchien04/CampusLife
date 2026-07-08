@@ -17,6 +17,14 @@ public class DepartmentScopeProperties {
         return enforcement.isEnabled();
     }
 
+    public boolean isScopingActive() {
+        return isEnforcementEnabled() || auditOnly;
+    }
+
+    public boolean shouldDenyAccess() {
+        return isEnforcementEnabled() && !auditOnly;
+    }
+
     @Getter
     @Setter
     public static class Enforcement {
