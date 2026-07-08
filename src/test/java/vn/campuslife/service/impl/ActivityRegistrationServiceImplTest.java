@@ -14,6 +14,8 @@ import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.repository.*;
+import vn.campuslife.security.department.DepartmentAuthorizationService;
+import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ActivitySeriesService;
@@ -23,6 +25,7 @@ import vn.campuslife.config.UploadProperties;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -74,6 +77,9 @@ public class ActivityRegistrationServiceImplTest {
 
     @Mock
     private ActivityOrganizerRepository activityOrganizerRepository;
+
+    @Mock
+    private DepartmentAuthorizationService departmentAuthorizationService;
 
     @InjectMocks
     private ActivityRegistrationServiceImpl activityRegistrationService;
@@ -353,6 +359,20 @@ public class ActivityRegistrationServiceImplTest {
         assertNotNull(participation.getCheckInTime());
         assertNull(participation.getCheckOutTime());
         verify(scoreRuleEngine).applySubmissionGraded(gradedSubmission, studentUser);
+    }
+
+    @Test
+    void getActivityRegistrations_ManagerWithActivityAccess_ReturnsAllActivityRegistrations() {
+        DepartmentScope scope = DepartmentScope.manager(Set.of(1L));
+        when(registrationRepository.findByActivityIdAndActivityIsDeletedFalse(9L))
+                .thenReturn(List.of(registration));
+
+        Response response = activityRegistrationService.getActivityRegistrations(9L, scope);
+
+        assertTrue(response.isStatus());
+        assertEquals(1, ((List<?>) response.getBody()).size());
+        verify(departmentAuthorizationService).requireActivityAccess(9L, scope);
+        verify(registrationRepository).findByActivityIdAndActivityIsDeletedFalse(9L);
     }
 
     @Test

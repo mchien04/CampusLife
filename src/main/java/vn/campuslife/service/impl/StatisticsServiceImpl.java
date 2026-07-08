@@ -161,6 +161,10 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Override
     public Response getDashboardOverview(Long studentId) {
         try {
+            if (studentId != null) {
+                return Response.success("Dashboard overview retrieved successfully",
+                        buildStudentDashboardOverviewResponse(studentId));
+            }
             return Response.success("Dashboard overview retrieved successfully",
                     buildDashboardOverviewResponse(null));
         } catch (Exception e) {
@@ -226,6 +230,76 @@ public class StatisticsServiceImpl implements StatisticsService {
         response.setTopActivities(buildTopDashboardActivities(registrations, participations, activityIds, 5));
         response.setTopStudents(buildTopDashboardStudents(participations, studentIds, 5));
         return response;
+    }
+
+    private DashboardOverviewResponse buildStudentDashboardOverviewResponse(Long studentId) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+        LocalDateTime endOfMonth = now.withDayOfMonth(now.toLocalDate().lengthOfMonth())
+                .withHour(23).withMinute(59).withSecond(59);
+
+        List<ActivityRegistration> registrations =
+                activityRegistrationRepository.findByStudentIdAndStudentIsDeletedFalse(studentId);
+        List<ActivityParticipation> participations = activityParticipationRepository.findAll(
+                (root, query, cb) -> cb.equal(root.get("registration").get("student").get("id"), studentId));
+
+        long monthlyRegistrations = registrations.stream()
+                .filter(registration -> isWithinRange(resolveRegistrationDate(registration), startOfMonth, endOfMonth))
+                .count();
+        long monthlyParticipations = participations.stream()
+                .filter(participation -> isWithinRange(participation.getDate(), startOfMonth, endOfMonth))
+                .count();
+
+        Set<Long> registeredActivityIds = registrations.stream()
+                .map(registration -> registration.getActivity().getId())
+                .collect(Collectors.toSet());
+        Set<Long> registeredSeriesIds = registrations.stream()
+                .map(ActivityRegistration::getSeriesId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        long participatedActivityIds = participations.stream()
+                .map(participation -> participation.getRegistration().getActivity().getId())
+                .distinct()
+                .count();
+
+        DashboardOverviewResponse response = new DashboardOverviewResponse();
+        response.setTotalActivities((long) registeredActivityIds.size());
+        response.setTotalStudents(0L);
+        response.setTotalSeries((long) registeredSeriesIds.size());
+        response.setTotalMiniGames(Optional.ofNullable(
+                miniGameAttemptRepository.countDistinctMiniGamesByStudentId(studentId)).orElse(0L));
+        response.setMonthlyRegistrations(monthlyRegistrations);
+        response.setMonthlyParticipations(monthlyParticipations);
+        response.setAverageParticipationRate(monthlyRegistrations > 0
+                ? (double) monthlyParticipations / monthlyRegistrations
+                : (registrations.isEmpty() ? 0.0 : (double) participatedActivityIds / registeredActivityIds.size()));
+        response.setTopActivities(buildStudentTopActivities(registrations, participations));
+        response.setTopStudents(List.of());
+        return response;
+    }
+
+    private List<DashboardOverviewResponse.TopActivityItem> buildStudentTopActivities(
+            List<ActivityRegistration> registrations,
+            List<ActivityParticipation> participations) {
+        Set<Long> participatedActivityIds = participations.stream()
+                .map(participation -> participation.getRegistration().getActivity().getId())
+                .collect(Collectors.toSet());
+
+        return registrations.stream()
+                .sorted(Comparator.comparing(
+                        this::resolveRegistrationDate,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(5)
+                .map(registration -> {
+                    Activity activity = registration.getActivity();
+                    DashboardOverviewResponse.TopActivityItem item = new DashboardOverviewResponse.TopActivityItem();
+                    item.setActivityId(activity.getId());
+                    item.setActivityName(activity.getName());
+                    item.setRegistrationCount(1L);
+                    item.setParticipationCount(participatedActivityIds.contains(activity.getId()) ? 1L : 0L);
+                    return item;
+                })
+                .collect(Collectors.toList());
     }
 
     private List<DashboardOverviewResponse.TopActivityItem> loadTopDashboardActivitiesFromRepository(Pageable pageable) {

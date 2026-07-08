@@ -267,13 +267,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     public Response getActivityRegistrations(Long activityId, DepartmentScope scope) {
         try {
-            if (scope != null) {
-                departmentAuthorizationService.requireActivityAccess(activityId, scope);
-            }
-            List<ActivityRegistration> registrations = scope != null && scope.manager()
-                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
-                            .and((root, query, cb) -> cb.equal(root.get("activity").get("id"), activityId)))
-                    : registrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
+            List<ActivityRegistration> registrations = findRegistrationsForManagedActivity(activityId, scope);
 
             List<ActivityRegistrationResponse> responses = registrations.stream()
                     .map(this::toRegistrationResponse)
@@ -294,10 +288,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     public Response getSeriesRegistrations(Long seriesId, DepartmentScope scope) {
         try {
-            List<ActivityRegistration> registrations = scope != null && scope.manager()
-                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
-                            .and((root, query, cb) -> cb.equal(root.get("seriesId"), seriesId)))
-                    : registrationRepository.findBySeriesId(seriesId);
+            List<ActivityRegistration> registrations = findRegistrationsForManagedSeries(seriesId, scope);
 
             // Lọc unique students (có thể có nhiều registrations cho cùng 1 student trong
             // series)
@@ -757,13 +748,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional(readOnly = true)
     public Response getParticipationReport(Long activityId, DepartmentScope scope) {
-        if (scope != null) {
+        if (scope != null && scope.manager() && !scope.admin()) {
             departmentAuthorizationService.requireActivityAccess(activityId, scope);
         }
-        List<ActivityRegistration> eligibleRegs = (scope != null && scope.manager()
-                ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
-                        .and((root, query, cb) -> cb.equal(root.get("activity").get("id"), activityId)))
-                : registrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId))
+        List<ActivityRegistration> eligibleRegs = registrationRepository
+                .findByActivityIdAndActivityIsDeletedFalse(activityId)
                 .stream()
                 .filter(reg -> reg.getStatus() == RegistrationStatus.APPROVED
                         || reg.getStatus() == RegistrationStatus.ATTENDED)
@@ -772,10 +761,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         Set<ParticipationType> attendedStates = EnumSet.of(
                 ParticipationType.ATTENDED,
                 ParticipationType.COMPLETED);
-        List<ActivityParticipation> participations = scope != null && scope.manager()
-                ? participationRepository.findAll(DepartmentScopeSpec.activityParticipation(scope.departmentIds())
-                        .and((root, query, cb) -> cb.equal(root.get("registration").get("activity").get("id"), activityId)))
-                : participationRepository.findByActivityId(activityId);
+        List<ActivityParticipation> participations = participationRepository.findByActivityId(activityId);
         Set<Long> attendedStudentIds = participations.stream()
                 .filter(ap -> attendedStates.contains(ap.getParticipationType()))
                 .map(ap -> ap.getRegistration().getStudent().getId())
@@ -992,6 +978,24 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.getIsCompleted(),
                 participation.getCheckInTime(),
                 participation.getCheckOutTime());
+    }
+
+    /**
+     * Organizer managers see every registration for an activity they can access,
+     * including students from other departments.
+     */
+    private List<ActivityRegistration> findRegistrationsForManagedActivity(Long activityId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
+        return registrationRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
+    }
+
+    private List<ActivityRegistration> findRegistrationsForManagedSeries(Long seriesId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
+        }
+        return registrationRepository.findBySeriesId(seriesId);
     }
 
     private void guardRegistrationAccess(ActivityRegistration registration, DepartmentScope scope) {
