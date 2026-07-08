@@ -44,6 +44,8 @@ public interface ActivityService {
 
     List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType);
 
+    List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType, DepartmentScope scope);
+
     List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end);
 
     List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end, DepartmentScope scope);

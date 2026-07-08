@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.never;
@@ -83,18 +82,20 @@ class DepartmentContextFilterTest {
     }
 
     @Test
-    void doFilterInternal_ScopingDisabled_DoesNotAttachScope() throws Exception {
+    void doFilterInternal_EnforcementDisabled_StillAttachesScopeForManager() throws Exception {
         DepartmentContextFilter filter = new DepartmentContextFilter(resolver, properties, new ObjectMapper());
         UsernamePasswordAuthenticationToken authentication = authentication("manager", "ROLE_MANAGER");
+        DepartmentScope scope = DepartmentScope.manager(Set.of(1L));
         SecurityContextHolder.getContext().setAuthentication(authentication);
+        when(resolver.resolve(authentication)).thenReturn(scope);
 
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/students");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/activities");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilterInternal(request, response, filterChain);
 
-        assertNull(request.getAttribute(DepartmentRequestScope.ATTRIBUTE_NAME));
-        verify(resolver, never()).resolve(authentication);
+        assertSame(scope, request.getAttribute(DepartmentRequestScope.ATTRIBUTE_NAME));
+        verify(resolver).resolve(authentication);
         verify(filterChain).doFilter(request, response);
     }
 

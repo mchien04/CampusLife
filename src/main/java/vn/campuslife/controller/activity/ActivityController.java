@@ -177,8 +177,13 @@ public class ActivityController {
     }
 
     @GetMapping("/score-type/{scoreType}")
-    public ResponseEntity<List<ActivityResponse>> getByScoreType(@PathVariable ScoreType scoreType) {
-        return ResponseEntity.ok(activityService.getActivitiesByScoreType(scoreType));
+    public ResponseEntity<List<ActivityResponse>> getByScoreType(
+            @PathVariable ScoreType scoreType,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        return ResponseEntity.ok(departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.getActivitiesByScoreType(scoreType, scope)
+                : activityService.getActivitiesByScoreType(scoreType));
     }
 
 

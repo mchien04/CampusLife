@@ -457,7 +457,22 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType) {
-        return activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType).stream()
+        return getActivitiesByScoreType(scoreType, null);
+    }
+
+    @Override
+    public List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType, DepartmentScope scope) {
+        List<Activity> activities = activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType);
+        if (scope != null && scope.manager() && !scope.admin()) {
+            Set<Long> allowedIds = activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()))
+                    .stream()
+                    .map(Activity::getId)
+                    .collect(Collectors.toSet());
+            activities = activities.stream()
+                    .filter(activity -> allowedIds.contains(activity.getId()))
+                    .collect(Collectors.toList());
+        }
+        return activities.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }

@@ -49,11 +49,6 @@ public class DepartmentContextFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (!departmentScopeProperties.isScopingActive()) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         try {
             DepartmentScope scope = departmentScopeResolver.resolve(authentication);
             DepartmentRequestScope.set(request, scope);
