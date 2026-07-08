@@ -291,7 +291,7 @@ public class ActivityRegistrationServiceImplTest {
     }
 
     @Test
-    void checkIn_StudentWithScannerButNotOrganizer_Blocked() {
+    void checkIn_StudentWithScannerButNotOrganizer_Allowed() {
         User studentUserOnly = new User();
         studentUserOnly.setId(44L);
         studentUserOnly.setRole(Role.STUDENT);
@@ -300,16 +300,48 @@ public class ActivityRegistrationServiceImplTest {
         studentOnly.setId(11L);
         studentOnly.setUser(studentUserOnly);
 
+        participation.setParticipationType(ParticipationType.REGISTERED);
+        registration.setTicketCode("TK_ST_2");
+
         when(registrationRepository.findByTicketCode("TK_ST_2")).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
         when(userRepository.findByUsernameAndIsDeletedFalse("student_scanner")).thenReturn(Optional.of(studentUserOnly));
         when(studentRepository.findByUserUsernameAndIsDeletedFalse("student_scanner")).thenReturn(Optional.of(studentOnly));
         when(preparationTaskMemberRepository.existsScannerTaskForStudentAndActivity(11L, 100L)).thenReturn(true);
         when(activityOrganizerRepository.existsByActivityIdAndStudentId(100L, 11L)).thenReturn(false);
 
-        ActivityParticipationRequest request = new ActivityParticipationRequest("TK_ST_2", null, null, null);
-        assertThrows(vn.campuslife.exception.ForbiddenException.class, () -> 
-            activityRegistrationService.checkIn(request, "student_scanner")
-        );
+        Response response = activityRegistrationService.checkIn(
+                new ActivityParticipationRequest("TK_ST_2", null, null, null),
+                "student_scanner");
+
+        assertTrue(response.isStatus());
+    }
+
+    @Test
+    void checkIn_StudentOrganizerWithoutScanner_Allowed() {
+        User studentUserOnly = new User();
+        studentUserOnly.setId(44L);
+        studentUserOnly.setRole(Role.STUDENT);
+
+        Student studentOnly = new Student();
+        studentOnly.setId(11L);
+        studentOnly.setUser(studentUserOnly);
+
+        participation.setParticipationType(ParticipationType.REGISTERED);
+        registration.setTicketCode("TK_ORG_1");
+
+        when(registrationRepository.findByTicketCode("TK_ORG_1")).thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
+        when(userRepository.findByUsernameAndIsDeletedFalse("student_org")).thenReturn(Optional.of(studentUserOnly));
+        when(studentRepository.findByUserUsernameAndIsDeletedFalse("student_org")).thenReturn(Optional.of(studentOnly));
+        when(preparationTaskMemberRepository.existsScannerTaskForStudentAndActivity(11L, 100L)).thenReturn(false);
+        when(activityOrganizerRepository.existsByActivityIdAndStudentId(100L, 11L)).thenReturn(true);
+
+        Response response = activityRegistrationService.checkIn(
+                new ActivityParticipationRequest("TK_ORG_1", null, null, null),
+                "student_org");
+
+        assertTrue(response.isStatus());
     }
 
     @Test
@@ -373,6 +405,25 @@ public class ActivityRegistrationServiceImplTest {
         assertEquals(1, ((List<?>) response.getBody()).size());
         verify(departmentAuthorizationService).requireActivityAccess(9L, scope);
         verify(registrationRepository).findByActivityIdAndActivityIsDeletedFalse(9L);
+    }
+
+    @Test
+    void updateRegistrationStatus_ManagerWithActivityAccess_ApprovesWithoutStudentDepartmentCheck() {
+        DepartmentScope scope = DepartmentScope.manager(Set.of(1L));
+        registration.setStatus(RegistrationStatus.PENDING);
+
+        when(registrationRepository.findById(50L)).thenReturn(Optional.of(registration));
+        when(registrationRepository.save(any(ActivityRegistration.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(participationRepository.existsByRegistration(registration)).thenReturn(false);
+        when(participationRepository.save(any(ActivityParticipation.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Response response = activityRegistrationService.updateRegistrationStatus(50L, "APPROVED", scope);
+
+        assertTrue(response.isStatus());
+        verify(departmentAuthorizationService).requireActivityAccess(100L, scope);
+        verify(departmentAuthorizationService, never()).requireStudentAccess(anyLong(), any());
+        verify(participationRepository).save(any(ActivityParticipation.class));
     }
 
     @Test

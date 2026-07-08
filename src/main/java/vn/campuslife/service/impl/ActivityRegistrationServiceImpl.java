@@ -16,6 +16,7 @@ import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.Role;
+import vn.campuslife.exception.ForbiddenException;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.StudentResponse;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
@@ -407,6 +408,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityRegistrationResponse response = toRegistrationResponse(savedRegistration);
             return new Response(true, "Registration status updated successfully", response);
 
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (IllegalArgumentException e) {
             return new Response(false, "Invalid status: " + status, null);
         } catch (Exception e) {
@@ -858,6 +861,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             info.put("checkInClosedAt", getCheckInClosedAt(registration.getActivity()));
 
             return Response.success("Mã vé hợp lệ", info);
+        } catch (ForbiddenException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Error validating ticket code: {}", e.getMessage(), e);
             return Response.error("Lỗi khi xác thực mã vé: " + e.getMessage());
@@ -999,11 +1004,15 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     }
 
     private void guardRegistrationAccess(ActivityRegistration registration, DepartmentScope scope) {
-        if (scope == null) {
+        if (scope == null || scope.admin()) {
             return;
         }
+        if (scope.student()) {
+            departmentAuthorizationService.requireStudentAccess(registration.getStudent().getId(), scope);
+            return;
+        }
+        // Organizer managers can manage registrations for any student on their activities.
         departmentAuthorizationService.requireActivityAccess(registration.getActivity().getId(), scope);
-        departmentAuthorizationService.requireStudentAccess(registration.getStudent().getId(), scope);
     }
 
     private Subquery<Integer> participationExistsSubquery(
@@ -1409,8 +1418,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                     student.getId(),
                     activityId);
             boolean isOrganizer = activityOrganizerRepository.existsByActivityIdAndStudentId(activityId, student.getId());
-            if (isScanner && isOrganizer) {
-                return; // Allowed
+            if (isOrganizer || isScanner) {
+                return; // Allowed for this activity only
             }
         }
         throw new vn.campuslife.exception.ForbiddenException("Bạn không có quyền quét mã QR check-in cho sự kiện này");
