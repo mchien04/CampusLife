@@ -46,6 +46,8 @@ public interface ActivityService {
 
     List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end);
 
+    List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end, DepartmentScope scope);
+
     List<ActivityResponse> getActivitiesForDepartment(Long departmentId);
 
     List<ActivityResponse> getActivitiesForDepartment(Long departmentId, DepartmentScope scope);
@@ -77,8 +79,12 @@ public interface ActivityService {
     Response copyActivity(Long id, Integer offsetDays, DepartmentScope scope);
     //tìm kiếm sự kiện
     List<ActivityResponse> searchUpcomingEvents(String keyword);
+
+    List<ActivityResponse> searchUpcomingEvents(String keyword, DepartmentScope scope);
     //Sự kiện trong tháng
     List<ActivityResponse> getActivitiesByMonth(LocalDateTime start, LocalDateTime end);
+
+    List<ActivityResponse> getActivitiesByMonth(LocalDateTime start, LocalDateTime end, DepartmentScope scope);
 
     /**
      * Tạo checkInCode cho các activity chưa có code

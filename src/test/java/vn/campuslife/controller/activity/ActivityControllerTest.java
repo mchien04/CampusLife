@@ -285,6 +285,8 @@ public class ActivityControllerTest {
     @Test
     @WithMockUser
     void getActivitiesByMonth_ReturnsList() throws Exception {
+        when(activityService.getActivitiesByMonth(any(LocalDateTime.class), any(LocalDateTime.class), any()))
+                .thenReturn(List.of(activityResponse));
         when(activityService.getActivitiesByMonth(any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(List.of(activityResponse));
 
@@ -298,6 +300,8 @@ public class ActivityControllerTest {
     @Test
     @WithMockUser(roles = {"STUDENT"})
     void searchUpcomingEvents_ReturnsList() throws Exception {
+        when(activityService.searchUpcomingEvents(eq("test"), any()))
+                .thenReturn(List.of(activityResponse));
         when(activityService.searchUpcomingEvents("test"))
                 .thenReturn(List.of(activityResponse));
 

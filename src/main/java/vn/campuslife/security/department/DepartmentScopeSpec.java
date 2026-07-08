@@ -29,6 +29,7 @@ import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.TaskSubmission;
 
 import java.util.Set;
+import java.time.LocalDateTime;
 
 public final class DepartmentScopeSpec {
 
@@ -54,6 +55,17 @@ public final class DepartmentScopeSpec {
                     cb.isFalse(root.get("isDeleted")),
                     organizers.get("id").in(deptIds));
         };
+    }
+
+    public static Specification<Activity> startingBetween(LocalDateTime start, LocalDateTime end) {
+        return (root, query, cb) -> cb.and(
+                cb.isFalse(root.get("isDeleted")),
+                cb.greaterThanOrEqualTo(root.get("startDate"), start),
+                cb.lessThan(root.get("startDate"), end));
+    }
+
+    public static Specification<Activity> activeNotDeleted() {
+        return (root, query, cb) -> cb.isFalse(root.get("isDeleted"));
     }
 
     public static Specification<MiniGame> miniGame(Set<Long> deptIds) {
