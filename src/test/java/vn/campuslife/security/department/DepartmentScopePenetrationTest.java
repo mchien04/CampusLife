@@ -87,6 +87,15 @@ class DepartmentScopePenetrationTest {
     }
 
     @Test
+    void managerWithEmptyDepartmentsCannotAccessStudentInOtherDepartment() {
+        DepartmentScope emptyManagerScope = DepartmentScope.manager(Set.of());
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> authorizationService.requireStudentAccess(studentDeptB.getId(), emptyManagerScope));
+    }
+
+    @Test
     void adminBypassIsAllowedWhenAuthenticated() {
         User admin = persistUser("admin-user", Role.ADMIN);
         entityManager.flush();

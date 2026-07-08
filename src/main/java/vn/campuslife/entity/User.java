@@ -39,6 +39,9 @@ public class User {
 
     private LocalDateTime lastLogin;
 
+    /** Set when student credentials email is sent successfully. */
+    private LocalDateTime credentialsEmailSentAt;
+
     @CreatedDate
     private LocalDateTime createdAt;
 

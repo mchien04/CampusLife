@@ -13,6 +13,7 @@ import vn.campuslife.model.activity.quiz.UpdateMiniGameRequest;
 import jakarta.validation.Valid;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.MiniGameService;
 
 import java.math.BigDecimal;
@@ -27,6 +28,7 @@ public class MiniGameController {
     private static final Logger logger = LoggerFactory.getLogger(MiniGameController.class);
 
     private final MiniGameService miniGameService;
+    private final DepartmentScopeRouting departmentScopeRouting;
 
     /**
      * Tạo minigame với quiz
@@ -37,7 +39,7 @@ public class MiniGameController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.createMiniGame(request, scope)
                     : miniGameService.createMiniGame(request);
             return ResponseEntity.ok(response);
@@ -57,7 +59,7 @@ public class MiniGameController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.getMiniGameByActivity(activityId, scope)
                     : miniGameService.getMiniGameByActivity(activityId);
             return ResponseEntity.ok(response);
@@ -197,7 +199,7 @@ public class MiniGameController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.updateMiniGame(miniGameId, request, scope)
                     : miniGameService.updateMiniGame(miniGameId, request);
             return ResponseEntity.ok(response);
@@ -217,7 +219,7 @@ public class MiniGameController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.deleteMiniGame(miniGameId, scope)
                     : miniGameService.deleteMiniGame(miniGameId);
             return ResponseEntity.ok(response);
@@ -235,7 +237,7 @@ public class MiniGameController {
     public ResponseEntity<Response> getAllMiniGames(HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.getAllMiniGames(scope)
                     : miniGameService.getAllMiniGames();
             return ResponseEntity.ok(response);
@@ -255,7 +257,7 @@ public class MiniGameController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.checkActivityHasQuiz(activityId, scope)
                     : miniGameService.checkActivityHasQuiz(activityId);
             return ResponseEntity.ok(response);
@@ -276,7 +278,7 @@ public class MiniGameController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? miniGameService.getQuestionsForEdit(miniGameId, scope)
                     : miniGameService.getQuestionsForEdit(miniGameId);
             return ResponseEntity.ok(response);
@@ -303,10 +305,6 @@ public class MiniGameController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 
 }

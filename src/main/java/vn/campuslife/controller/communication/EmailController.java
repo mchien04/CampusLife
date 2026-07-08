@@ -22,6 +22,7 @@ import vn.campuslife.repository.EmailAttachmentRepository;
 import vn.campuslife.repository.UserRepository;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.EmailService;
 
 import java.io.File;
@@ -36,6 +37,7 @@ public class EmailController {
     private static final Logger logger = LoggerFactory.getLogger(EmailController.class);
 
     private final EmailService emailService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final UserRepository userRepository;
     private final EmailAttachmentRepository emailAttachmentRepository;
 
@@ -77,7 +79,7 @@ public class EmailController {
             }
 
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? emailService.sendEmail(request, senderId, attachments, scope)
                     : emailService.sendEmail(request, senderId, attachments);
             return response.isStatus()
@@ -112,7 +114,7 @@ public class EmailController {
             }
 
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? emailService.sendEmail(request, senderId, null, scope)
                     : emailService.sendEmail(request, senderId, null);
             return response.isStatus()
@@ -134,7 +136,7 @@ public class EmailController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? emailService.sendNotificationOnly(request, scope)
                     : emailService.sendNotificationOnly(request);
             return response.isStatus()
@@ -165,7 +167,7 @@ public class EmailController {
 
             Pageable pageable = PageRequest.of(page, size);
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? emailService.getEmailHistory(senderId, pageable, scope)
                     : emailService.getEmailHistory(senderId, pageable);
             return ResponseEntity.ok(response);
@@ -258,10 +260,6 @@ public class EmailController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

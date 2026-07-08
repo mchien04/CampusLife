@@ -9,6 +9,7 @@ import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.RecalculationJobService;
 import vn.campuslife.service.ScoreService;
 import vn.campuslife.service.StudentService;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 public class ScoreController {
 
     private final ScoreService scoreService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
     private final RecalculationJobService recalculationJobService;
 
@@ -30,7 +32,7 @@ public class ScoreController {
     public ResponseEntity<Response> viewScores(@PathVariable Long studentId, @PathVariable Long semesterId,
             HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response resp = hasManagerScope(scope)
+        Response resp = departmentScopeRouting.useManagerScopedPath(scope)
                 ? scoreService.viewScores(studentId, semesterId, scope)
                 : scoreService.viewScores(studentId, semesterId);
         return ResponseEntity.ok(resp);
@@ -40,7 +42,7 @@ public class ScoreController {
     public ResponseEntity<Response> getTotalScore(@PathVariable Long studentId, @PathVariable Long semesterId,
             HttpServletRequest request) {
         DepartmentScope scope = currentScope(request);
-        Response resp = hasManagerScope(scope)
+        Response resp = departmentScopeRouting.useManagerScopedPath(scope)
                 ? scoreService.getTotalScore(studentId, semesterId, scope)
                 : scoreService.getTotalScore(studentId, semesterId);
         return ResponseEntity.ok(resp);
@@ -76,7 +78,7 @@ public class ScoreController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response resp = hasManagerScope(scope)
+            Response resp = departmentScopeRouting.useManagerScopedPath(scope)
                     ? scoreService.getStudentRanking(semesterId, scoreTypeEnum, departmentId, classId, sortOrder, scope)
                     : scoreService.getStudentRanking(semesterId, scoreTypeEnum, departmentId, classId, sortOrder);
             return ResponseEntity.ok(resp);
@@ -101,7 +103,7 @@ public class ScoreController {
             HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response resp = hasManagerScope(scope)
+            Response resp = departmentScopeRouting.useManagerScopedPath(scope)
                     ? scoreService.recalculateStudentScore(studentId, semesterId, scope)
                     : scoreService.recalculateStudentScore(studentId, semesterId);
             return ResponseEntity.ok(resp);
@@ -123,7 +125,7 @@ public class ScoreController {
             HttpServletRequest request) {
         try {
             DepartmentScope scope = currentScope(request);
-            Response resp = hasManagerScope(scope)
+            Response resp = departmentScopeRouting.useManagerScopedPath(scope)
                     ? scoreService.recalculateAllStudentScores(semesterId, scope)
                     : scoreService.recalculateAllStudentScores(semesterId);
             return ResponseEntity.ok(resp);
@@ -188,7 +190,7 @@ public class ScoreController {
             }
 
             DepartmentScope scope = currentScope(request);
-            Response resp = hasManagerScope(scope)
+            Response resp = departmentScopeRouting.useManagerScopedPath(scope)
                     ? scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId,
                             startDateTime, endDateTime, keyword, scope)
                     : scoreService.getScoreHistory(studentId, semesterId, scoreTypeEnum, page, size, requestingStudentId,
@@ -213,7 +215,7 @@ public class ScoreController {
             Authentication authentication,
             HttpServletRequest request) {
         try {
-            if (hasManagerScope(currentScope(request))) {
+            if (departmentScopeRouting.useManagerScopedPath(currentScope(request))) {
                 return ResponseEntity.badRequest()
                         .body(new Response(false,
                                 "Async recalculation for MANAGER requires persisted DepartmentScopeSnapshot and is not enabled yet",
@@ -268,9 +270,5 @@ public class ScoreController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

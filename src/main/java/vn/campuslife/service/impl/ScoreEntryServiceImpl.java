@@ -52,7 +52,12 @@ public class ScoreEntryServiceImpl implements ScoreEntryService {
         }
 
         ScoreEntry newEntry = new ScoreEntry();
-        newEntry.setStudent(studentRepository.getReferenceById(command.getStudentId()));
+        var student = studentRepository.findByIdAndIsDeletedFalse(command.getStudentId())
+                .orElseGet(() -> studentRepository.getReferenceById(command.getStudentId()));
+        newEntry.setStudent(student);
+        if (student.getDepartment() != null) {
+            newEntry.setStudentDepartmentAtAward(student.getDepartment());
+        }
         newEntry.setSemester(semesterRepository.getReferenceById(command.getSemesterId()));
         newEntry.setScoreType(command.getScoreType());
         if (command.getActivityId() != null) {
@@ -100,7 +105,12 @@ public class ScoreEntryServiceImpl implements ScoreEntryService {
             studentScoreRepository.save(studentScore);
         } else {
             StudentScore newScore = new StudentScore();
-            newScore.setStudent(studentRepository.getReferenceById(studentId));
+            var student = studentRepository.findByIdAndIsDeletedFalse(studentId)
+                    .orElseGet(() -> studentRepository.getReferenceById(studentId));
+            newScore.setStudent(student);
+            if (student.getDepartment() != null) {
+                newScore.setStudentDepartmentAtAward(student.getDepartment());
+            }
             newScore.setSemester(semesterRepository.getReferenceById(semesterId));
             newScore.setScoreType(scoreType);
             newScore.setScore(total);

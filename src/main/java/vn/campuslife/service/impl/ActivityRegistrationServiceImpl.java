@@ -124,6 +124,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityRegistration registration = new ActivityRegistration();
             registration.setActivity(activity);
             registration.setStudent(student);
+            captureRegistrationDepartmentSnapshot(registration, student);
             registration.setRegisteredDate(LocalDateTime.now());
             // Nếu activity thuộc series, lưu luôn seriesId để FE dễ kiểm tra đăng ký chuỗi
             if (activity.getSeriesId() != null) {
@@ -884,7 +885,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     public Response backfillMissingParticipations(DepartmentScope scope) {
         try {
             List<ActivityRegistration> registrationsWithoutParticipation = scope != null && scope.manager()
-                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistration(scope.departmentIds())
+                    ? registrationRepository.findAll(DepartmentScopeSpec.activityRegistrationByOrganizer(scope.departmentIds())
                             .and((root, query, cb) -> cb.and(
                                     cb.equal(root.get("status"), RegistrationStatus.APPROVED),
                                     cb.not(cb.exists(participationExistsSubquery(query, cb, root))))))
@@ -947,11 +948,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 return Response.error("Activity not found");
             }
 
-            // Lấy tất cả participations theo activityId
-            List<ActivityParticipation> participations = scope != null && scope.manager()
-                    ? participationRepository.findAll(DepartmentScopeSpec.activityParticipation(scope.departmentIds())
-                            .and((root, query, cb) -> cb.equal(root.get("registration").get("activity").get("id"), activityId)))
-                    : participationRepository.findByActivityId(activityId);
+            // Organizer managers see every participation for activities they can access.
+            List<ActivityParticipation> participations = participationRepository.findByActivityId(activityId);
 
             // Convert to response
             List<ActivityParticipationResponse> responses = participations.stream()
@@ -983,6 +981,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 participation.getIsCompleted(),
                 participation.getCheckInTime(),
                 participation.getCheckOutTime());
+    }
+
+    private void captureRegistrationDepartmentSnapshot(ActivityRegistration registration, Student student) {
+        if (registration.getStudentDepartmentAtRegistration() == null
+                && student != null
+                && student.getDepartment() != null) {
+            registration.setStudentDepartmentAtRegistration(student.getDepartment());
+        }
     }
 
     /**
@@ -1059,7 +1065,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     public Response search(String keyword, RegistrationStatus status, DepartmentScope scope) {
         List<ActivityRegistration> registrations;
         if (scope != null && scope.manager()) {
-            Specification<ActivityRegistration> spec = DepartmentScopeSpec.activityRegistration(scope.departmentIds());
+            Specification<ActivityRegistration> spec = DepartmentScopeSpec.activityRegistrationByOrganizer(scope.departmentIds());
             if (keyword != null && !keyword.isBlank()) {
                 String k = "%" + keyword.toLowerCase() + "%";
                 spec = spec.and((root, query, cb) -> cb.like(cb.lower(root.get("activity").get("name")), k));
@@ -1145,6 +1151,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityRegistration registration = new ActivityRegistration();
             registration.setActivity(activity);
             registration.setStudent(student);
+            captureRegistrationDepartmentSnapshot(registration, student);
             registration.setRegisteredDate(LocalDateTime.now());
             registration.setStatus(RegistrationStatus.WAITLIST);
             registration.setTicketCode(TicketCodeUtils.newTicketCode());

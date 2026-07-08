@@ -3,6 +3,9 @@ package vn.campuslife.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,7 @@ import vn.campuslife.util.UserSoftDeleteSupport;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -239,6 +243,9 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
         if (request == null) {
             return Response.error("Yêu cầu không hợp lệ");
         }
+        if (request.getDepartmentId() != null) {
+            validateDepartmentInScope(request.getDepartmentId(), scope);
+        }
 
         ExcelStudentRow row = new ExcelStudentRow(request.getStudentCode(), request.getFullName(), request.getEmail());
         BulkCreateStudentsRequest bulkRequest = new BulkCreateStudentsRequest(Collections.singletonList(row));
@@ -264,15 +271,11 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
 
         StudentAccountResponse account = createdAccounts.get(0);
         if (request.getDepartmentId() != null) {
-            try {
-                Student student = studentRepository.findByIdAndIsDeletedFalse(account.getStudentId())
-                        .orElseThrow(() -> new IllegalArgumentException("Student not found"));
-                applyDepartmentToStudent(student, request.getDepartmentId(), scope);
-                studentRepository.save(student);
-                fillDepartmentFields(account, student);
-            } catch (IllegalArgumentException e) {
-                return Response.error(e.getMessage());
-            }
+            Student student = studentRepository.findByIdAndIsDeletedFalse(account.getStudentId())
+                    .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+            applyDepartmentToStudent(student, request.getDepartmentId(), scope);
+            studentRepository.save(student);
+            fillDepartmentFields(account, student);
         }
 
         return Response.success("Tạo tài khoản sinh viên thành công", account);
@@ -281,76 +284,94 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
     @Override
     @Transactional
     public Response createMultipleStudents(CreateMultipleStudentsRequest request) {
+        return createMultipleStudents(request, null);
+    }
+
+    @Override
+    @Transactional
+    public Response createMultipleStudents(CreateMultipleStudentsRequest request, DepartmentScope scope) {
         if (request == null || request.getStudents() == null || request.getStudents().isEmpty()) {
             return Response.error("Danh sách sinh viên không được để trống");
         }
-        
-        List<ExcelStudentRow> rows = request.getStudents().stream()
-                .map(student -> new ExcelStudentRow(student.getStudentCode(), student.getFullName(), student.getEmail()))
-                .collect(Collectors.toList());
-                
-        BulkCreateStudentsRequest bulkRequest = new BulkCreateStudentsRequest(rows);
-        return bulkCreateStudents(bulkRequest);
+
+        List<StudentAccountResponse> createdAccounts = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+
+        for (CreateStudentRequest studentRequest : request.getStudents()) {
+            Response response = createStudent(studentRequest, scope);
+            if (!response.isStatus()) {
+                String code = studentRequest != null && studentRequest.getStudentCode() != null
+                        ? studentRequest.getStudentCode()
+                        : "unknown";
+                errors.add(code + ": " + response.getMessage());
+                continue;
+            }
+            createdAccounts.add((StudentAccountResponse) response.getBody());
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("createdAccounts", createdAccounts);
+        result.put("errors", errors);
+        result.put("successCount", createdAccounts.size());
+        result.put("errorCount", errors.size());
+
+        if (createdAccounts.isEmpty()) {
+            return new Response(false,
+                    errors.isEmpty() ? "Không thể tạo tài khoản" : errors.get(0),
+                    result);
+        }
+
+        return Response.success(
+                String.format("Created %d accounts successfully. %d errors.", createdAccounts.size(), errors.size()),
+                result);
     }
 
     @Override
-    public Response getPendingAccounts() {
-        return getPendingAccounts(null);
+    public Response getPendingAccounts(Pageable pageable, Boolean credentialsSent) {
+        return getPendingAccounts(pageable, credentialsSent, null);
     }
 
     @Override
-    public Response getPendingAccounts(DepartmentScope scope) {
+    public Response getPendingAccounts(Pageable pageable, Boolean credentialsSent, DepartmentScope scope) {
         try {
-            // Lấy sinh viên (chưa bị xóa). Manager chỉ thấy sinh viên thuộc khoa được phân công.
-            List<Student> students;
+            Specification<Student> spec = activeStudentSpec();
             if (scope != null && scope.manager() && !scope.admin()) {
-                students = studentRepository.findAll(DepartmentScopeSpec.student(scope.departmentIds()));
-            } else {
-                students = studentRepository.findAll().stream()
-                        .filter(s -> !s.isDeleted())
-                        .collect(Collectors.toList());
+                spec = spec.and(DepartmentScopeSpec.student(scope.departmentIds()));
+            }
+            Specification<Student> credentialsSpec = credentialsSentSpec(credentialsSent);
+            if (credentialsSpec != null) {
+                spec = spec.and(credentialsSpec);
             }
 
-            List<StudentAccountResponse> accounts = new ArrayList<>();
-            for (Student student : students) {
-                User user = student.getUser();
-                if (user == null || user.isDeleted()) {
-                    continue;
-                }
+            Page<Student> students = studentRepository.findAll(spec, pageable);
 
-                StudentAccountResponse response = new StudentAccountResponse();
-                response.setUserId(user.getId());
-                response.setStudentId(student.getId());
-                response.setUsername(user.getUsername());
-                response.setEmail(user.getEmail());
-                response.setStudentCode(student.getStudentCode());
-                response.setFullName(student.getFullName());
-                response.setPassword(null); // Không hiển thị password sau khi đã tạo
-                response.setIsActivated(user.isActivated());
-                // ⚠️ LƯU Ý: Logic này KHÔNG CHÍNH XÁC
-                // emailSent = true chỉ khi user đã login, nhưng email có thể đã gửi mà user
-                // chưa login
-                // Frontend nên dùng lastLogin để xác định trạng thái thay vì dựa vào emailSent
-                response.setEmailSent(user.getLastLogin() != null);
-                response.setLastLogin(user.getLastLogin());
-                response.setCreatedAt(user.getCreatedAt());
-                fillDepartmentFields(response, student);
+            List<StudentAccountResponse> accounts = students.getContent().stream()
+                    .map(this::toAccountResponse)
+                    .filter(Objects::nonNull)
+                    .sorted((a, b) -> {
+                        if (a.getCreatedAt() == null && b.getCreatedAt() == null) {
+                            return 0;
+                        }
+                        if (a.getCreatedAt() == null) {
+                            return 1;
+                        }
+                        if (b.getCreatedAt() == null) {
+                            return -1;
+                        }
+                        return b.getCreatedAt().compareTo(a.getCreatedAt());
+                    })
+                    .collect(Collectors.toList());
 
-                accounts.add(response);
-            }
+            Map<String, Object> result = new HashMap<>();
+            result.put("content", accounts);
+            result.put("totalElements", students.getTotalElements());
+            result.put("totalPages", students.getTotalPages());
+            result.put("size", students.getSize());
+            result.put("number", students.getNumber());
+            result.put("first", students.isFirst());
+            result.put("last", students.isLast());
 
-            // Sắp xếp theo thời gian tạo (mới nhất trước)
-            accounts.sort((a, b) -> {
-                if (a.getCreatedAt() == null && b.getCreatedAt() == null)
-                    return 0;
-                if (a.getCreatedAt() == null)
-                    return 1;
-                if (b.getCreatedAt() == null)
-                    return -1;
-                return b.getCreatedAt().compareTo(a.getCreatedAt());
-            });
-
-            return Response.success("Pending accounts retrieved successfully", accounts);
+            return Response.success("Pending accounts retrieved successfully", result);
 
         } catch (Exception e) {
             logger.error("Error getting pending accounts: {}", e.getMessage(), e);
@@ -460,11 +481,8 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             response.setFullName(student.getFullName());
             response.setPassword(null);
             response.setIsActivated(user.isActivated());
-            // ⚠️ LƯU Ý: Logic này KHÔNG CHÍNH XÁC
-            // emailSent = true chỉ khi user đã login, nhưng email có thể đã gửi mà user
-            // chưa login
-            // Frontend nên dùng lastLogin để xác định trạng thái thay vì dựa vào emailSent
-            response.setEmailSent(user.getLastLogin() != null);
+            response.setEmailSent(user.getCredentialsEmailSentAt() != null);
+            response.setCredentialsEmailSentAt(user.getCredentialsEmailSentAt());
             response.setLastLogin(user.getLastLogin());
             response.setCreatedAt(user.getCreatedAt());
             fillDepartmentFields(response, student);
@@ -537,7 +555,6 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             String plainPassword = PasswordGenerator.generatePassword();
             String hashedPassword = passwordEncoder.encode(plainPassword);
             user.setPassword(hashedPassword);
-            userRepository.save(user);
 
             // Send email
             boolean emailSent = emailUtil.sendStudentCredentialsEmail(
@@ -548,6 +565,9 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
             if (!emailSent) {
                 return Response.error("Failed to send email");
             }
+
+            user.setCredentialsEmailSentAt(LocalDateTime.now());
+            userRepository.save(user);
 
             return Response.success("Credentials sent successfully", null);
 
@@ -602,7 +622,6 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                     String plainPassword = PasswordGenerator.generatePassword();
                     String hashedPassword = passwordEncoder.encode(plainPassword);
                     user.setPassword(hashedPassword);
-                    userRepository.save(user);
 
                     // Send email
                     boolean emailSent = emailUtil.sendStudentCredentialsEmail(
@@ -611,6 +630,8 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
                             plainPassword);
 
                     if (emailSent) {
+                        user.setCredentialsEmailSentAt(LocalDateTime.now());
+                        userRepository.save(user);
                         successList.add("Student ID " + studentId + " (" + user.getEmail() + ")");
                     } else {
                         errorList.add("Student ID " + studentId + ": Failed to send email");
@@ -691,10 +712,59 @@ public class StudentAccountManagementServiceImpl implements StudentAccountManage
         student.setDepartment(department);
     }
 
+    private void validateDepartmentInScope(Long departmentId, DepartmentScope scope) {
+        if (!departmentRepository.existsById(departmentId)) {
+            throw new IllegalArgumentException("Department not found");
+        }
+        if (scope != null && scope.manager() && !scope.admin()
+                && !scope.departmentIds().contains(departmentId)) {
+            throw new IllegalArgumentException("Department is outside your scope");
+        }
+    }
+
+    private StudentAccountResponse toAccountResponse(Student student) {
+        User user = student.getUser();
+        if (user == null || user.isDeleted()) {
+            return null;
+        }
+
+        StudentAccountResponse response = new StudentAccountResponse();
+        response.setUserId(user.getId());
+        response.setStudentId(student.getId());
+        response.setUsername(user.getUsername());
+        response.setEmail(user.getEmail());
+        response.setStudentCode(student.getStudentCode());
+        response.setFullName(student.getFullName());
+        response.setPassword(null);
+        response.setIsActivated(user.isActivated());
+        response.setEmailSent(user.getCredentialsEmailSentAt() != null);
+        response.setCredentialsEmailSentAt(user.getCredentialsEmailSentAt());
+        response.setLastLogin(user.getLastLogin());
+        response.setCreatedAt(user.getCreatedAt());
+        fillDepartmentFields(response, student);
+        return response;
+    }
+
     private void fillDepartmentFields(StudentAccountResponse response, Student student) {
         if (student.getDepartment() != null) {
             response.setDepartmentId(student.getDepartment().getId());
             response.setDepartmentName(student.getDepartment().getName());
         }
+    }
+
+    private static Specification<Student> activeStudentSpec() {
+        return (root, query, cb) -> cb.isFalse(root.get("isDeleted"));
+    }
+
+    private static Specification<Student> credentialsSentSpec(Boolean credentialsSent) {
+        if (credentialsSent == null) {
+            return null;
+        }
+        return (root, query, cb) -> {
+            var userJoin = root.join("user");
+            return credentialsSent
+                    ? cb.isNotNull(userJoin.get("credentialsEmailSentAt"))
+                    : cb.isNull(userJoin.get("credentialsEmailSentAt"));
+        };
     }
 }

@@ -21,8 +21,8 @@ public class StudentAccountResponse {
     private String fullName;
     private String password; // Plain password (chỉ hiển thị khi chưa gửi email)
     private Boolean isActivated;
-    private Boolean emailSent; // Đã gửi email credentials chưa (chỉ chính xác trong bulkCreate, không chính
-                               // xác trong getPendingAccounts)
+    private Boolean emailSent; // true khi credentials_email_sent_at != null
+    private LocalDateTime credentialsEmailSentAt;
     private LocalDateTime lastLogin; // Thời gian đăng nhập lần cuối (null nếu chưa đăng nhập)
     private LocalDateTime createdAt;
     private Long departmentId;

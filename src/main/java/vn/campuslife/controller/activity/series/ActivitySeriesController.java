@@ -16,6 +16,7 @@ import vn.campuslife.model.activity.series.SeriesPresetPreviewResponse;
 import vn.campuslife.model.activity.series.UpdateSeriesRequest;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.ScorePresetService;
@@ -30,6 +31,7 @@ public class ActivitySeriesController {
     private static final Logger logger = LoggerFactory.getLogger(ActivitySeriesController.class);
 
     private final ActivitySeriesService seriesService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final ActivityRegistrationService activityRegistrationService;
     private final vn.campuslife.service.StudentService studentService;
     private final ScorePresetService scorePresetService;
@@ -89,7 +91,7 @@ public class ActivitySeriesController {
             Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints();
 
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.createSeries(name, description, milestonePoints, scoreType,
                             mainActivityId,
                             registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
@@ -136,7 +138,7 @@ public class ActivitySeriesController {
             }
 
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.createActivityInSeries(seriesId, name, request.getDescription(),
                             request.getStartDate(), request.getEndDate(), request.getLocation(), request.getOrder(),
                             request.getShareLink(), request.getBannerUrl(), request.getBenefits(), request.getRequirements(),
@@ -163,7 +165,7 @@ public class ActivitySeriesController {
             @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? seriesService.createSeriesActivity(seriesId, request, scope)
                 : seriesService.createSeriesActivity(seriesId, request);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
@@ -176,7 +178,7 @@ public class ActivitySeriesController {
             @RequestBody vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? seriesService.updateSeriesActivity(seriesId, activityId, request, scope)
                 : seriesService.updateSeriesActivity(seriesId, activityId, request);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
@@ -188,7 +190,7 @@ public class ActivitySeriesController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = hasManagerScope(scope)
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
                 ? seriesService.getSeriesActivity(seriesId, activityId, scope)
                 : seriesService.getSeriesActivity(seriesId, activityId);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
@@ -273,7 +275,7 @@ public class ActivitySeriesController {
             Integer order = request.getOrder();
 
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.addActivityToSeries(activityId, seriesId, order, scope)
                     : seriesService.addActivityToSeries(activityId, seriesId, order);
             return ResponseEntity.ok(response);
@@ -294,7 +296,7 @@ public class ActivitySeriesController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.calculateMilestonePoints(studentId, seriesId, scope)
                     : seriesService.calculateMilestonePoints(studentId, seriesId);
             return ResponseEntity.ok(response);
@@ -312,7 +314,7 @@ public class ActivitySeriesController {
     public ResponseEntity<Response> getAllSeries(HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.getAllSeries(scope)
                     : seriesService.getAllSeries();
             return ResponseEntity.ok(response);
@@ -330,7 +332,7 @@ public class ActivitySeriesController {
     public ResponseEntity<Response> getSeriesById(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.getSeriesById(seriesId, scope)
                     : seriesService.getSeriesById(seriesId);
             return response.isStatus()
@@ -350,7 +352,7 @@ public class ActivitySeriesController {
     public ResponseEntity<Response> getActivitiesInSeries(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.getActivitiesInSeries(seriesId, scope)
                     : seriesService.getActivitiesInSeries(seriesId);
             return ResponseEntity.ok(response);
@@ -422,7 +424,7 @@ public class ActivitySeriesController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.getStudentProgress(seriesId, studentId, scope)
                     : seriesService.getStudentProgress(seriesId, studentId);
             return ResponseEntity.ok(response);
@@ -445,7 +447,7 @@ public class ActivitySeriesController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.getSeriesProgress(seriesId, page, size, keyword, scope)
                     : seriesService.getSeriesProgress(seriesId, page, size, keyword);
             return ResponseEntity.ok(response);
@@ -463,7 +465,7 @@ public class ActivitySeriesController {
     public ResponseEntity<Response> getSeriesOverview(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.getSeriesOverview(seriesId, scope)
                     : seriesService.getSeriesOverview(seriesId);
             return ResponseEntity.ok(response);
@@ -513,7 +515,7 @@ public class ActivitySeriesController {
             Integer minimumPenaltyPoints = request.getMinimumPenaltyPoints();
 
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
                             mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                             minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
@@ -562,7 +564,7 @@ public class ActivitySeriesController {
     public ResponseEntity<Response> deleteSeries(@PathVariable Long seriesId, HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = hasManagerScope(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? seriesService.deleteSeries(seriesId, scope)
                     : seriesService.deleteSeries(seriesId);
             if (response.isStatus()) {
@@ -579,10 +581,6 @@ public class ActivitySeriesController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }
 

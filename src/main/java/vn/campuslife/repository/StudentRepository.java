@@ -1,5 +1,6 @@
 package vn.campuslife.repository;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -72,7 +73,12 @@ public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpec
     /**
      * Lấy danh sách sinh viên có phân trang
      */
+    @EntityGraph(attributePaths = {"user", "department"})
     Page<Student> findByIsDeletedFalse(Pageable pageable);
+
+    @Override
+    @EntityGraph(attributePaths = {"user", "department"})
+    Page<Student> findAll(org.springframework.data.jpa.domain.Specification<Student> spec, Pageable pageable);
 
     /**
      * Lấy tất cả sinh viên chưa bị xóa (non-paginated)

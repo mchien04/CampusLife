@@ -14,6 +14,7 @@ import vn.campuslife.model.Response;
 import vn.campuslife.model.preparation.*;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.FileUploadService;
 import vn.campuslife.service.PreparationFinanceService;
 
@@ -24,6 +25,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PreparationFinanceController {
     private final PreparationFinanceService financeService;
+    private final DepartmentScopeRouting departmentScopeRouting;
     private final FileUploadService fileUploadService;
 
     @PutMapping("/activities/{activityId}/budget")
@@ -33,7 +35,7 @@ public class PreparationFinanceController {
             @RequestBody @Valid UpsertActivityBudgetRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        ActivityBudgetDto dto = hasManagerScope(scope)
+        ActivityBudgetDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.upsertActivityBudget(activityId, request, scope)
                 : financeService.upsertActivityBudget(activityId, request);
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -45,7 +47,7 @@ public class PreparationFinanceController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        ActivityBudgetDto dto = hasManagerScope(scope)
+        ActivityBudgetDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.getActivityBudget(activityId, scope)
                 : financeService.getActivityBudget(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -58,7 +60,7 @@ public class PreparationFinanceController {
             @RequestBody @Valid AllocateTaskAmountRequest request,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        PreparationTaskDto dto = hasManagerScope(scope)
+        PreparationTaskDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.allocateTaskAmount(taskId, request, scope)
                 : financeService.allocateTaskAmount(taskId, request);
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -82,7 +84,7 @@ public class PreparationFinanceController {
             @RequestParam(required = false) AllocationAdjustmentStatus status,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<AllocationAdjustmentRequestDto> dtos = hasManagerScope(scope)
+        List<AllocationAdjustmentRequestDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.listAllocationAdjustmentRequests(activityId, status, scope)
                 : financeService.listAllocationAdjustmentRequests(activityId, status);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -100,13 +102,13 @@ public class PreparationFinanceController {
         if (Boolean.TRUE.equals(request.getApproved())
                 && request.getSources() != null
                 && !request.getSources().isEmpty()) {
-            dto = hasManagerScope(scope)
+            dto = departmentScopeRouting.useManagerScopedPath(scope)
                     ? financeService.adminDecisionAllocationAdjustmentMulti(
                             requestId, request.getSources(), authentication.getName(), scope)
                     : financeService.adminDecisionAllocationAdjustmentMulti(
                             requestId, request.getSources(), authentication.getName());
         } else {
-            dto = hasManagerScope(scope)
+            dto = departmentScopeRouting.useManagerScopedPath(scope)
                     ? financeService.adminDecisionAllocationAdjustment(
                             requestId,
                             Boolean.TRUE.equals(request.getApproved()),
@@ -128,7 +130,7 @@ public class PreparationFinanceController {
             @PathVariable Long requestId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<AllocationSourceSuggestionDto> dtos = hasManagerScope(scope)
+        List<AllocationSourceSuggestionDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.suggestAllocationAdjustmentSources(requestId, scope)
                 : financeService.suggestAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -140,7 +142,7 @@ public class PreparationFinanceController {
             @PathVariable Long requestId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<AllocationAdjustmentSourcePlanDto> dtos = hasManagerScope(scope)
+        List<AllocationAdjustmentSourcePlanDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.planAllocationAdjustmentSources(requestId, scope)
                 : financeService.planAllocationAdjustmentSources(requestId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -153,7 +155,7 @@ public class PreparationFinanceController {
             @PathVariable Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        if (hasManagerScope(scope)) {
+        if (departmentScopeRouting.useManagerScopedPath(scope)) {
             financeService.addTaskMember(taskId, studentId, scope);
         } else {
             financeService.addTaskMember(taskId, studentId);
@@ -179,7 +181,7 @@ public class PreparationFinanceController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        FundAdvanceDto dto = hasManagerScope(scope)
+        FundAdvanceDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.adminDecisionFundAdvance(
                         fundAdvanceId, Boolean.TRUE.equals(request.getApproved()), authentication.getName(), scope)
                 : financeService.adminDecisionFundAdvance(
@@ -194,7 +196,7 @@ public class PreparationFinanceController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        FundAdvanceDto dto = hasManagerScope(scope)
+        FundAdvanceDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.adminReturnFundAdvance(fundAdvanceId, authentication.getName(), scope)
                 : financeService.adminReturnFundAdvance(fundAdvanceId, authentication.getName());
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -206,7 +208,7 @@ public class PreparationFinanceController {
             @PathVariable Long taskId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<FundAdvanceDto> dtos = hasManagerScope(scope)
+        List<FundAdvanceDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.listFundAdvancesByTask(taskId, scope)
                 : financeService.listFundAdvancesByTask(taskId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -227,7 +229,7 @@ public class PreparationFinanceController {
             @PathVariable Long taskId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<TaskAllocationSourceDto> dtos = hasManagerScope(scope)
+        List<TaskAllocationSourceDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.listTaskAllocationSources(taskId, scope)
                 : financeService.listTaskAllocationSources(taskId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -261,7 +263,7 @@ public class PreparationFinanceController {
             @RequestParam(required = false) Long studentId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<FundAdvanceDebtDto> dtos = hasManagerScope(scope)
+        List<FundAdvanceDebtDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.listFundAdvanceDebts(activityId, studentId, scope)
                 : financeService.listFundAdvanceDebts(activityId, studentId);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -308,7 +310,7 @@ public class PreparationFinanceController {
             Authentication authentication,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        ExpenseDto dto = hasManagerScope(scope)
+        ExpenseDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
                         authentication.getName(), scope)
                 : financeService.adminDecision(expenseId, Boolean.TRUE.equals(request.getApproved()),
@@ -323,7 +325,7 @@ public class PreparationFinanceController {
             @RequestParam(required = false) ExpenseStatus status,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        List<ExpenseDto> dtos = hasManagerScope(scope)
+        List<ExpenseDto> dtos = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.listExpensesByActivity(activityId, status, scope)
                 : financeService.listExpensesByActivity(activityId, status);
         return ResponseEntity.ok(Response.success("OK", dtos));
@@ -335,7 +337,7 @@ public class PreparationFinanceController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        FinancialReportDto dto = hasManagerScope(scope)
+        FinancialReportDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.getFinancialReport(activityId, scope)
                 : financeService.getFinancialReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -347,7 +349,7 @@ public class PreparationFinanceController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        FinanceOverviewReportDto dto = hasManagerScope(scope)
+        FinanceOverviewReportDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.getFinanceOverviewReport(activityId, scope)
                 : financeService.getFinanceOverviewReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -359,7 +361,7 @@ public class PreparationFinanceController {
             @PathVariable Long activityId,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        CashFlowReportDto dto = hasManagerScope(scope)
+        CashFlowReportDto dto = departmentScopeRouting.useManagerScopedPath(scope)
                 ? financeService.getCashFlowReport(activityId, scope)
                 : financeService.getCashFlowReport(activityId);
         return ResponseEntity.ok(Response.success("OK", dto));
@@ -367,9 +369,5 @@ public class PreparationFinanceController {
 
     private DepartmentScope currentScope(HttpServletRequest request) {
         return DepartmentRequestScope.get(request).orElse(null);
-    }
-
-    private boolean hasManagerScope(DepartmentScope scope) {
-        return scope != null && scope.manager() && !scope.departmentIds().isEmpty();
     }
 }

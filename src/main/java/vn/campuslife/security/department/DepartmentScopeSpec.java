@@ -118,6 +118,20 @@ public final class DepartmentScopeSpec {
                 departmentSnapshotOrCurrentStudent(cb, root, "studentDepartmentAtRegistration", "student", deptIds));
     }
 
+    public static Specification<ActivityRegistration> activityRegistrationByOrganizer(Set<Long> deptIds) {
+        if (isEmpty(deptIds)) {
+            return noRows();
+        }
+        return (root, query, cb) -> {
+            query.distinct(true);
+            Join<ActivityRegistration, Activity> activity = root.join("activity");
+            Join<Activity, Department> organizers = activity.join("organizers");
+            return cb.and(
+                    cb.isFalse(activity.get("isDeleted")),
+                    organizers.get("id").in(deptIds));
+        };
+    }
+
     public static Specification<ActivityParticipation> activityParticipation(Set<Long> deptIds) {
         if (isEmpty(deptIds)) {
             return noRows();
@@ -143,6 +157,21 @@ public final class DepartmentScopeSpec {
             return cb.and(
                     cb.isFalse(registration.get("activity").get("isDeleted")),
                     cb.or(participationDept, registrationDept, currentDept));
+        };
+    }
+
+    public static Specification<ActivityParticipation> activityParticipationByOrganizer(Set<Long> deptIds) {
+        if (isEmpty(deptIds)) {
+            return noRows();
+        }
+        return (root, query, cb) -> {
+            query.distinct(true);
+            Join<ActivityParticipation, ActivityRegistration> registration = root.join("registration");
+            Join<ActivityRegistration, Activity> activity = registration.join("activity");
+            Join<Activity, Department> organizers = activity.join("organizers");
+            return cb.and(
+                    cb.isFalse(activity.get("isDeleted")),
+                    organizers.get("id").in(deptIds));
         };
     }
 

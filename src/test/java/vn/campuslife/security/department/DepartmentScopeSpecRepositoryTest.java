@@ -92,6 +92,30 @@ class DepartmentScopeSpecRepositoryTest {
     }
 
     @Test
+    void registrationSpecByOrganizer_IncludesStudentsFromOtherDepartments() {
+        Department managerDept = persistDepartment("Manager Dept");
+        Department otherDept = persistDepartment("Other Dept");
+        Student otherDeptStudent = persistStudent("other-dept-student", otherDept);
+        Activity activity = persistActivity("Organizer Activity", managerDept);
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setActivity(activity);
+        registration.setStudent(otherDeptStudent);
+        registration.setStudentDepartmentAtRegistration(otherDept);
+        registration.setStatus(RegistrationStatus.APPROVED);
+        entityManager.persist(registration);
+        entityManager.flush();
+
+        List<ActivityRegistration> byOrganizer = registrationRepository.findAll(
+                DepartmentScopeSpec.activityRegistrationByOrganizer(Set.of(managerDept.getId())));
+        List<ActivityRegistration> byStudentDept = registrationRepository.findAll(
+                DepartmentScopeSpec.activityRegistration(Set.of(managerDept.getId())));
+
+        assertEquals(List.of(registration.getId()), byOrganizer.stream().map(ActivityRegistration::getId).toList());
+        assertEquals(List.of(), byStudentDept.stream().map(ActivityRegistration::getId).toList());
+    }
+
+    @Test
     void eventArticleSpec_FiltersByOwnerDepartment() {
         Department managerDept = persistDepartment("Manager Dept");
         Department otherDept = persistDepartment("Other Dept");

@@ -10,6 +10,7 @@ import vn.campuslife.service.ActivityPhotoService;
 import vn.campuslife.service.ActivityService;
 import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
+import vn.campuslife.security.department.DepartmentScopeRouting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -28,9 +29,13 @@ public class ActivityController {
 
     private final ActivityService activityService;
     private final ActivityPhotoService photoService;
-    public ActivityController(ActivityService activityService, ActivityPhotoService photoService) {
+    private final DepartmentScopeRouting departmentScopeRouting;
+
+    public ActivityController(ActivityService activityService, ActivityPhotoService photoService,
+            DepartmentScopeRouting departmentScopeRouting) {
         this.activityService = activityService;
         this.photoService = photoService;
+        this.departmentScopeRouting = departmentScopeRouting;
     }
     @PostMapping
     public ResponseEntity<Response> createActivity(@RequestBody CreateActivityRequest request,
@@ -42,9 +47,9 @@ public class ActivityController {
             logger.info("BannerUrl: {}", request.getBannerUrl());
             logger.info("===============================");
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = scope == null
-                    ? activityService.createActivity(request)
-                    : activityService.createActivity(request, scope);
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                    ? activityService.createActivity(request, scope)
+                    : activityService.createActivity(request);
 
             return response.isStatus()
                     ? ResponseEntity.ok(response)
@@ -74,9 +79,9 @@ public class ActivityController {
         try {
             String username = (auth != null) ? auth.getName() : null;
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = scope == null
-                    ? activityService.getAllActivities(username)
-                    : activityService.getAllActivities(username, scope);
+            Response response = departmentScopeRouting.useScopedPath(scope)
+                    ? activityService.getAllActivities(username, scope)
+                    : activityService.getAllActivities(username);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -94,9 +99,9 @@ public class ActivityController {
         try {
             String username = (auth != null) ? auth.getName() : null;
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = scope == null
-                    ? activityService.getActivityById(id, username)
-                    : activityService.getActivityById(id, username, scope);
+            Response response = departmentScopeRouting.useScopedPath(scope)
+                    ? activityService.getActivityById(id, username, scope)
+                    : activityService.getActivityById(id, username);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.notFound().build();
@@ -113,9 +118,9 @@ public class ActivityController {
             HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = scope == null
-                    ? activityService.updateActivity(id, request)
-                    : activityService.updateActivity(id, request, scope);
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                    ? activityService.updateActivity(id, request, scope)
+                    : activityService.updateActivity(id, request);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -130,9 +135,9 @@ public class ActivityController {
     public ResponseEntity<Response> deleteActivity(@PathVariable Long id, HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = scope == null
-                    ? activityService.deleteActivity(id)
-                    : activityService.deleteActivity(id, scope);
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                    ? activityService.deleteActivity(id, scope)
+                    : activityService.deleteActivity(id);
             return response.isStatus()
                     ? ResponseEntity.ok(response)
                     : ResponseEntity.badRequest().body(response);
@@ -146,18 +151,18 @@ public class ActivityController {
     @PutMapping("/{id}/publish")
     public ResponseEntity<Response> publish(@PathVariable Long id, HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = scope == null
-                ? activityService.publishActivity(id)
-                : activityService.publishActivity(id, scope);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.publishActivity(id, scope)
+                : activityService.publishActivity(id);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
     @PutMapping("/{id}/unpublish")
     public ResponseEntity<Response> unpublish(@PathVariable Long id, HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = scope == null
-                ? activityService.unpublishActivity(id)
-                : activityService.unpublishActivity(id, scope);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.unpublishActivity(id, scope)
+                : activityService.unpublishActivity(id);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
@@ -165,9 +170,9 @@ public class ActivityController {
     public ResponseEntity<Response> copy(@PathVariable Long id, @RequestParam(required = false) Integer offsetDays,
             HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        Response response = scope == null
-                ? activityService.copyActivity(id, offsetDays)
-                : activityService.copyActivity(id, offsetDays, scope);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.copyActivity(id, offsetDays, scope)
+                : activityService.copyActivity(id, offsetDays);
         return response.isStatus() ? ResponseEntity.ok(response) : ResponseEntity.badRequest().body(response);
     }
 
@@ -180,9 +185,9 @@ public class ActivityController {
     @GetMapping("/department/{deptId}")
     public List<ActivityResponse> byDepartment(@PathVariable Long deptId, HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        return scope == null
-                ? activityService.getActivitiesForDepartment(deptId)
-                : activityService.getActivitiesForDepartment(deptId, scope);
+        return departmentScopeRouting.useScopedPath(scope)
+                ? activityService.getActivitiesForDepartment(deptId, scope)
+                : activityService.getActivitiesForDepartment(deptId);
     }
 
     @GetMapping("/my")
@@ -294,9 +299,9 @@ public class ActivityController {
     public ResponseEntity<Response> backfillCheckInCodes(HttpServletRequest httpRequest) {
         try {
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = scope == null
-                    ? activityService.backfillCheckInCodes()
-                    : activityService.backfillCheckInCodes(scope);
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                    ? activityService.backfillCheckInCodes(scope)
+                    : activityService.backfillCheckInCodes();
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Error backfilling checkInCodes: {}", e.getMessage(), e);

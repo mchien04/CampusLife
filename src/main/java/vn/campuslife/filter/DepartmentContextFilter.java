@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import vn.campuslife.config.DepartmentScopeProperties;
 import vn.campuslife.exception.ForbiddenException;
 import vn.campuslife.model.Response;
 import vn.campuslife.security.department.DepartmentRequestScope;
@@ -27,10 +28,15 @@ public class DepartmentContextFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(DepartmentContextFilter.class);
 
     private final DepartmentScopeResolver departmentScopeResolver;
+    private final DepartmentScopeProperties departmentScopeProperties;
     private final ObjectMapper objectMapper;
 
-    public DepartmentContextFilter(DepartmentScopeResolver departmentScopeResolver, ObjectMapper objectMapper) {
+    public DepartmentContextFilter(
+            DepartmentScopeResolver departmentScopeResolver,
+            DepartmentScopeProperties departmentScopeProperties,
+            ObjectMapper objectMapper) {
         this.departmentScopeResolver = departmentScopeResolver;
+        this.departmentScopeProperties = departmentScopeProperties;
         this.objectMapper = objectMapper;
     }
 
@@ -39,6 +45,11 @@ public class DepartmentContextFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!shouldResolveScope(authentication)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        if (!departmentScopeProperties.isScopingActive()) {
             filterChain.doFilter(request, response);
             return;
         }

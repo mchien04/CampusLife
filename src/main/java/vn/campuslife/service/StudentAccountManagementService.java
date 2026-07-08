@@ -1,5 +1,6 @@
 package vn.campuslife.service;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.student.BulkCreateStudentsRequest;
@@ -35,13 +36,15 @@ public interface StudentAccountManagementService {
      * Tạo tài khoản sinh viên từ danh sách (không qua Excel)
      */
     Response createMultipleStudents(CreateMultipleStudentsRequest request);
+
+    Response createMultipleStudents(CreateMultipleStudentsRequest request, DepartmentScope scope);
     
     /**
      * Lấy danh sách tài khoản chờ review (tất cả tài khoản đã tạo)
      */
-    Response getPendingAccounts();
+    Response getPendingAccounts(Pageable pageable, Boolean credentialsSent);
 
-    Response getPendingAccounts(DepartmentScope scope);
+    Response getPendingAccounts(Pageable pageable, Boolean credentialsSent, DepartmentScope scope);
     
     /**
      * Chỉnh sửa thông tin tài khoản
