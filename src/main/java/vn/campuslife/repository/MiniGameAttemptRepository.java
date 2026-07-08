@@ -99,4 +99,8 @@ public interface MiniGameAttemptRepository extends JpaRepository<MiniGameAttempt
         @Query("SELECT COUNT(DISTINCT mga.student.id) FROM MiniGameAttempt mga " +
                         "WHERE mga.miniGame.id = :miniGameId")
         Long countUniqueStudentsByMiniGameId(@Param("miniGameId") Long miniGameId);
+
+        @Query("SELECT COUNT(DISTINCT mga.miniGame.id) FROM MiniGameAttempt mga " +
+                        "WHERE mga.student.id = :studentId")
+        Long countDistinctMiniGamesByStudentId(@Param("studentId") Long studentId);
 }

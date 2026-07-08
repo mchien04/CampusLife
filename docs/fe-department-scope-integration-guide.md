@@ -222,7 +222,7 @@ Base path: `/api/statistics`
 
 | API | Query params FE có thể gửi |
 |-----|----------------------------|
-| `GET /api/statistics/dashboard` | Không có — MANAGER nhận metrics scoped theo khoa (tổng, tháng hiện tại, top 5 hoạt động/SV) |
+| `GET /api/statistics/dashboard` | Không có — MANAGER: metrics scoped theo khoa; STUDENT: metrics cá nhân (đăng ký/tham gia của chính SV) |
 | `GET /api/statistics/activities` | `activityType`, `scoreType`, `departmentId`, `startDate`, `endDate` |
 | `GET /api/statistics/students` | `departmentId`, `classId`, `semesterId` |
 | `GET /api/statistics/scores` | `scoreType`, `semesterId`, `departmentId`, `classId` |
