@@ -60,6 +60,9 @@ public class DepartmentScopeResolver {
             Set<Long> departmentIds = userDepartmentRepository.findActiveDepartmentIdsByUserId(user.getId());
             if (departmentIds == null || departmentIds.isEmpty()) {
                 handleUnassignedManager(username);
+                if (!properties.shouldDenyAccess() && !properties.isAuditOnly()) {
+                    return DepartmentScope.unscoped();
+                }
                 return DepartmentScope.manager(Set.of());
             }
             return DepartmentScope.manager(departmentIds);

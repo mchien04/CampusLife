@@ -82,6 +82,19 @@ class DepartmentScopeResolverTest {
     }
 
     @Test
+    void resolve_ManagerWithoutDepartment_WhenEnforcementDisabled_ReturnsUnscoped() {
+        User manager = user(2L, "manager", Role.MANAGER);
+        when(userRepository.findByUsernameAndIsDeletedFalse("manager")).thenReturn(Optional.of(manager));
+        when(userDepartmentRepository.findActiveDepartmentIdsByUserId(2L)).thenReturn(Set.of());
+
+        DepartmentScope scope = resolver.resolve("manager");
+
+        assertFalse(scope.admin());
+        assertFalse(scope.manager());
+        assertFalse(scope.student());
+    }
+
+    @Test
     void resolve_ManagerWithoutDepartment_WhenAuditOnly_ReturnsEmptyScope() {
         properties.getEnforcement().setEnabled(true);
         properties.setAuditOnly(true);

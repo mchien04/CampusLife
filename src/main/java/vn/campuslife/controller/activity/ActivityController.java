@@ -79,7 +79,7 @@ public class ActivityController {
         try {
             String username = (auth != null) ? auth.getName() : null;
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = departmentScopeRouting.useScopedPath(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? activityService.getAllActivities(username, scope)
                     : activityService.getAllActivities(username);
             return response.isStatus()
@@ -99,7 +99,7 @@ public class ActivityController {
         try {
             String username = (auth != null) ? auth.getName() : null;
             DepartmentScope scope = currentScope(httpRequest);
-            Response response = departmentScopeRouting.useScopedPath(scope)
+            Response response = departmentScopeRouting.useManagerScopedPath(scope)
                     ? activityService.getActivityById(id, username, scope)
                     : activityService.getActivityById(id, username);
             return response.isStatus()
@@ -177,15 +177,20 @@ public class ActivityController {
     }
 
     @GetMapping("/score-type/{scoreType}")
-    public ResponseEntity<List<ActivityResponse>> getByScoreType(@PathVariable ScoreType scoreType) {
-        return ResponseEntity.ok(activityService.getActivitiesByScoreType(scoreType));
+    public ResponseEntity<List<ActivityResponse>> getByScoreType(
+            @PathVariable ScoreType scoreType,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        return ResponseEntity.ok(departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.getActivitiesByScoreType(scoreType, scope)
+                : activityService.getActivitiesByScoreType(scoreType));
     }
 
 
     @GetMapping("/department/{deptId}")
     public List<ActivityResponse> byDepartment(@PathVariable Long deptId, HttpServletRequest httpRequest) {
         DepartmentScope scope = currentScope(httpRequest);
-        return departmentScopeRouting.useScopedPath(scope)
+        return departmentScopeRouting.useManagerScopedPath(scope)
                 ? activityService.getActivitiesForDepartment(deptId, scope)
                 : activityService.getActivitiesForDepartment(deptId);
     }
@@ -264,15 +269,19 @@ public class ActivityController {
     //Tìm kiếm sự kiện
     @GetMapping("/upcoming")
     public ResponseEntity<List<ActivityResponse>> search(
-            @RequestParam(name = "keyword", required = false) String keyword
-    ) {
-        List<ActivityResponse> list = activityService.searchUpcomingEvents(keyword);
+            @RequestParam(name = "keyword", required = false) String keyword,
+            HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        List<ActivityResponse> list = departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.searchUpcomingEvents(keyword, scope)
+                : activityService.searchUpcomingEvents(keyword);
         return ResponseEntity.ok(list);
     }
     //Tìm sự kiện trong tháng
     @GetMapping("/month")
     public List<ActivityResponse> getByMonth(@RequestParam(required = false) Integer year,
-                                             @RequestParam(required = false) Integer month) {
+                                             @RequestParam(required = false) Integer month,
+                                             HttpServletRequest httpRequest) {
 
         YearMonth ym = (year == null || month == null)
                 ? YearMonth.now()
@@ -284,7 +293,10 @@ public class ActivityController {
         LocalDateTime start = startDate.atStartOfDay();
         LocalDateTime end = endDate.atStartOfDay();
 
-        return activityService.getActivitiesByMonth(start, end);
+        DepartmentScope scope = currentScope(httpRequest);
+        return departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.getActivitiesByMonth(start, end, scope)
+                : activityService.getActivitiesByMonth(start, end);
     }
     //Hien tat ca hinh anh
     @GetMapping("/photos/all")

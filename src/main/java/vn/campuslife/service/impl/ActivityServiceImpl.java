@@ -281,7 +281,7 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     public Response getAllActivities(String username, DepartmentScope scope) {
         try {
-            var list = scope != null && scope.manager()
+            var list = scope != null && scope.manager() && !scope.admin()
                     ? activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()))
                     : activityRepository.findByIsDeletedFalseOrderByStartDateAsc();
 
@@ -457,16 +457,36 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Override
     public List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType) {
-        return activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType).stream()
+        return getActivitiesByScoreType(scoreType, null);
+    }
+
+    @Override
+    public List<ActivityResponse> getActivitiesByScoreType(ScoreType scoreType, DepartmentScope scope) {
+        List<Activity> activities = activityRepository.findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(scoreType);
+        if (scope != null && scope.manager() && !scope.admin()) {
+            Set<Long> allowedIds = activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()))
+                    .stream()
+                    .map(Activity::getId)
+                    .collect(Collectors.toSet());
+            activities = activities.stream()
+                    .filter(activity -> allowedIds.contains(activity.getId()))
+                    .collect(Collectors.toList());
+        }
+        return activities.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end) {
-        return activityRepository.findInMonth(start, end).stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return getActivitiesByMonth(start, end, null);
+    }
+
+    @Override
+    public List<ActivityResponse> getActivitiesByMonth(LocalDate start, LocalDate end, DepartmentScope scope) {
+        LocalDateTime startDateTime = start.atStartOfDay();
+        LocalDateTime endDateTime = end.atStartOfDay();
+        return getActivitiesByMonth(startDateTime, endDateTime, scope);
     }
 
     @Override
@@ -856,30 +876,13 @@ public class ActivityServiceImpl implements ActivityService {
     // Tìm kiếm sự kiện
     @Override
     public List<ActivityResponse> searchUpcomingEvents(String keyword) {
-        Specification<Activity> spec = (root, query, cb) -> {
-            query.distinct(true);
-            List<Predicate> predicates = new ArrayList<>();
+        return searchUpcomingEvents(keyword, null);
+    }
 
-            // chỉ lấy sự kiện chưa diễn ra
-            predicates.add(cb.greaterThanOrEqualTo(
-                    root.get("startDate"),
-                    LocalDateTime.now()));
-
-            if (keyword != null && !keyword.trim().isEmpty()) {
-                String k = "%" + keyword.toLowerCase() + "%";
-
-                Join<Activity, Department> deptJoin = root.join("organizers", JoinType.LEFT);
-
-                Predicate keywordPredicate = cb.or(
-                        cb.like(cb.lower(root.get("name")), k),
-                        cb.like(cb.lower(root.get("description")), k),
-                        cb.like(cb.lower(deptJoin.get("name")), k));
-
-                predicates.add(keywordPredicate);
-            }
-
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
+    @Override
+    public List<ActivityResponse> searchUpcomingEvents(String keyword, DepartmentScope scope) {
+        Specification<Activity> spec = upcomingSearchSpecification(keyword);
+        spec = applyManagerActivityListScope(spec, scope);
 
         return activityRepository.findAll(spec).stream()
                 .map(this::toResponse)
@@ -889,9 +892,46 @@ public class ActivityServiceImpl implements ActivityService {
     // sự kiện trong tháng
     @Override
     public List<ActivityResponse> getActivitiesByMonth(LocalDateTime start, LocalDateTime end) {
-        return activityRepository.findActivitiesInMonth(start, end).stream()
+        return getActivitiesByMonth(start, end, null);
+    }
+
+    @Override
+    public List<ActivityResponse> getActivitiesByMonth(LocalDateTime start, LocalDateTime end, DepartmentScope scope) {
+        Specification<Activity> spec = DepartmentScopeSpec.startingBetween(start, end);
+        spec = applyManagerActivityListScope(spec, scope);
+
+        return activityRepository.findAll(spec).stream()
+                .sorted(java.util.Comparator.comparing(Activity::getStartDate).reversed())
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    private Specification<Activity> upcomingSearchSpecification(String keyword) {
+        return (root, query, cb) -> {
+            query.distinct(true);
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(cb.greaterThanOrEqualTo(root.get("startDate"), LocalDateTime.now()));
+            predicates.add(cb.isFalse(root.get("isDeleted")));
+
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                String k = "%" + keyword.toLowerCase() + "%";
+                Join<Activity, Department> deptJoin = root.join("organizers", JoinType.LEFT);
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), k),
+                        cb.like(cb.lower(root.get("description")), k),
+                        cb.like(cb.lower(deptJoin.get("name")), k)));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private Specification<Activity> applyManagerActivityListScope(Specification<Activity> spec, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            return DepartmentScopeSpec.activity(scope.departmentIds()).and(spec);
+        }
+        return spec;
     }
 
     /**
