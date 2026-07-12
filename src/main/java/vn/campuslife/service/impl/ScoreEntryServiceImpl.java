@@ -83,12 +83,29 @@ public class ScoreEntryServiceImpl implements ScoreEntryService {
     public void reverseEntries(ScoreEntrySourceType sourceType, Long sourceId, String reason, User actor) {
         List<ScoreEntry> entries = scoreEntryRepository.findBySourceTypeAndSourceIdAndStatus(sourceType, sourceId, ScoreEntryStatus.ACTIVE);
         for (ScoreEntry entry : entries) {
-            entry.setStatus(ScoreEntryStatus.REVERSED);
-            entry.setReason(reason);
-            entry.setCreatedBy(actor);
-            scoreEntryRepository.save(entry);
-            refreshStudentScore(entry.getStudent().getId(), entry.getSemester().getId(), entry.getScoreType());
+            reverseActiveEntry(entry, reason, actor);
         }
+    }
+
+    @Override
+    @Transactional
+    public void reverseEntry(Long scoreEntryId, String reason, User actor) {
+        ScoreEntry entry = scoreEntryRepository.findById(scoreEntryId)
+                .orElseThrow(() -> new vn.campuslife.exception.ResourceNotFoundException(
+                        "Score entry not found: " + scoreEntryId));
+        if (entry.getStatus() != ScoreEntryStatus.ACTIVE) {
+            throw new vn.campuslife.exception.BadRequestException(
+                    "Score entry is not ACTIVE and cannot be reversed");
+        }
+        reverseActiveEntry(entry, reason, actor);
+    }
+
+    private void reverseActiveEntry(ScoreEntry entry, String reason, User actor) {
+        entry.setStatus(ScoreEntryStatus.REVERSED);
+        entry.setReason(reason);
+        entry.setCreatedBy(actor);
+        scoreEntryRepository.save(entry);
+        refreshStudentScore(entry.getStudent().getId(), entry.getSemester().getId(), entry.getScoreType());
     }
 
     @Override

@@ -19,7 +19,7 @@ public class ScoreAppealDecisionRequest {
 
     private String decisionNotes;
 
-    /** When set with APPROVED, creates a MANUAL_ADJUSTMENT ledger entry. */
+    /** When set with APPROVED, creates a MANUAL_ADJUSTMENT after reversing the related deduction. */
     private BigDecimal adjustedPoints;
 
     private ScoreType scoreType;
