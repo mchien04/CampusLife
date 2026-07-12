@@ -723,9 +723,16 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 }
             } else {
                 try {
-                    scoreRuleEngine.applyActivityCompleted(
+                    List<AppliedScoreAward> awards = scoreRuleEngine.applyActivityCompleted(
                             participation,
                             participation.getRegistration().getStudent().getUser());
+                    if (awards != null && !awards.isEmpty()) {
+                        BigDecimal totalPoints = awards.stream()
+                                .map(AppliedScoreAward::getPoints)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        participation.setPointsEarned(totalPoints);
+                        participationRepository.save(participation);
+                    }
                 } catch (Exception e) {
                     logger.error("Failed to apply activity rules: {}", e.getMessage(), e);
                 }
@@ -1578,12 +1585,12 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
 
         markParticipationCompleted(participation, gradedSubmissionOpt.get().getIsCompleted());
-        return applyStandaloneOrSeriesSubmissionResult(activity, registration.getStudent(), gradedSubmissionOpt.get(), actor);
+        return applyStandaloneOrSeriesSubmissionResult(
+                activity, registration.getStudent(), participation, gradedSubmissionOpt.get(), actor);
     }
 
     private void markParticipationCompleted(ActivityParticipation participation, boolean isCompleted) {
         participation.setIsCompleted(isCompleted);
-        participation.setPointsEarned(BigDecimal.ZERO);
         participation.setParticipationType(ParticipationType.COMPLETED);
         participationRepository.save(participation);
     }
@@ -1621,6 +1628,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     private List<AppliedScoreAward> applyStandaloneOrSeriesSubmissionResult(Activity activity,
             Student student,
+            ActivityParticipation participation,
             TaskSubmission submission,
             User actor) {
         if (activity.getSeriesId() != null) {
@@ -1635,7 +1643,15 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         }
 
         try {
-            return scoreRuleEngine.applySubmissionGraded(submission, actor);
+            List<AppliedScoreAward> awards = scoreRuleEngine.applySubmissionGraded(submission, actor);
+            if (participation != null && awards != null && !awards.isEmpty()) {
+                BigDecimal totalPoints = awards.stream()
+                        .map(AppliedScoreAward::getPoints)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                participation.setPointsEarned(totalPoints);
+                participationRepository.save(participation);
+            }
+            return awards != null ? awards : Collections.emptyList();
         } catch (Exception e) {
             logger.error("Failed to apply submission rules: {}", e.getMessage(), e);
             return Collections.emptyList();

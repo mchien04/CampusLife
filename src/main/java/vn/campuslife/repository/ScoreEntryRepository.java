@@ -12,6 +12,7 @@ import vn.campuslife.enumeration.ScoreType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -119,4 +120,37 @@ public interface ScoreEntryRepository extends JpaRepository<ScoreEntry, Long>, J
             @Param("studentId") Long studentId,
             @Param("semesterId") Long semesterId,
             @Param("status") ScoreEntryStatus status);
+
+    /** Tổng điểm ledger theo activity (dùng hiển thị participation trên score history). */
+    @Query("""
+            SELECT se.activity.id, COALESCE(SUM(se.points), 0)
+            FROM ScoreEntry se
+            WHERE se.student.id = :studentId
+              AND se.semester.id = :semesterId
+              AND se.status = :status
+              AND se.activity.id IN :activityIds
+            GROUP BY se.activity.id
+            """)
+    List<Object[]> sumPointsByStudentSemesterAndActivityIds(
+            @Param("studentId") Long studentId,
+            @Param("semesterId") Long semesterId,
+            @Param("status") ScoreEntryStatus status,
+            @Param("activityIds") Collection<Long> activityIds);
+
+    @Query("""
+            SELECT se.activity.id, COALESCE(SUM(se.points), 0)
+            FROM ScoreEntry se
+            WHERE se.student.id = :studentId
+              AND se.semester.id = :semesterId
+              AND se.scoreType = :scoreType
+              AND se.status = :status
+              AND se.activity.id IN :activityIds
+            GROUP BY se.activity.id
+            """)
+    List<Object[]> sumPointsByStudentSemesterScoreTypeAndActivityIds(
+            @Param("studentId") Long studentId,
+            @Param("semesterId") Long semesterId,
+            @Param("scoreType") ScoreType scoreType,
+            @Param("status") ScoreEntryStatus status,
+            @Param("activityIds") Collection<Long> activityIds);
 }
