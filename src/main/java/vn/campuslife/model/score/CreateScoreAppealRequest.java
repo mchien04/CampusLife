@@ -21,6 +21,8 @@ public class CreateScoreAppealRequest {
     @NotNull
     private ScoreType scoreType;
 
+    /** Bắt buộc: ScoreEntry bị trừ (points &lt; 0, ACTIVE) đang khiếu nại. */
+    @NotNull
     private Long relatedScoreEntryId;
 
     @NotBlank

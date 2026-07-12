@@ -12,6 +12,7 @@ import vn.campuslife.enumeration.NotificationType;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.enumeration.ScoreAppealStatus;
 import vn.campuslife.enumeration.ScoreEntrySourceType;
+import vn.campuslife.enumeration.ScoreEntryStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.exception.BadRequestException;
 import vn.campuslife.exception.ForbiddenException;
@@ -108,14 +109,7 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
         Semester semester = semesterRepository.findById(request.getSemesterId())
                 .orElseThrow(() -> new ResourceNotFoundException("Semester not found"));
 
-        ScoreEntry related = null;
-        if (request.getRelatedScoreEntryId() != null) {
-            related = scoreEntryRepository.findById(request.getRelatedScoreEntryId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Related score entry not found"));
-            if (!related.getStudent().getId().equals(student.getId())) {
-                throw new ForbiddenException("Related score entry does not belong to you");
-            }
-        }
+        ScoreEntry related = requireDeductionEntry(request.getRelatedScoreEntryId(), student);
 
         ScoreAppeal appeal = new ScoreAppeal();
         appeal.setStudent(student);
@@ -131,6 +125,7 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
 
         writeAudit(studentUser, "SCORE_APPEAL_CREATE", "ScoreAppeal", appeal.getId(),
                 "semesterId=" + semester.getId() + ",scoreType=" + request.getScoreType()
+                        + ",relatedScoreEntryId=" + related.getId()
                         + ",evidenceCount=" + toPublicEvidenceUrls(appeal.getEvidenceUrls()).size());
 
         return Response.success("Score appeal created", toResponse(appeal, List.of()));
@@ -237,30 +232,61 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
             throw new BadRequestException("decision must be APPROVED or REJECTED");
         }
 
-        ScoreType scoreType = request.getScoreType() != null ? request.getScoreType() : appeal.getScoreType();
-        Long semesterId = request.getSemesterId() != null
+        ScoreEntry related = appeal.getRelatedScoreEntry();
+        if (decision == ScoreAppealStatus.APPROVED) {
+            assertRelatedDeductionReversible(related);
+        }
+
+        ScoreType bonusScoreType = request.getScoreType() != null ? request.getScoreType() : appeal.getScoreType();
+        Long bonusSemesterId = request.getSemesterId() != null
                 ? request.getSemesterId()
                 : appeal.getSemester().getId();
 
-        BigDecimal currentScore = studentScoreRepository
-                .findByStudentIdAndSemesterIdAndScoreType(appeal.getStudent().getId(), semesterId, scoreType)
+        ScoreType relatedType = related != null ? related.getScoreType() : bonusScoreType;
+        Long relatedSemesterId = related != null ? related.getSemester().getId() : bonusSemesterId;
+
+        BigDecimal relatedCurrent = studentScoreRepository
+                .findByStudentIdAndSemesterIdAndScoreType(
+                        appeal.getStudent().getId(), relatedSemesterId, relatedType)
                 .map(StudentScore::getScore)
                 .orElse(BigDecimal.ZERO);
 
         BigDecimal adjustedPoints = request.getAdjustedPoints();
-        boolean willCreateLedger = decision == ScoreAppealStatus.APPROVED && adjustedPoints != null;
-        BigDecimal projectedScore = willCreateLedger
-                ? currentScore.add(adjustedPoints)
-                : currentScore;
+        boolean willReverse = decision == ScoreAppealStatus.APPROVED;
+        boolean willCreateBonus = decision == ScoreAppealStatus.APPROVED && adjustedPoints != null;
 
-        ScoreEntry related = appeal.getRelatedScoreEntry();
+        // Reverse removes related.points from ACTIVE sum → projected = current - related.points
+        BigDecimal projectedAfterReverse = willReverse && related != null
+                ? relatedCurrent.subtract(related.getPoints() != null ? related.getPoints() : BigDecimal.ZERO)
+                : relatedCurrent;
+
+        BigDecimal bonusCurrent = relatedType.equals(bonusScoreType) && relatedSemesterId.equals(bonusSemesterId)
+                ? projectedAfterReverse
+                : studentScoreRepository
+                        .findByStudentIdAndSemesterIdAndScoreType(
+                                appeal.getStudent().getId(), bonusSemesterId, bonusScoreType)
+                        .map(StudentScore::getScore)
+                        .orElse(BigDecimal.ZERO);
+
+        BigDecimal projectedBonus = willCreateBonus
+                ? bonusCurrent.add(adjustedPoints)
+                : bonusCurrent;
+
+        // Primary projectedScore: bonus type if creating bonus, else related type after reverse
+        BigDecimal projectedScore = willCreateBonus ? projectedBonus : projectedAfterReverse;
+        BigDecimal currentScore = willCreateBonus && !(relatedType.equals(bonusScoreType) && relatedSemesterId.equals(bonusSemesterId))
+                ? bonusCurrent
+                : relatedCurrent;
+
         String note;
         if (decision == ScoreAppealStatus.REJECTED) {
             note = "Từ chối khiếu nại — điểm không thay đổi.";
-        } else if (willCreateLedger) {
-            note = "Chấp nhận và điều chỉnh điểm — sẽ tạo bản ghi MANUAL_ADJUSTMENT.";
+        } else if (willCreateBonus) {
+            note = "Chấp nhận: gỡ điểm trừ trên entry #" + related.getId()
+                    + " (" + relatedType + "), rồi cộng " + adjustedPoints + " vào " + bonusScoreType + ".";
         } else {
-            note = "Chấp nhận khiếu nại nhưng không điều chỉnh điểm — điểm giữ nguyên.";
+            note = "Chấp nhận: chỉ gỡ điểm trừ trên entry #" + related.getId()
+                    + " (" + relatedType + ") — không cộng điểm thêm.";
         }
 
         ScoreAppealDecisionPreviewResponse preview = ScoreAppealDecisionPreviewResponse.builder()
@@ -268,15 +294,18 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
                 .studentId(appeal.getStudent().getId())
                 .studentCode(appeal.getStudent().getStudentCode())
                 .studentFullName(appeal.getStudent().getFullName())
-                .semesterId(semesterId)
-                .scoreType(scoreType)
+                .semesterId(bonusSemesterId)
+                .scoreType(willCreateBonus ? bonusScoreType : relatedType)
                 .decision(decision)
                 .currentScore(currentScore)
                 .adjustedPoints(adjustedPoints)
                 .projectedScore(projectedScore)
-                .willCreateLedgerEntry(willCreateLedger)
+                .willCreateLedgerEntry(willCreateBonus)
+                .willReverseRelated(willReverse)
                 .relatedScoreEntryId(related != null ? related.getId() : null)
                 .relatedEntryPoints(related != null ? related.getPoints() : null)
+                .relatedScoreType(relatedType)
+                .projectedRelatedScore(projectedAfterReverse)
                 .note(note)
                 .build();
 
@@ -299,9 +328,22 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
         }
 
         ScoreEntry resultingEntry = null;
-        if (decision == ScoreAppealStatus.APPROVED && request.getAdjustedPoints() != null) {
-            resultingEntry = applyAdjustment(appeal, request, actor);
-            appeal.setResultingScoreEntry(resultingEntry);
+        if (decision == ScoreAppealStatus.APPROVED) {
+            ScoreEntry related = appeal.getRelatedScoreEntry();
+            assertRelatedDeductionReversible(related);
+
+            String reverseReason = "Appeal #" + appeal.getId() + " approved — reversed deduction"
+                    + (request.getDecisionNotes() != null && !request.getDecisionNotes().isBlank()
+                    ? ": " + request.getDecisionNotes().trim()
+                    : "");
+            scoreEntryService.reverseEntry(related.getId(), reverseReason, actor);
+            writeAudit(actor, "SCORE_APPEAL_REVERSE", "ScoreEntry", related.getId(),
+                    "fromAppealId=" + appealId);
+
+            if (request.getAdjustedPoints() != null) {
+                resultingEntry = applyAdjustment(appeal, request, actor);
+                appeal.setResultingScoreEntry(resultingEntry);
+            }
         }
 
         appeal.setStatus(decision);
@@ -312,6 +354,7 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
 
         writeAudit(actor, "SCORE_APPEAL_DECIDE", "ScoreAppeal", appealId,
                 "decision=" + decision
+                        + ",reversedRelated=" + (decision == ScoreAppealStatus.APPROVED)
                         + ",adjustedPoints=" + request.getAdjustedPoints()
                         + (resultingEntry != null ? ",scoreEntryId=" + resultingEntry.getId() : ""));
 
@@ -423,6 +466,40 @@ public class ScoreAppealServiceImpl implements ScoreAppealService {
     private ScoreAppeal findAppeal(Long appealId) {
         return scoreAppealRepository.findById(appealId)
                 .orElseThrow(() -> new ResourceNotFoundException("Score appeal not found"));
+    }
+
+    /** Entry bị trừ bắt buộc khi tạo khiếu nại: thuộc SV, ACTIVE, points &lt; 0. */
+    private ScoreEntry requireDeductionEntry(Long relatedScoreEntryId, Student student) {
+        if (relatedScoreEntryId == null) {
+            throw new BadRequestException("relatedScoreEntryId is required (must attach the deducted score entry)");
+        }
+        ScoreEntry related = scoreEntryRepository.findById(relatedScoreEntryId)
+                .orElseThrow(() -> new ResourceNotFoundException("Related score entry not found"));
+        if (!related.getStudent().getId().equals(student.getId())) {
+            throw new ForbiddenException("Related score entry does not belong to you");
+        }
+        if (related.getStatus() != ScoreEntryStatus.ACTIVE) {
+            throw new BadRequestException("Related score entry must be ACTIVE");
+        }
+        if (related.getPoints() == null || related.getPoints().compareTo(BigDecimal.ZERO) >= 0) {
+            throw new BadRequestException("Related score entry must be a deduction (points < 0)");
+        }
+        return related;
+    }
+
+    private void assertRelatedDeductionReversible(ScoreEntry related) {
+        if (related == null) {
+            throw new BadRequestException("Appeal has no related deduction entry to reverse");
+        }
+        // Reload to avoid stale status
+        ScoreEntry fresh = scoreEntryRepository.findById(related.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Related score entry not found"));
+        if (fresh.getStatus() != ScoreEntryStatus.ACTIVE) {
+            throw new BadRequestException("Related score entry is not ACTIVE and cannot be reversed");
+        }
+        if (fresh.getPoints() == null || fresh.getPoints().compareTo(BigDecimal.ZERO) >= 0) {
+            throw new BadRequestException("Related score entry must be a deduction (points < 0)");
+        }
     }
 
     private void assertCanView(ScoreAppeal appeal, User actor, DepartmentScope scope) {

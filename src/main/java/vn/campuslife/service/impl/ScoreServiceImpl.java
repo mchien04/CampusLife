@@ -661,26 +661,53 @@ public class ScoreServiceImpl implements ScoreService {
 
             int historyTotalPages = scoreEntryPage.getTotalPages();
 
-            // Get ActivityParticipation COMPLETED
+            // Get ActivityParticipation COMPLETED — filter by semester date range
             Page<ActivityParticipation> participationPage;
-            if (scoreType != null) {
-                participationPage = participationRepository
-                        .findByRegistration_StudentIdAndRegistration_Activity_ScoreType(studentId, scoreType, pageable);
+            if (semester.getStartDate() == null || semester.getEndDate() == null) {
+                participationPage = Page.empty(pageable);
             } else {
-                participationPage = participationRepository
-                        .findByRegistration_StudentId_Completed(studentId, pageable);
+                LocalDateTime rangeStart = semester.getStartDate().atStartOfDay();
+                LocalDateTime rangeEndExclusive = semester.getEndDate().plusDays(1).atStartOfDay();
+                if (scoreType != null) {
+                    participationPage = participationRepository
+                            .findByRegistration_StudentIdAndRegistration_Activity_ScoreType(
+                                    studentId, scoreType, rangeStart, rangeEndExclusive, pageable);
+                } else {
+                    participationPage = participationRepository
+                            .findByRegistration_StudentId_Completed(
+                                    studentId, rangeStart, rangeEndExclusive, pageable);
+                }
             }
 
-            // Convert ActivityParticipation to DTO (batch-load series)
+            // Convert ActivityParticipation to DTO (batch-load series + ledger points)
             Set<Long> participationSeriesIds = new HashSet<>();
+            Set<Long> participationActivityIds = new HashSet<>();
             for (ActivityParticipation ap : participationPage.getContent()) {
                 Activity act = ap.getRegistration().getActivity();
+                if (act.getId() != null) {
+                    participationActivityIds.add(act.getId());
+                }
                 if (act.getSeriesId() != null) {
                     participationSeriesIds.add(act.getSeriesId());
                 }
             }
             if (!participationSeriesIds.isEmpty()) {
                 seriesRepository.findAllById(participationSeriesIds).forEach(s -> seriesMap.put(s.getId(), s));
+            }
+
+            Map<Long, BigDecimal> ledgerPointsByActivity = new HashMap<>();
+            if (!participationActivityIds.isEmpty()) {
+                List<Object[]> sums = scoreType != null
+                        ? scoreEntryRepository.sumPointsByStudentSemesterScoreTypeAndActivityIds(
+                                studentId, semesterId, scoreType, ScoreEntryStatus.ACTIVE, participationActivityIds)
+                        : scoreEntryRepository.sumPointsByStudentSemesterAndActivityIds(
+                                studentId, semesterId, ScoreEntryStatus.ACTIVE, participationActivityIds);
+                for (Object[] row : sums) {
+                    if (row[0] != null) {
+                        ledgerPointsByActivity.put((Long) row[0],
+                                row[1] != null ? (BigDecimal) row[1] : BigDecimal.ZERO);
+                    }
+                }
             }
 
             List<ActivityParticipationDetailResponse> participationResponses = participationPage.getContent().stream()
@@ -691,7 +718,11 @@ public class ScoreServiceImpl implements ScoreService {
                         response.setActivityId(activity.getId());
                         response.setActivityName(activity.getName());
                         response.setActivityType(activity.getType());
-                        response.setPointsEarned(ap.getPointsEarned());
+                        // Prefer ledger total (source of truth); fall back to denormalized column
+                        BigDecimal ledgerPoints = ledgerPointsByActivity.get(activity.getId());
+                        response.setPointsEarned(ledgerPoints != null
+                                ? ledgerPoints
+                                : (ap.getPointsEarned() != null ? ap.getPointsEarned() : BigDecimal.ZERO));
                         response.setParticipationType(ap.getParticipationType());
                         response.setDate(ap.getDate());
                         response.setIsCompleted(ap.getIsCompleted());

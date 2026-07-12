@@ -40,26 +40,55 @@ public interface ActivityParticipationRepository extends JpaRepository<ActivityP
                 @Param("studentId") Long studentId,
                 @Param("scoreType") ScoreType scoreType);
         
-        // Lấy participation với pagination theo studentId và scoreType (chỉ COMPLETED)
-        @Query("SELECT ap FROM ActivityParticipation ap " +
-                "JOIN ActivityScoreRule r ON r.activity = ap.registration.activity " +
-                "WHERE ap.registration.student.id = :studentId " +
-                "AND r.scoreType = :scoreType " +
-                "AND ap.participationType = 'COMPLETED' " +
-                "ORDER BY ap.date DESC")
+        // Lấy participation COMPLETED theo studentId + scoreType, lọc theo khoảng ngày học kỳ
+        // (activity.startDate trong kỳ; nếu null thì dùng activity.endDate — khớp SemesterHelperService)
+        @Query("""
+                SELECT ap FROM ActivityParticipation ap
+                JOIN ActivityScoreRule r ON r.activity = ap.registration.activity
+                WHERE ap.registration.student.id = :studentId
+                AND r.scoreType = :scoreType
+                AND ap.participationType = 'COMPLETED'
+                AND (
+                    (ap.registration.activity.startDate IS NOT NULL
+                     AND ap.registration.activity.startDate >= :rangeStart
+                     AND ap.registration.activity.startDate < :rangeEndExclusive)
+                    OR
+                    (ap.registration.activity.startDate IS NULL
+                     AND ap.registration.activity.endDate IS NOT NULL
+                     AND ap.registration.activity.endDate >= :rangeStart
+                     AND ap.registration.activity.endDate < :rangeEndExclusive)
+                )
+                ORDER BY ap.date DESC
+                """)
         org.springframework.data.domain.Page<ActivityParticipation> findByRegistration_StudentIdAndRegistration_Activity_ScoreType(
                 @Param("studentId") Long studentId,
                 @Param("scoreType") ScoreType scoreType,
+                @Param("rangeStart") java.time.LocalDateTime rangeStart,
+                @Param("rangeEndExclusive") java.time.LocalDateTime rangeEndExclusive,
                 org.springframework.data.domain.Pageable pageable);
-        
-        // Lấy participation với pagination theo studentId (chỉ COMPLETED, không filter scoreType)
-        @Query("SELECT DISTINCT ap FROM ActivityParticipation ap " +
-                "JOIN ActivityScoreRule r ON r.activity = ap.registration.activity " +
-                "WHERE ap.registration.student.id = :studentId " +
-                "AND ap.participationType = 'COMPLETED' " +
-                "ORDER BY ap.date DESC")
+
+        // Lấy participation COMPLETED theo studentId, lọc theo khoảng ngày học kỳ
+        @Query("""
+                SELECT DISTINCT ap FROM ActivityParticipation ap
+                JOIN ActivityScoreRule r ON r.activity = ap.registration.activity
+                WHERE ap.registration.student.id = :studentId
+                AND ap.participationType = 'COMPLETED'
+                AND (
+                    (ap.registration.activity.startDate IS NOT NULL
+                     AND ap.registration.activity.startDate >= :rangeStart
+                     AND ap.registration.activity.startDate < :rangeEndExclusive)
+                    OR
+                    (ap.registration.activity.startDate IS NULL
+                     AND ap.registration.activity.endDate IS NOT NULL
+                     AND ap.registration.activity.endDate >= :rangeStart
+                     AND ap.registration.activity.endDate < :rangeEndExclusive)
+                )
+                ORDER BY ap.date DESC
+                """)
         org.springframework.data.domain.Page<ActivityParticipation> findByRegistration_StudentId_Completed(
                 @Param("studentId") Long studentId,
+                @Param("rangeStart") java.time.LocalDateTime rangeStart,
+                @Param("rangeEndExclusive") java.time.LocalDateTime rangeEndExclusive,
                 org.springframework.data.domain.Pageable pageable);
 
         // Lấy tất cả participation theo activityId
