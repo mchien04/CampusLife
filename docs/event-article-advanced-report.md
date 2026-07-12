@@ -73,7 +73,7 @@ Nội dung bài viết (`content`) hỗ trợ HTML. FE nên sử dụng một tr
    - Hiển thị Sidebar với "Sự kiện liên quan" (API `/related`).
    - Nút Wishlist (Trái tim) để lưu bài viết.
    - Nút "Thêm vào lịch" cạnh nút "Đăng ký".
-3. **Lịch cá nhân:** Tích hợp API `/api/registrations/personal-calendar` để đánh dấu các ngày có sự kiện trên Component Calendar.
+3. **Lịch cá nhân:** Tích hợp API `/api/registrations/personal-calendar?from=&to=` — dùng `markedDates` để chấm ngày, `events` (+ `date=`) khi chọn một ngày. Hướng dẫn FE gộp: [fe-article-and-calendar-update-guide.md](./fe-article-and-calendar-update-guide.md).
 
 ### Giao diện Admin (CMS)
 1. **Dashboard:** Vẽ biểu đồ từ dữ liệu API `/statistics` (Sử dụng Chart.js hoặc Recharts).

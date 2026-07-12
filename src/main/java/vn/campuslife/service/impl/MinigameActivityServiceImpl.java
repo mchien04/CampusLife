@@ -27,6 +27,7 @@ import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.security.department.DepartmentAuthorizationService;
 import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityRegistrationAutoService;
+import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.MinigameActivityService;
 import vn.campuslife.service.ReminderScheduleService;
@@ -57,6 +58,7 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
     private final MiniGameAnswerRepository answerRepository;
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ActivityRegistrationAutoService autoRegisterService;
+    private final ActivityRegistrationService registrationService;
     private final ReminderScheduleService reminderScheduleService;
     private final ScorePresetService scorePresetService;
     private final MinigameActivityValidator validator;
@@ -146,6 +148,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             }
             Activity shell = opt.get();
 
+            Integer oldQty = shell.getTicketQuantity();
+
             mapper.applyShellUpdate(shell, request);
 
             if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
@@ -159,6 +163,11 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             }
 
             autoRegisterService.autoRegisterStudents(savedShell);
+
+            Integer newQty = savedShell.getTicketQuantity();
+            if (oldQty != null && (newQty == null || newQty > oldQty)) {
+                registrationService.promoteWaitlist(savedShell.getId());
+            }
 
             MiniGame miniGame = null;
             if (request.getQuiz() != null) {

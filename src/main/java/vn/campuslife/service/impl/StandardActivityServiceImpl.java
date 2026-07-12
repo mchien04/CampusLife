@@ -18,6 +18,7 @@ import vn.campuslife.repository.ScoreEntryRepository;
 import vn.campuslife.security.department.DepartmentAuthorizationService;
 import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.service.ActivityRegistrationAutoService;
+import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScorePresetService;
@@ -45,6 +46,7 @@ public class StandardActivityServiceImpl implements StandardActivityService {
     private final ActivityScoreRuleService activityScoreRuleService;
     private final ReminderScheduleService reminderScheduleService;
     private final ActivityRegistrationAutoService autoRegisterService;
+    private final ActivityRegistrationService registrationService;
     private final DepartmentAuthorizationService departmentAuthorizationService;
 
     private final StandardActivityValidator validator;
@@ -155,6 +157,12 @@ public class StandardActivityServiceImpl implements StandardActivityService {
             }
 
             autoRegisterService.autoRegisterStudents(saved);
+
+            Integer oldQty = existing.getTicketQuantity();
+            Integer newQty = saved.getTicketQuantity();
+            if (oldQty != null && (newQty == null || newQty > oldQty)) {
+                registrationService.promoteWaitlist(saved.getId());
+            }
 
             return Response.success("Activity updated successfully", mapper.toResponse(saved));
         } catch (IllegalArgumentException e) {

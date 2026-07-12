@@ -1378,10 +1378,25 @@ export interface AttemptDetailResponse {
 - **Path:** `/api/registrations/backfill/participations`
 - **Response:** `ApiResponse<Map>`
 
-#### 14. Lịch cá nhân (sự kiện đã tham gia)
+#### 14. Lịch cá nhân (sự kiện đã đăng ký / tham gia)
 - **Method:** `GET`
 - **Path:** `/api/registrations/personal-calendar`
-- **Response:** `ApiResponse<Map>`
+- **Auth:** STUDENT
+- **Query (optional):**
+  - `from` (`YYYY-MM-DD`) — đầu khoảng lịch
+  - `to` (`YYYY-MM-DD`) — cuối khoảng lịch
+  - `date` (`YYYY-MM-DD`) — khi chọn 1 ngày: thu hẹp `events` theo ngày đó; `markedDates` vẫn theo `from`/`to`
+- **Response:** `{ status, message, body: PersonalCalendarResponse }`
+  - `from` / `to`: echo query (có thể null)
+  - `markedDates[]`: `{ date, eventCount }` — chấm mọi ngày trong khoảng start–end của sự kiện (multi-day)
+  - `events[]`: chi tiết sự kiện overlap khoảng (và overlap `date` nếu có)
+    - `registrationId`, `activityId`, `title`, `startTime`, `endTime`, `location`
+    - `status` (`APPROVED` | `ATTENDED`)
+    - `eventTimeStatus` (`UPCOMING` | `ONGOING` | `PAST`)
+    - `activityType` (`SUKIEN` | `MINIGAME` | `CONG_TAC_XA_HOI` | `CHUYEN_DE_DOANH_NGHIEP`)
+    - `bannerUrl`, `shareLink`, `ticketCode`, `seriesId`, `important`
+- **Breaking:** `body` đổi từ `List<Map>` sang object `PersonalCalendarResponse` (phục vụ calendar UI trong web).
+- **FE guide:** [fe-article-and-calendar-update-guide.md](../fe-article-and-calendar-update-guide.md) (Article + Calendar)
 
 ---
 

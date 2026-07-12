@@ -2,6 +2,8 @@ package vn.campuslife.controller.score;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -11,6 +13,7 @@ import vn.campuslife.security.department.DepartmentRequestScope;
 import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.RecalculationJobService;
+import vn.campuslife.service.ScoreExportService;
 import vn.campuslife.service.ScoreService;
 import vn.campuslife.service.StudentService;
 
@@ -22,6 +25,7 @@ import java.time.LocalDateTime;
 public class ScoreController {
 
     private final ScoreService scoreService;
+    private final ScoreExportService scoreExportService;
     private final DepartmentScopeRouting departmentScopeRouting;
     private final StudentService studentService;
     private final RecalculationJobService recalculationJobService;
@@ -86,6 +90,41 @@ public class ScoreController {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to get ranking: " + e.getMessage(), null));
         }
+    }
+
+    /**
+     * Xuất Excel danh sách điểm theo học kỳ, lọc khoa / lớp.
+     *
+     * @param semesterId   ID học kỳ (required)
+     * @param scoreType    Loại điểm (optional - null = xuất đủ 3 loại + tổng)
+     * @param departmentId ID khoa (optional)
+     * @param classId      ID lớp (optional)
+     */
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportScores(
+            @RequestParam Long semesterId,
+            @RequestParam(required = false) String scoreType,
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) Long classId,
+            HttpServletRequest request) {
+        ScoreType scoreTypeEnum = null;
+        if (scoreType != null && !scoreType.isBlank()) {
+            try {
+                scoreTypeEnum = ScoreType.valueOf(scoreType.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().build();
+            }
+        }
+
+        DepartmentScope scope = currentScope(request);
+        ScoreExportService.ExportFile file = departmentScopeRouting.useManagerScopedPath(scope)
+                ? scoreExportService.exportSemesterScores(semesterId, departmentId, classId, scoreTypeEnum, scope)
+                : scoreExportService.exportSemesterScores(semesterId, departmentId, classId, scoreTypeEnum);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename() + "\"");
+        headers.setContentType(MediaType.parseMediaType(file.contentType()));
+        return ResponseEntity.ok().headers(headers).body(file.bytes());
     }
 
     /**

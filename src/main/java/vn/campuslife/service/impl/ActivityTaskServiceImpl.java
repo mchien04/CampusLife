@@ -10,6 +10,7 @@ import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
+import vn.campuslife.entity.TaskSubmission;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.model.Response;
@@ -17,6 +18,8 @@ import vn.campuslife.model.activity.task.ActivityTaskResponse;
 import vn.campuslife.model.activity.task.CreateActivityTaskRequest;
 import vn.campuslife.model.activity.task.TaskAssignmentRequest;
 import vn.campuslife.model.activity.task.TaskAssignmentResponse;
+import vn.campuslife.model.activity.task.TaskDashboardItem;
+import vn.campuslife.model.activity.task.TaskSubmissionSummary;
 import vn.campuslife.repository.ActivityRegistrationRepository;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityTaskRepository;
@@ -29,9 +32,12 @@ import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ActivityTaskService;
 import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
+import vn.campuslife.service.UploadStorageService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +60,7 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
     private final ReminderScheduleService reminderScheduleService;
     private final ScoreRuleEngine scoreRuleEngine;
     private final DepartmentAuthorizationService departmentAuthorizationService;
+    private final UploadStorageService uploadStorageService;
 
     @Override
     @Transactional
@@ -126,6 +133,34 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
         } catch (Exception e) {
             logger.error("Failed to retrieve tasks for activity {}: {}", activityId, e.getMessage(), e);
             return new Response(false, "Failed to retrieve tasks due to server error", null);
+        }
+    }
+
+    @Override
+    public Response getTaskDashboard(Long activityId) {
+        return getTaskDashboard(activityId, null);
+    }
+
+    @Override
+    public Response getTaskDashboard(Long activityId, DepartmentScope scope) {
+        try {
+            if (scope != null) {
+                departmentAuthorizationService.requireActivityAccess(activityId, scope);
+            }
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            if (activityOpt.isEmpty()) {
+                return new Response(false, "Activity not found", null);
+            }
+
+            List<ActivityTask> tasks = activityTaskRepository.findByActivityIdAndActivityIsDeletedFalse(activityId);
+            List<TaskDashboardItem> items = tasks.stream()
+                    .map(task -> toDashboardItem(task, scope))
+                    .collect(Collectors.toList());
+
+            return new Response(true, "Task dashboard retrieved successfully", items);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve task dashboard for activity {}: {}", activityId, e.getMessage(), e);
+            return new Response(false, "Failed to retrieve task dashboard due to server error", null);
         }
     }
 
@@ -467,6 +502,58 @@ public class ActivityTaskServiceImpl implements ActivityTaskService {
             logger.error("Failed to auto-assign mandatory tasks for activity {}: {}", activityId, e.getMessage(), e);
             return new Response(false, "Failed to auto-assign mandatory tasks due to server error", null);
         }
+    }
+
+    private TaskDashboardItem toDashboardItem(ActivityTask task, DepartmentScope scope) {
+        TaskDashboardItem item = new TaskDashboardItem();
+        item.setId(task.getId());
+        item.setName(task.getName());
+        item.setDescription(task.getDescription());
+        item.setDeadline(task.getDeadline());
+        item.setActivityId(task.getActivity().getId());
+        item.setActivityName(task.getActivity().getName());
+        item.setCreatedAt(task.getCreatedAt());
+
+        List<TaskSubmission> submissions = scope != null && scope.manager()
+                ? taskSubmissionRepository.findAll(DepartmentScopeSpec.taskSubmission(scope.departmentIds())
+                        .and((root, query, cb) -> cb.equal(root.get("task").get("id"), task.getId())))
+                        .stream()
+                        .sorted(Comparator.comparing(TaskSubmission::getSubmittedAt,
+                                Comparator.nullsLast(Comparator.reverseOrder())))
+                        .collect(Collectors.toList())
+                : taskSubmissionRepository.findByTaskIdAndIsDeletedFalseOrderBySubmittedAtDesc(task.getId());
+        item.setSubmissionCount((long) submissions.size());
+        item.setGradedCount(submissions.stream().filter(s -> s.getIsCompleted() != null).count());
+        item.setPendingGradeCount(submissions.stream().filter(s -> s.getIsCompleted() == null).count());
+
+        item.setSubmissions(submissions.stream()
+                .map(this::toSubmissionSummary)
+                .collect(Collectors.toList()));
+
+        return item;
+    }
+
+    private TaskSubmissionSummary toSubmissionSummary(TaskSubmission submission) {
+        List<String> urls = null;
+        if (submission.getFileUrls() != null && !submission.getFileUrls().isEmpty()) {
+            urls = Arrays.stream(submission.getFileUrls().split(","))
+                    .map(String::trim)
+                    .filter(u -> !u.isEmpty())
+                    .map(uploadStorageService::toPublicUrl)
+                    .collect(Collectors.toList());
+        }
+        return new TaskSubmissionSummary(
+                submission.getId(),
+                submission.getStudent().getId(),
+                submission.getStudent().getFullName(),
+                submission.getStudent().getStudentCode(),
+                submission.getContent(),
+                urls,
+                submission.getIsCompleted(),
+                submission.getFeedback(),
+                submission.getStatus().name(),
+                submission.getSubmittedAt(),
+                submission.getGradedAt());
     }
 
     private ActivityTaskResponse toTaskResponse(ActivityTask task) {

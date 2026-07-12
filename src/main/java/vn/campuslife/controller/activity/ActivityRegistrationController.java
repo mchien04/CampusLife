@@ -5,9 +5,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import vn.campuslife.enumeration.EventTimeStatus;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
@@ -18,6 +20,7 @@ import vn.campuslife.security.department.DepartmentScopeRouting;
 import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.StudentService;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -83,9 +86,12 @@ public class ActivityRegistrationController {
 
     /**
      * Lấy danh sách đăng ký của sinh viên
+     * @param eventStatus loc theo trang thai thoi gian su kien: UPCOMING / ONGOING / PAST (tuy chon)
      */
     @GetMapping("/my")
-    public ResponseEntity<Response> getMyRegistrations(Authentication authentication) {
+    public ResponseEntity<Response> getMyRegistrations(
+            Authentication authentication,
+            @RequestParam(required = false) EventTimeStatus eventStatus) {
         try {
             Long studentId = getStudentIdFromAuth(authentication);
             if (studentId == null) {
@@ -93,7 +99,7 @@ public class ActivityRegistrationController {
                         .body(new Response(false, "Student not found", null));
             }
 
-            Response response = registrationService.getStudentRegistrations(studentId);
+            Response response = registrationService.getStudentRegistrations(studentId, eventStatus);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -304,12 +310,16 @@ public class ActivityRegistrationController {
     }
 
     @GetMapping("/personal-calendar")
-    public ResponseEntity<Response> getStudentJoinedEventDates(Authentication authentication) {
+    public ResponseEntity<Response> getStudentJoinedEventDates(
+            Authentication authentication,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         Long studentId = getStudentIdFromAuth(authentication);
         if (studentId == null) {
             return ResponseEntity.badRequest().body(new Response(false, "Student not found", null));
         }
-        Response response = registrationService.getStudentJoinedEventDates(studentId);
+        Response response = registrationService.getStudentJoinedEventDates(studentId, from, to, date);
         return ResponseEntity.ok(response);
     }
 
@@ -324,6 +334,24 @@ public class ActivityRegistrationController {
         return ResponseEntity.ok(departmentScopeRouting.useManagerScopedPath(scope)
                 ? registrationService.getParticipationReport(activityId, scope)
                 : registrationService.getParticipationReport(activityId));
+    }
+
+    /**
+     * Xuất Excel danh sách sinh viên tham gia / chưa tham gia theo activity
+     */
+    @GetMapping("/activities/{activityId}/export")
+    public ResponseEntity<byte[]> exportParticipationReport(
+            @PathVariable Long activityId,
+            HttpServletRequest request) {
+        DepartmentScope scope = currentScope(request);
+        ActivityRegistrationService.ExportFile file = departmentScopeRouting.useManagerScopedPath(scope)
+                ? registrationService.exportParticipationReport(activityId, scope)
+                : registrationService.exportParticipationReport(activityId);
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + file.filename() + "\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType(file.contentType()))
+                .body(file.bytes());
     }
 
     /**

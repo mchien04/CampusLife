@@ -19,6 +19,13 @@ public interface ActivityTaskService {
      */
     Response getTasksByActivity(Long activityId);
 
+    /**
+     * Lấy dashboard nhiệm vụ + bài nộp theo hoạt động (tập trung cho admin/manager)
+     */
+    Response getTaskDashboard(Long activityId);
+
+    Response getTaskDashboard(Long activityId, DepartmentScope scope);
+
     Response getTasksByActivity(Long activityId, DepartmentScope scope);
 
     /**

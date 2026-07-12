@@ -193,4 +193,13 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
     order by a.startDate desc
     """)
     Page<Activity> findPublishedByScoreType(@Param("scoreType") ScoreType scoreType, Pageable pageable);
+
+    @Query("""
+    SELECT DISTINCT a FROM Activity a
+    JOIN ActivityTask t ON t.activity.id = a.id
+    WHERE a.isDeleted = false
+      AND a.seriesId IS NULL
+    ORDER BY a.startDate DESC
+    """)
+    List<Activity> findStandaloneWithTasks();
 }

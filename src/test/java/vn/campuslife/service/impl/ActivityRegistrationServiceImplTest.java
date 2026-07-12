@@ -7,12 +7,16 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.ActivityType;
+import vn.campuslife.enumeration.EventTimeStatus;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
+import vn.campuslife.model.activity.PersonalCalendarEventItem;
+import vn.campuslife.model.activity.PersonalCalendarResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.security.department.DepartmentAuthorizationService;
 import vn.campuslife.security.department.DepartmentScope;
@@ -23,6 +27,8 @@ import vn.campuslife.service.NotificationService;
 import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.config.UploadProperties;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -436,5 +442,93 @@ public class ActivityRegistrationServiceImplTest {
         assertFalse(response.isStatus());
         assertEquals("Không thể huỷ đăng ký đã điểm danh tham gia (ATTENDED).", response.getMessage());
         verify(registrationRepository, never()).save(any());
+    }
+
+    @Test
+    void getStudentJoinedEventDates_MultiDayExpandsMarkedDatesAndFiltersByDate() {
+        activity.setStartDate(LocalDateTime.of(2025, 7, 12, 8, 0));
+        activity.setEndDate(LocalDateTime.of(2025, 7, 13, 17, 0));
+        activity.setLocation("A1");
+        activity.setType(ActivityType.SUKIEN);
+        activity.setBannerUrl("/uploads/banner.png");
+        activity.setShareLink("https://example.com/a/100");
+        activity.setImportant(true);
+        registration.setTicketCode("TKT001");
+        registration.setSeriesId(null);
+
+        Activity singleDay = new Activity();
+        singleDay.setId(101L);
+        singleDay.setName("Workshop");
+        singleDay.setStartDate(LocalDateTime.of(2025, 7, 12, 14, 0));
+        singleDay.setEndDate(LocalDateTime.of(2025, 7, 12, 16, 0));
+        singleDay.setDeleted(false);
+
+        ActivityRegistration other = new ActivityRegistration();
+        other.setId(51L);
+        other.setActivity(singleDay);
+        other.setStudent(student);
+        other.setStatus(RegistrationStatus.ATTENDED);
+
+        Activity outsideRange = new Activity();
+        outsideRange.setId(102L);
+        outsideRange.setName("Old Event");
+        outsideRange.setStartDate(LocalDateTime.of(2025, 6, 1, 9, 0));
+        outsideRange.setEndDate(LocalDateTime.of(2025, 6, 1, 11, 0));
+        outsideRange.setDeleted(false);
+
+        ActivityRegistration oldReg = new ActivityRegistration();
+        oldReg.setId(52L);
+        oldReg.setActivity(outsideRange);
+        oldReg.setStudent(student);
+        oldReg.setStatus(RegistrationStatus.APPROVED);
+
+        when(registrationRepository.findByStudentIdAndStudentIsDeletedFalse(10L))
+                .thenReturn(List.of(registration, other, oldReg));
+        when(uploadProperties.getPublicUrl()).thenReturn("https://cdn.example.com");
+
+        LocalDate from = LocalDate.of(2025, 7, 1);
+        LocalDate to = LocalDate.of(2025, 7, 31);
+        LocalDate date = LocalDate.of(2025, 7, 12);
+
+        Response response = activityRegistrationService.getStudentJoinedEventDates(10L, from, to, date);
+
+        assertTrue(response.isStatus());
+        assertInstanceOf(PersonalCalendarResponse.class, response.getBody());
+        PersonalCalendarResponse calendar = (PersonalCalendarResponse) response.getBody();
+
+        assertEquals(from, calendar.getFrom());
+        assertEquals(to, calendar.getTo());
+        assertEquals(2, calendar.getMarkedDates().size());
+        assertEquals(LocalDate.of(2025, 7, 12), calendar.getMarkedDates().get(0).getDate());
+        assertEquals(2, calendar.getMarkedDates().get(0).getEventCount());
+        assertEquals(LocalDate.of(2025, 7, 13), calendar.getMarkedDates().get(1).getDate());
+        assertEquals(1, calendar.getMarkedDates().get(1).getEventCount());
+
+        assertEquals(2, calendar.getEvents().size());
+        assertTrue(calendar.getEvents().stream().anyMatch(e -> e.getActivityId().equals(100L)));
+        assertTrue(calendar.getEvents().stream().anyMatch(e -> e.getActivityId().equals(101L)));
+        assertFalse(calendar.getEvents().stream().anyMatch(e -> e.getActivityId().equals(102L)));
+
+        PersonalCalendarEventItem multiDay = calendar.getEvents().stream()
+                .filter(e -> e.getActivityId().equals(100L))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("https://cdn.example.com/uploads/banner.png", multiDay.getBannerUrl());
+        assertEquals(EventTimeStatus.PAST, multiDay.getEventTimeStatus());
+        assertEquals(ActivityType.SUKIEN, multiDay.getActivityType());
+        assertTrue(multiDay.isImportant());
+    }
+
+    @Test
+    void getStudentJoinedEventDates_InvalidRange_ReturnsError() {
+        Response response = activityRegistrationService.getStudentJoinedEventDates(
+                10L,
+                LocalDate.of(2026, 7, 31),
+                LocalDate.of(2026, 7, 1),
+                null);
+
+        assertFalse(response.isStatus());
+        assertEquals("from must be on or before to", response.getMessage());
+        verifyNoInteractions(registrationRepository);
     }
 }

@@ -23,6 +23,7 @@ import vn.campuslife.service.StudentService;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -126,7 +127,7 @@ public class ActivityRegistrationControllerTest {
     @WithMockUser(roles = {"STUDENT"})
     void getMyRegistrations_ReturnsList() throws Exception {
         when(studentService.getStudentIdByUsername(any())).thenReturn(10L);
-        when(registrationService.getStudentRegistrations(10L))
+        when(registrationService.getStudentRegistrations(eq(10L), isNull()))
                 .thenReturn(new Response(true, "List", null));
 
         mockMvc.perform(get("/api/registrations/my"))
@@ -378,11 +379,36 @@ public class ActivityRegistrationControllerTest {
     @WithMockUser(roles = {"STUDENT"})
     void getStudentJoinedEventDates_ReturnsOk() throws Exception {
         when(studentService.getStudentIdByUsername(any())).thenReturn(10L);
-        when(registrationService.getStudentJoinedEventDates(10L))
+        when(registrationService.getStudentJoinedEventDates(eq(10L), isNull(), isNull(), isNull()))
                 .thenReturn(new Response(true, "Dates", null));
 
         mockMvc.perform(get("/api/registrations/personal-calendar"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(true));
+    }
+
+    @Test
+    @WithMockUser(roles = {"STUDENT"})
+    void getStudentJoinedEventDates_WithRangeAndDate_PassesParams() throws Exception {
+        when(studentService.getStudentIdByUsername(any())).thenReturn(10L);
+        when(registrationService.getStudentJoinedEventDates(
+                eq(10L),
+                eq(java.time.LocalDate.of(2026, 7, 1)),
+                eq(java.time.LocalDate.of(2026, 7, 31)),
+                eq(java.time.LocalDate.of(2026, 7, 12))))
+                .thenReturn(new Response(true, "Dates", null));
+
+        mockMvc.perform(get("/api/registrations/personal-calendar")
+                        .param("from", "2026-07-01")
+                        .param("to", "2026-07-31")
+                        .param("date", "2026-07-12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(true));
+
+        verify(registrationService).getStudentJoinedEventDates(
+                eq(10L),
+                eq(java.time.LocalDate.of(2026, 7, 1)),
+                eq(java.time.LocalDate.of(2026, 7, 31)),
+                eq(java.time.LocalDate.of(2026, 7, 12)));
     }
 }

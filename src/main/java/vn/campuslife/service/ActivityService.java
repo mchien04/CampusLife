@@ -24,6 +24,13 @@ public interface ActivityService {
 
     Response getAllActivities(String username, DepartmentScope scope); // username can be null for public access
 
+    /**
+     * Lấy danh sách hoạt động standalone (không thuộc series) có ít nhất 1 nhiệm vụ
+     */
+    Response getStandaloneActivitiesWithTasks();
+
+    Response getStandaloneActivitiesWithTasks(DepartmentScope scope);
+
     Response getActivityById(Long id);
 
     Response getActivityById(Long id, String username); // username can be null for public access
