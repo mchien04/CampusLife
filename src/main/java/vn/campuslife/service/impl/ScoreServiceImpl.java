@@ -615,10 +615,14 @@ public class ScoreServiceImpl implements ScoreService {
                 progressRepository.findAllById(progressIds).forEach(p -> progressMap.put(p.getId(), p));
             }
 
-            // Build score history responses with running total
+            // Page is DESC (newest first). Running old/new must be computed oldest→newest,
+            // then reversed so the API still returns newest-first.
+            List<ScoreEntry> chronological = new ArrayList<>(pageEntries);
+            Collections.reverse(chronological);
+
             List<ScoreHistoryDetailResponse> scoreHistoryResponses = new ArrayList<>();
             BigDecimal runningScore = priorTotal;
-            for (ScoreEntry entry : pageEntries) {
+            for (ScoreEntry entry : chronological) {
                 ScoreHistoryDetailResponse response = new ScoreHistoryDetailResponse();
                 response.setId(entry.getId());
                 response.setOldScore(runningScore);
@@ -658,6 +662,7 @@ public class ScoreServiceImpl implements ScoreService {
 
                 scoreHistoryResponses.add(response);
             }
+            Collections.reverse(scoreHistoryResponses);
 
             int historyTotalPages = scoreEntryPage.getTotalPages();
 
