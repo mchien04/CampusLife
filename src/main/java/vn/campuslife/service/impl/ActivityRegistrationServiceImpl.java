@@ -14,6 +14,7 @@ import vn.campuslife.config.UploadProperties;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ParticipationType;
+import vn.campuslife.enumeration.EventTimeStatus;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.exception.ForbiddenException;
@@ -23,6 +24,9 @@ import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.model.activity.ActivityParticipationResponse;
 import vn.campuslife.model.activity.ActivityRegistrationRequest;
 import vn.campuslife.model.activity.ActivityRegistrationResponse;
+import vn.campuslife.model.activity.CalendarMarkedDate;
+import vn.campuslife.model.activity.PersonalCalendarEventItem;
+import vn.campuslife.model.activity.PersonalCalendarResponse;
 import vn.campuslife.model.score.AppliedScoreAward;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivityRegistrationService;
@@ -33,9 +37,11 @@ import vn.campuslife.security.department.DepartmentAuthorizationService;
 import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.util.TicketCodeUtils;
+import vn.campuslife.util.UrlUtils;
 import vn.campuslife.enumeration.NotificationType;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -246,9 +252,33 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     @Override
     public Response getStudentRegistrations(Long studentId) {
+        return getStudentRegistrations(studentId, null);
+    }
+
+    @Override
+    public Response getStudentRegistrations(Long studentId, EventTimeStatus eventTimeStatus) {
         try {
             List<ActivityRegistration> registrations = registrationRepository
                     .findByStudentIdAndStudentIsDeletedFalse(studentId);
+
+            if (eventTimeStatus != null) {
+                LocalDateTime now = LocalDateTime.now();
+                registrations = registrations.stream()
+                        .filter(r -> {
+                            Activity a = r.getActivity();
+                            return switch (eventTimeStatus) {
+                                case UPCOMING -> a.getStartDate() != null
+                                        && a.getStartDate().isAfter(now);
+                                case ONGOING -> a.getStartDate() != null
+                                        && !a.getStartDate().isAfter(now)
+                                        && (a.getEndDate() == null
+                                                || !a.getEndDate().isBefore(now));
+                                case PAST -> a.getEndDate() != null
+                                        && a.getEndDate().isBefore(now);
+                            };
+                        })
+                        .collect(Collectors.toList());
+            }
 
             List<ActivityRegistrationResponse> responses = registrations.stream()
                     .map(this::toRegistrationResponse)
@@ -793,6 +823,151 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
         return Response.success("Danh sách tham gia", result);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public ExportFile exportParticipationReport(Long activityId) {
+        return exportParticipationReport(activityId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExportFile exportParticipationReport(Long activityId, DepartmentScope scope) {
+        if (scope != null && scope.manager() && !scope.admin()) {
+            departmentAuthorizationService.requireActivityAccess(activityId, scope);
+        }
+
+        Activity activity = activityRepository.findByIdAndIsDeletedFalse(activityId)
+                .orElseThrow(() -> new vn.campuslife.exception.ResourceNotFoundException("Activity not found"));
+
+        List<ActivityRegistration> eligibleRegs = registrationRepository
+                .findByActivityIdAndActivityIsDeletedFalse(activityId)
+                .stream()
+                .filter(reg -> reg.getStatus() == RegistrationStatus.APPROVED
+                        || reg.getStatus() == RegistrationStatus.ATTENDED)
+                .toList();
+
+        Set<ParticipationType> attendedStates = EnumSet.of(
+                ParticipationType.ATTENDED,
+                ParticipationType.COMPLETED);
+        Map<Long, ActivityParticipation> participationByStudent = participationRepository.findByActivityId(activityId)
+                .stream()
+                .collect(Collectors.toMap(
+                        ap -> ap.getRegistration().getStudent().getId(),
+                        ap -> ap,
+                        (a, b) -> a));
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+
+            org.apache.poi.ss.usermodel.CellStyle headerStyle = wb.createCellStyle();
+            org.apache.poi.ss.usermodel.Font headerFont = wb.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            writeParticipationSheet(wb, "TatCa", headerStyle, activity, eligibleRegs, participationByStudent,
+                    attendedStates, null);
+            writeParticipationSheet(wb, "DaThamGia", headerStyle, activity, eligibleRegs, participationByStudent,
+                    attendedStates, true);
+            writeParticipationSheet(wb, "ChuaThamGia", headerStyle, activity, eligibleRegs, participationByStudent,
+                    attendedStates, false);
+
+            wb.write(out);
+            String safeName = activity.getName() == null ? "activity" : activity.getName()
+                    .replaceAll("[^a-zA-Z0-9-_\\u00C0-\\u1EF9 ]", "")
+                    .trim()
+                    .replaceAll("\\s+", "_");
+            if (safeName.length() > 40) {
+                safeName = safeName.substring(0, 40);
+            }
+            String filename = "ds_tham_gia_" + activityId + "_" + safeName + "_"
+                    + java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+                    + ".xlsx";
+            return new ExportFile(filename,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    out.toByteArray());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to export participation report: " + e.getMessage(), e);
+        }
+    }
+
+    private void writeParticipationSheet(
+            org.apache.poi.ss.usermodel.Workbook wb,
+            String sheetName,
+            org.apache.poi.ss.usermodel.CellStyle headerStyle,
+            Activity activity,
+            List<ActivityRegistration> eligibleRegs,
+            Map<Long, ActivityParticipation> participationByStudent,
+            Set<ParticipationType> attendedStates,
+            Boolean attendedOnly) {
+
+        org.apache.poi.ss.usermodel.Sheet sheet = wb.createSheet(sheetName);
+        int r = 0;
+        org.apache.poi.ss.usermodel.Row meta = sheet.createRow(r++);
+        meta.createCell(0).setCellValue("Hoạt động");
+        meta.createCell(1).setCellValue(activity.getName() != null ? activity.getName() : "");
+        org.apache.poi.ss.usermodel.Row metaId = sheet.createRow(r++);
+        metaId.createCell(0).setCellValue("Activity ID");
+        metaId.createCell(1).setCellValue(activity.getId());
+        r++;
+
+        String[] headers = {
+                "STT", "MSSV", "Họ tên", "Email", "Khoa", "Lớp",
+                "Trạng thái đăng ký", "Trạng thái tham gia", "Đã tham gia",
+                "Check-in", "Check-out", "Hoàn thành", "Điểm"
+        };
+        org.apache.poi.ss.usermodel.Row headerRow = sheet.createRow(r++);
+        for (int i = 0; i < headers.length; i++) {
+            org.apache.poi.ss.usermodel.Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        int stt = 1;
+        for (ActivityRegistration reg : eligibleRegs) {
+            Student s = reg.getStudent();
+            if (s == null) {
+                continue;
+            }
+            ActivityParticipation participation = participationByStudent.get(s.getId());
+            boolean attended = participation != null
+                    && participation.getParticipationType() != null
+                    && attendedStates.contains(participation.getParticipationType());
+            if (attendedOnly != null && attended != attendedOnly) {
+                continue;
+            }
+
+            org.apache.poi.ss.usermodel.Row row = sheet.createRow(r++);
+            int c = 0;
+            row.createCell(c++).setCellValue(stt++);
+            row.createCell(c++).setCellValue(s.getStudentCode() != null ? s.getStudentCode() : "");
+            row.createCell(c++).setCellValue(s.getFullName() != null ? s.getFullName() : "");
+            String email = s.getUser() != null && s.getUser().getEmail() != null ? s.getUser().getEmail() : "";
+            row.createCell(c++).setCellValue(email);
+            row.createCell(c++).setCellValue(s.getDepartment() != null ? s.getDepartment().getName() : "");
+            row.createCell(c++).setCellValue(s.getStudentClass() != null ? s.getStudentClass().getClassName() : "");
+            row.createCell(c++).setCellValue(reg.getStatus() != null ? reg.getStatus().name() : "");
+            row.createCell(c++).setCellValue(participation != null && participation.getParticipationType() != null
+                    ? participation.getParticipationType().name() : "");
+            row.createCell(c++).setCellValue(attended ? "Có" : "Không");
+            row.createCell(c++).setCellValue(participation != null && participation.getCheckInTime() != null
+                    ? participation.getCheckInTime().toString() : "");
+            row.createCell(c++).setCellValue(participation != null && participation.getCheckOutTime() != null
+                    ? participation.getCheckOutTime().toString() : "");
+            row.createCell(c++).setCellValue(participation != null && Boolean.TRUE.equals(participation.getIsCompleted())
+                    ? "Có" : "Không");
+            if (participation != null && participation.getPointsEarned() != null) {
+                row.createCell(c).setCellValue(participation.getPointsEarned().doubleValue());
+            } else {
+                row.createCell(c).setCellValue("");
+            }
+        }
+
+        for (int i = 0; i < headers.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+    }
+
     /**
      * Validate/lookup ticketCode để preview thông tin trước khi check-in
      */
@@ -1089,29 +1264,146 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
 
     @Override
     @Transactional(readOnly = true)
-    public Response getStudentJoinedEventDates(Long studentId) {
+    public Response getStudentJoinedEventDates(Long studentId, LocalDate from, LocalDate to, LocalDate date) {
         try {
+            if (from != null && to != null && from.isAfter(to)) {
+                return new Response(false, "from must be on or before to", null);
+            }
+
             List<ActivityRegistration> registrations = registrationRepository
-                    .findByStudentIdAndStudentIsDeletedFalse(studentId);
-            List<Map<String, Object>> dates = registrations.stream()
+                    .findByStudentIdAndStudentIsDeletedFalse(studentId)
+                    .stream()
                     .filter(r -> r.getStatus() == RegistrationStatus.APPROVED
                             || r.getStatus() == RegistrationStatus.ATTENDED)
-                    .map(r -> {
-                        Activity a = r.getActivity();
-                        Map<String, Object> map = new HashMap<>();
-                        map.put("activityId", a.getId());
-                        map.put("title", a.getName());
-                        map.put("startTime", a.getStartDate());
-                        map.put("endTime", a.getEndDate());
-                        map.put("location", a.getLocation());
-                        return map;
-                    })
+                    .filter(r -> r.getActivity() != null && !r.getActivity().isDeleted())
+                    .filter(r -> overlapsRange(r.getActivity(), from, to))
+                    .sorted(Comparator.comparing(
+                            (ActivityRegistration r) -> r.getActivity().getStartDate(),
+                            Comparator.nullsLast(Comparator.naturalOrder())))
                     .collect(Collectors.toList());
-            return new Response(true, "Event dates retrieved", dates);
+
+            List<PersonalCalendarEventItem> allEvents = registrations.stream()
+                    .map(this::toCalendarEventItem)
+                    .collect(Collectors.toList());
+
+            List<CalendarMarkedDate> markedDates = buildMarkedDates(allEvents, from, to);
+
+            List<PersonalCalendarEventItem> events = allEvents;
+            if (date != null) {
+                events = allEvents.stream()
+                        .filter(e -> overlapsDate(e.getStartTime(), e.getEndTime(), date))
+                        .collect(Collectors.toList());
+            }
+
+            PersonalCalendarResponse calendar = new PersonalCalendarResponse(from, to, markedDates, events);
+            return new Response(true, "Event dates retrieved", calendar);
         } catch (Exception e) {
             logger.error("Error retrieving student event dates: ", e);
             return new Response(false, "Error retrieving event dates", null);
         }
+    }
+
+    private PersonalCalendarEventItem toCalendarEventItem(ActivityRegistration registration) {
+        Activity activity = registration.getActivity();
+        PersonalCalendarEventItem item = new PersonalCalendarEventItem();
+        item.setRegistrationId(registration.getId());
+        item.setActivityId(activity.getId());
+        item.setTitle(activity.getName());
+        item.setStartTime(activity.getStartDate());
+        item.setEndTime(activity.getEndDate());
+        item.setLocation(activity.getLocation());
+        item.setStatus(registration.getStatus());
+        item.setEventTimeStatus(resolveEventTimeStatus(activity, LocalDateTime.now()));
+        item.setActivityType(activity.getType());
+        item.setBannerUrl(UrlUtils.toFullUrl(activity.getBannerUrl(), uploadProperties.getPublicUrl()));
+        item.setShareLink(activity.getShareLink());
+        item.setTicketCode(registration.getTicketCode());
+        item.setSeriesId(registration.getSeriesId());
+        item.setImportant(activity.isImportant());
+        return item;
+    }
+
+    private EventTimeStatus resolveEventTimeStatus(Activity activity, LocalDateTime now) {
+        LocalDateTime start = activity.getStartDate();
+        LocalDateTime end = activity.getEndDate();
+        if (start != null && start.isAfter(now)) {
+            return EventTimeStatus.UPCOMING;
+        }
+        if (start != null && !start.isAfter(now) && (end == null || !end.isBefore(now))) {
+            return EventTimeStatus.ONGOING;
+        }
+        if (end != null && end.isBefore(now)) {
+            return EventTimeStatus.PAST;
+        }
+        return EventTimeStatus.UPCOMING;
+    }
+
+    private boolean overlapsRange(Activity activity, LocalDate from, LocalDate to) {
+        if (from == null && to == null) {
+            return true;
+        }
+        LocalDate eventStart = toLocalDateOrNull(activity.getStartDate());
+        LocalDate eventEnd = toLocalDateOrNull(activity.getEndDate());
+        if (eventStart == null && eventEnd == null) {
+            return false;
+        }
+        if (eventStart == null) {
+            eventStart = eventEnd;
+        }
+        if (eventEnd == null) {
+            eventEnd = eventStart;
+        }
+        LocalDate rangeStart = from != null ? from : LocalDate.MIN;
+        LocalDate rangeEnd = to != null ? to : LocalDate.MAX;
+        return !eventStart.isAfter(rangeEnd) && !eventEnd.isBefore(rangeStart);
+    }
+
+    private boolean overlapsDate(LocalDateTime startTime, LocalDateTime endTime, LocalDate date) {
+        LocalDate eventStart = toLocalDateOrNull(startTime);
+        LocalDate eventEnd = toLocalDateOrNull(endTime);
+        if (eventStart == null && eventEnd == null) {
+            return false;
+        }
+        if (eventStart == null) {
+            eventStart = eventEnd;
+        }
+        if (eventEnd == null) {
+            eventEnd = eventStart;
+        }
+        return !eventStart.isAfter(date) && !eventEnd.isBefore(date);
+    }
+
+    private List<CalendarMarkedDate> buildMarkedDates(
+            List<PersonalCalendarEventItem> events, LocalDate from, LocalDate to) {
+        Map<LocalDate, Integer> counts = new TreeMap<>();
+        for (PersonalCalendarEventItem event : events) {
+            LocalDate eventStart = toLocalDateOrNull(event.getStartTime());
+            LocalDate eventEnd = toLocalDateOrNull(event.getEndTime());
+            if (eventStart == null && eventEnd == null) {
+                continue;
+            }
+            if (eventStart == null) {
+                eventStart = eventEnd;
+            }
+            if (eventEnd == null) {
+                eventEnd = eventStart;
+            }
+            LocalDate markFrom = from != null && from.isAfter(eventStart) ? from : eventStart;
+            LocalDate markTo = to != null && to.isBefore(eventEnd) ? to : eventEnd;
+            if (markFrom.isAfter(markTo)) {
+                continue;
+            }
+            for (LocalDate d = markFrom; !d.isAfter(markTo); d = d.plusDays(1)) {
+                counts.merge(d, 1, Integer::sum);
+            }
+        }
+        return counts.entrySet().stream()
+                .map(e -> new CalendarMarkedDate(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+    }
+
+    private LocalDate toLocalDateOrNull(LocalDateTime dateTime) {
+        return dateTime == null ? null : dateTime.toLocalDate();
     }
 
     @Override

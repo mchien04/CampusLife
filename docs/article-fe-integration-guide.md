@@ -2,6 +2,8 @@
 
 > Tài liệu này dành cho team Frontend tích hợp đầy đủ module **Bài viết Sự kiện (EventArticle)** với Backend CampusLife (Spring Boot). Bao gồm toàn bộ TypeScript DTO, API mapping, cách render nội dung HTML và hướng dẫn tích hợp trình soạn thảo.
 
+> **Delta cập nhật gần đây (view count, flags, stats, lọc cate/tag, personal-calendar):** xem [fe-article-and-calendar-update-guide.md](./fe-article-and-calendar-update-guide.md).
+
 ---
 
 ## Mục Lục

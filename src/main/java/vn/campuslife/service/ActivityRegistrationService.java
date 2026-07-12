@@ -1,12 +1,14 @@
 package vn.campuslife.service;
 
 import vn.campuslife.entity.ActivityRegistration;
+import vn.campuslife.enumeration.EventTimeStatus;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
 import vn.campuslife.model.activity.ActivityRegistrationRequest;
 import vn.campuslife.security.department.DepartmentScope;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface ActivityRegistrationService {
@@ -25,6 +27,11 @@ public interface ActivityRegistrationService {
      * Lấy danh sách đăng ký của sinh viên
      */
     Response getStudentRegistrations(Long studentId);
+
+    /**
+     * Lấy danh sách đăng ký của sinh viên theo trạng thái thời gian sự kiện (UPCOMING / ONGOING / PAST)
+     */
+    Response getStudentRegistrations(Long studentId, EventTimeStatus eventTimeStatus);
 
     /**
      * Lấy danh sách đăng ký theo sự kiện
@@ -60,9 +67,10 @@ public interface ActivityRegistrationService {
     Response checkRegistrationStatus(Long activityId, Long studentId);
 
     /**
-     * Lấy danh sách ngày có sự kiện đã tham gia/đăng ký của sinh viên
+     * Lịch cá nhân: markedDates (chấm theo ngày) + events trong khoảng from/to.
+     * Optional {@code date} thu hẹp danh sách events theo ngày được chọn.
      */
-    Response getStudentJoinedEventDates(Long studentId);
+    Response getStudentJoinedEventDates(Long studentId, LocalDate from, LocalDate to, LocalDate date);
 
     /**
      * Đăng ký vào danh sách chờ
@@ -93,6 +101,16 @@ public interface ActivityRegistrationService {
     Response getParticipationReport(Long activityId);
 
     Response getParticipationReport(Long activityId, DepartmentScope scope);
+
+    /**
+     * Xuất Excel danh sách sinh viên tham gia / chưa tham gia theo activity
+     */
+    ExportFile exportParticipationReport(Long activityId);
+
+    ExportFile exportParticipationReport(Long activityId, DepartmentScope scope);
+
+    record ExportFile(String filename, String contentType, byte[] bytes) {
+    }
 
     /**
      * Chấm điểm completion (đạt/không đạt)
