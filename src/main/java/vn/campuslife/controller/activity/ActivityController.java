@@ -92,6 +92,15 @@ public class ActivityController {
         }
     }
 
+    @GetMapping("/with-tasks")
+    public ResponseEntity<Response> getActivitiesWithTasks(HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityService.getStandaloneActivitiesWithTasks(scope)
+                : activityService.getStandaloneActivitiesWithTasks();
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Response> getActivityById(@PathVariable Long id, 
             org.springframework.security.core.Authentication auth,

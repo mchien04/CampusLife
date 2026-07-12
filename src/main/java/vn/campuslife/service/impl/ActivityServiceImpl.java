@@ -34,6 +34,7 @@ import vn.campuslife.repository.UserRepository;
 import vn.campuslife.entity.User;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.service.ActivityRegistrationAutoService;
+import vn.campuslife.service.ActivityRegistrationService;
 import vn.campuslife.service.ActivityService;
 import vn.campuslife.service.ActivityScoreRuleService;
 import vn.campuslife.service.ReminderScheduleService;
@@ -75,6 +76,7 @@ public class ActivityServiceImpl implements ActivityService {
     private final ScorePresetService scorePresetService;
     private final ScoreEntryRepository scoreEntryRepository;
     private final ActivityRegistrationAutoService autoRegisterService;
+    private final ActivityRegistrationService registrationService;
     private final UploadProperties uploadProperties;
     private final DepartmentAuthorizationService departmentAuthorizationService;
 
@@ -308,6 +310,35 @@ public class ActivityServiceImpl implements ActivityService {
     }
 
     @Override
+    public Response getStandaloneActivitiesWithTasks() {
+        return getStandaloneActivitiesWithTasks(null);
+    }
+
+    @Override
+    public Response getStandaloneActivitiesWithTasks(DepartmentScope scope) {
+        try {
+            List<Activity> activities = activityRepository.findStandaloneWithTasks();
+            if (scope != null && scope.manager() && !scope.admin()) {
+                Set<Long> allowedIds = activityRepository.findAll(DepartmentScopeSpec.activity(scope.departmentIds()))
+                        .stream()
+                        .map(Activity::getId)
+                        .collect(Collectors.toSet());
+                activities = activities.stream()
+                        .filter(activity -> allowedIds.contains(activity.getId()))
+                        .collect(Collectors.toList());
+            }
+            var data = activities.stream()
+                    .filter(a -> !a.isDraft())
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+            return new Response(true, "Activities with tasks retrieved successfully", data);
+        } catch (Exception e) {
+            logger.error("Failed to retrieve activities with tasks: {}", e.getMessage(), e);
+            return new Response(false, "Failed to retrieve activities due to server error", null);
+        }
+    }
+
+    @Override
     public Response getActivityById(Long id) {
         return getActivityById(id, null);
     }
@@ -383,6 +414,8 @@ public class ActivityServiceImpl implements ActivityService {
             if (err != null)
                 return new Response(false, err, null);
 
+            Integer oldQty = a.getTicketQuantity();
+
             applyRequestToEntity(request, a);
 
             Set<Department> organizers = resolveOrganizersForScope(request, scope);
@@ -406,6 +439,11 @@ public class ActivityServiceImpl implements ActivityService {
             autoRegisterService.autoRegisterStudents(saved);
             reminderScheduleService.syncEventRemindersForActivity(saved);
             syncSeriesMinimumRequirementReminders(saved);
+
+            Integer newQty = saved.getTicketQuantity();
+            if (oldQty != null && (newQty == null || newQty > oldQty)) {
+                registrationService.promoteWaitlist(saved.getId());
+            }
 
             return new Response(true, "Activity updated successfully", toResponse(saved));
         } catch (IllegalArgumentException e) {
@@ -652,7 +690,7 @@ public class ActivityServiceImpl implements ActivityService {
         a.setBannerUrl(req.getBannerUrl());
         a.setLocation(req.getLocation());
 
-        a.setTicketQuantity(req.getTicketQuantity());
+        a.setTicketQuantity(req.getTicketQuantity() != null && req.getTicketQuantity() == 0 ? null : req.getTicketQuantity());
         a.setBenefits(req.getBenefits());
         a.setRequirements(req.getRequirements());
         a.setContactInfo(req.getContactInfo());

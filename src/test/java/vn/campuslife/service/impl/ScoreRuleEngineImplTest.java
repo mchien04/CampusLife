@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import vn.campuslife.entity.*;
 import vn.campuslife.enumeration.*;
+import vn.campuslife.model.score.AppliedScoreAward;
 import vn.campuslife.model.score.ScoreEntryCommand;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.SemesterRepository;
@@ -640,5 +641,154 @@ public class ScoreRuleEngineImplTest {
         assertEquals(BigDecimal.valueOf(-3), commandCaptor.getValue().getPoints());
         assertEquals(ScoreType.REN_LUYEN, commandCaptor.getValue().getScoreType(),
                 "When failScoreType is null, fail should fallback to scoreType");
+    }
+
+    @Test
+    void applyActivityCompleted_TwoRulesSameTriggerDifferentScoreTypes_AppliesBoth() {
+        ActivityParticipation participation = new ActivityParticipation();
+        participation.setId(800L);
+        participation.setIsCompleted(true);
+        participation.setRegistration(registration);
+        participation.setDate(LocalDateTime.now());
+
+        ActivityScoreRule primaryRule = new ActivityScoreRule();
+        primaryRule.setId(160L);
+        primaryRule.setPoints(BigDecimal.ONE);
+        primaryRule.setFailPoints(BigDecimal.ZERO);
+        primaryRule.setScoreType(ScoreType.CHUYEN_DE);
+        primaryRule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        ActivityScoreRule bonusRule = new ActivityScoreRule();
+        bonusRule.setId(161L);
+        bonusRule.setPoints(BigDecimal.valueOf(2));
+        bonusRule.setFailPoints(BigDecimal.ZERO);
+        bonusRule.setScoreType(ScoreType.REN_LUYEN);
+        bonusRule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.PARTICIPATION_COMPLETED))
+                .thenReturn(List.of(primaryRule, bonusRule));
+        when(semesterResolver.resolveSemester(eq(activity), eq(primaryRule), any())).thenReturn(semester);
+        when(semesterResolver.resolveSemester(eq(activity), eq(bonusRule), any())).thenReturn(semester);
+
+        ScoreEntry mockEntry1 = new ScoreEntry();
+        mockEntry1.setRule(primaryRule);
+        mockEntry1.setScoreType(ScoreType.CHUYEN_DE);
+        mockEntry1.setPoints(BigDecimal.ONE);
+
+        ScoreEntry mockEntry2 = new ScoreEntry();
+        mockEntry2.setRule(bonusRule);
+        mockEntry2.setScoreType(ScoreType.REN_LUYEN);
+        mockEntry2.setPoints(BigDecimal.valueOf(2));
+
+        when(scoreEntryService.upsertEntry(any())).thenReturn(mockEntry1, mockEntry2);
+
+        List<AppliedScoreAward> awards = scoreRuleEngine.applyActivityCompleted(participation, actor);
+
+        assertEquals(2, awards.size());
+
+        AppliedScoreAward chuyenDeAward = awards.stream()
+                .filter(a -> a.getScoreType() == ScoreType.CHUYEN_DE)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.ONE, chuyenDeAward.getPoints());
+        assertEquals(primaryRule.getId(), chuyenDeAward.getRuleId());
+
+        AppliedScoreAward renLuyenAward = awards.stream()
+                .filter(a -> a.getScoreType() == ScoreType.REN_LUYEN)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.valueOf(2), renLuyenAward.getPoints());
+        assertEquals(bonusRule.getId(), renLuyenAward.getRuleId());
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService, times(2)).upsertEntry(commandCaptor.capture());
+        List<ScoreEntryCommand> commands = commandCaptor.getAllValues();
+
+        ScoreEntryCommand chuyenDeCmd = commands.stream()
+                .filter(c -> c.getScoreType() == ScoreType.CHUYEN_DE)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.ONE, chuyenDeCmd.getPoints());
+        assertEquals(primaryRule.getId(), chuyenDeCmd.getRuleId());
+
+        ScoreEntryCommand renLuyenCmd = commands.stream()
+                .filter(c -> c.getScoreType() == ScoreType.REN_LUYEN)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.valueOf(2), renLuyenCmd.getPoints());
+        assertEquals(bonusRule.getId(), renLuyenCmd.getRuleId());
+    }
+
+    @Test
+    void applySubmissionGraded_TwoRulesSameTriggerDifferentScoreTypes_AppliesBoth() {
+        ActivityTask task = new ActivityTask();
+        task.setActivity(activity);
+
+        TaskSubmission submission = new TaskSubmission();
+        submission.setId(900L);
+        submission.setTask(task);
+        submission.setStudent(student);
+        submission.setStatus(SubmissionStatus.GRADED);
+        submission.setIsCompleted(true);
+        submission.setSubmittedAt(LocalDateTime.now());
+
+        ActivityScoreRule primaryRule = new ActivityScoreRule();
+        primaryRule.setId(170L);
+        primaryRule.setPoints(BigDecimal.ONE);
+        primaryRule.setFailPoints(BigDecimal.ZERO);
+        primaryRule.setScoreType(ScoreType.CHUYEN_DE);
+        primaryRule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        ActivityScoreRule bonusRule = new ActivityScoreRule();
+        bonusRule.setId(171L);
+        bonusRule.setPoints(BigDecimal.valueOf(3));
+        bonusRule.setFailPoints(BigDecimal.ZERO);
+        bonusRule.setScoreType(ScoreType.REN_LUYEN);
+        bonusRule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
+
+        when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.SUBMISSION_GRADED))
+                .thenReturn(List.of(primaryRule, bonusRule));
+        when(semesterResolver.resolveSemester(eq(activity), eq(primaryRule), any())).thenReturn(semester);
+        when(semesterResolver.resolveSemester(eq(activity), eq(bonusRule), any())).thenReturn(semester);
+
+        ScoreEntry mockEntry1 = new ScoreEntry();
+        mockEntry1.setRule(primaryRule);
+        mockEntry1.setScoreType(ScoreType.CHUYEN_DE);
+        mockEntry1.setPoints(BigDecimal.ONE);
+
+        ScoreEntry mockEntry2 = new ScoreEntry();
+        mockEntry2.setRule(bonusRule);
+        mockEntry2.setScoreType(ScoreType.REN_LUYEN);
+        mockEntry2.setPoints(BigDecimal.valueOf(3));
+
+        when(scoreEntryService.upsertEntry(any())).thenReturn(mockEntry1, mockEntry2);
+
+        List<AppliedScoreAward> awards = scoreRuleEngine.applySubmissionGraded(submission, actor);
+
+        assertEquals(2, awards.size());
+
+        AppliedScoreAward chuyenDeAward = awards.stream()
+                .filter(a -> a.getScoreType() == ScoreType.CHUYEN_DE)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.ONE, chuyenDeAward.getPoints());
+        assertEquals(primaryRule.getId(), chuyenDeAward.getRuleId());
+
+        AppliedScoreAward renLuyenAward = awards.stream()
+                .filter(a -> a.getScoreType() == ScoreType.REN_LUYEN)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.valueOf(3), renLuyenAward.getPoints());
+        assertEquals(bonusRule.getId(), renLuyenAward.getRuleId());
+
+        ArgumentCaptor<ScoreEntryCommand> commandCaptor = ArgumentCaptor.forClass(ScoreEntryCommand.class);
+        verify(scoreEntryService, times(2)).upsertEntry(commandCaptor.capture());
+        List<ScoreEntryCommand> commands = commandCaptor.getAllValues();
+
+        ScoreEntryCommand chuyenDeCmd = commands.stream()
+                .filter(c -> c.getScoreType() == ScoreType.CHUYEN_DE)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.ONE, chuyenDeCmd.getPoints());
+        assertEquals(primaryRule.getId(), chuyenDeCmd.getRuleId());
+
+        ScoreEntryCommand renLuyenCmd = commands.stream()
+                .filter(c -> c.getScoreType() == ScoreType.REN_LUYEN)
+                .findFirst().orElseThrow();
+        assertEquals(BigDecimal.valueOf(3), renLuyenCmd.getPoints());
+        assertEquals(bonusRule.getId(), renLuyenCmd.getRuleId());
     }
 }

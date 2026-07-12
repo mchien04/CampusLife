@@ -65,7 +65,7 @@ public class StandardActivityMapper {
         if (req.getRegistrationDeadline() != null) entity.setRegistrationDeadline(req.getRegistrationDeadline());
         if (req.getRequiresSubmission() != null) entity.setRequiresSubmission(req.getRequiresSubmission());
         if (req.getRequiresApproval() != null) entity.setRequiresApproval(req.getRequiresApproval());
-        if (req.getTicketQuantity() != null) entity.setTicketQuantity(req.getTicketQuantity());
+        if (req.getTicketQuantity() != null) entity.setTicketQuantity(req.getTicketQuantity() == 0 ? null : req.getTicketQuantity());
         if (req.getIsImportant() != null) entity.setImportant(req.getIsImportant());
         if (req.getMandatoryForFacultyStudents() != null) entity.setMandatoryForFacultyStudents(req.getMandatoryForFacultyStudents());
         if (req.getIsDraft() != null) entity.setDraft(req.getIsDraft());

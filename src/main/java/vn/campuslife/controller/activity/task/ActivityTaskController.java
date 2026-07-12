@@ -47,6 +47,18 @@ public class ActivityTaskController {
     }
 
     /**
+     * Lấy dashboard nhiệm vụ + bài nộp theo hoạt động (tập trung cho admin/manager)
+     */
+    @GetMapping("/activity/{activityId}/dashboard")
+    public ResponseEntity<Response> getTaskDashboard(@PathVariable Long activityId, HttpServletRequest httpRequest) {
+        DepartmentScope scope = currentScope(httpRequest);
+        Response response = departmentScopeRouting.useManagerScopedPath(scope)
+                ? activityTaskService.getTaskDashboard(activityId, scope)
+                : activityTaskService.getTaskDashboard(activityId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Lấy chi tiết nhiệm vụ
      */
     @GetMapping("/{taskId}")
