@@ -220,9 +220,10 @@ public class ActivityScoreRuleServiceImpl implements ActivityScoreRuleService {
         }
         if (activity.getType() == ActivityType.MINIGAME
                 && request.getTriggerType() != ScoreRuleTrigger.MINIGAME_PASSED
-                && request.getTriggerType() != ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS) {
+                && request.getTriggerType() != ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS
+                && request.getTriggerType() != ScoreRuleTrigger.NO_SHOW) {
             throw new IllegalArgumentException(
-                    "Minigame activity only supports MINIGAME_PASSED or MINIGAME_EXHAUSTED_ATTEMPTS rules");
+                    "Minigame activity only supports MINIGAME_PASSED, MINIGAME_EXHAUSTED_ATTEMPTS, or NO_SHOW rules");
         }
         if (activity.getType() != ActivityType.MINIGAME
                 && (request.getTriggerType() == ScoreRuleTrigger.MINIGAME_PASSED

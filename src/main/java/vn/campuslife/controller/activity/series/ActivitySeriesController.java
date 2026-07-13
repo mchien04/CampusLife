@@ -96,7 +96,7 @@ public class ActivitySeriesController {
                             mainActivityId,
                             registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                             minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
-                            request.getAudience(), request.getDepartmentIds(),
+                            request.getAudience(), request.getDepartmentIds(), request.getOrganizerIds(),
                             request.getIsImportant(), request.getMandatoryForFacultyStudents(),
                             request.getIsDraft(),
                             request.getPresetCode(), scope)
@@ -104,7 +104,7 @@ public class ActivitySeriesController {
                             mainActivityId,
                             registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                             minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
-                            request.getAudience(), request.getDepartmentIds(),
+                            request.getAudience(), request.getDepartmentIds(), request.getOrganizerIds(),
                             request.getIsImportant(), request.getMandatoryForFacultyStudents(),
                             request.getIsDraft(),
                             request.getPresetCode());
@@ -519,14 +519,14 @@ public class ActivitySeriesController {
                     ? seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
                             mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                             minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
-                            request.getAudience(), request.getDepartmentIds(),
+                            request.getAudience(), request.getDepartmentIds(), request.getOrganizerIds(),
                             request.getIsImportant(), request.getMandatoryForFacultyStudents(),
                             request.getIsDraft(),
                             request.getPresetCode(), scope)
                     : seriesService.updateSeries(seriesId, name, description, milestonePoints, scoreType,
                             mainActivityId, registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                             minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, request.getTargetSemesterId(),
-                            request.getAudience(), request.getDepartmentIds(),
+                            request.getAudience(), request.getDepartmentIds(), request.getOrganizerIds(),
                             request.getIsImportant(), request.getMandatoryForFacultyStudents(),
                             request.getIsDraft(),
                             request.getPresetCode());

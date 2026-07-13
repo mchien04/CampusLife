@@ -66,7 +66,7 @@ public class ActivitySeriesControllerTest {
         request.setScoreType(vn.campuslife.enumeration.ScoreType.REN_LUYEN);
 
         doNothing().when(scorePresetService).applySeriesPreset(any(CreateSeriesRequest.class));
-        when(seriesService.createSeries(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(seriesService.createSeries(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new Response(true, "Series created", null));
 
         mockMvc.perform(post("/api/series")
@@ -155,7 +155,7 @@ public class ActivitySeriesControllerTest {
         request.setName("Updated Series");
 
         doNothing().when(scorePresetService).applySeriesPreset(any(UpdateSeriesRequest.class));
-        when(seriesService.updateSeries(anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(seriesService.updateSeries(anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new Response(true, "Updated", null));
 
         mockMvc.perform(put("/api/series/1")

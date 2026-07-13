@@ -19,7 +19,7 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
-                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        ScoreRuleAudience audience, List<Long> departmentIds, List<Long> organizerIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
                         Boolean isDraft,
                         SeriesPresetCode presetCode);
@@ -30,13 +30,14 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
-                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        ScoreRuleAudience audience, List<Long> departmentIds, List<Long> organizerIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
                         Boolean isDraft,
                         SeriesPresetCode presetCode, DepartmentScope scope);
 
         /**
-         * Tạo activity trong series với các thuộc tính tối giản
+         * Tạo activity trong series với các thuộc tính tối giản.
+         * organizerIds trên request bị bỏ qua — child luôn kế thừa organizers của series.
          */
         Response createActivityInSeries(Long seriesId, String name, String description,
                         java.time.LocalDateTime startDate, java.time.LocalDateTime endDate,
@@ -149,7 +150,7 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
-                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        ScoreRuleAudience audience, List<Long> departmentIds, List<Long> organizerIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
                         Boolean isDraft,
                         SeriesPresetCode presetCode);
@@ -160,7 +161,7 @@ public interface ActivitySeriesService {
                         java.time.LocalDateTime registrationDeadline,
                         Boolean requiresApproval, Integer ticketQuantity,
                         Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
-                        ScoreRuleAudience audience, List<Long> departmentIds,
+                        ScoreRuleAudience audience, List<Long> departmentIds, List<Long> organizerIds,
                         Boolean isImportant, Boolean mandatoryForFacultyStudents,
                         Boolean isDraft,
                         SeriesPresetCode presetCode, DepartmentScope scope);

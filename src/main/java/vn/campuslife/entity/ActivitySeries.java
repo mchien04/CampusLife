@@ -97,8 +97,15 @@ public class ActivitySeries {
     private boolean isImportant = false;
 
     @Column(nullable = false)
-    @Comment("Bắt buộc đối với sinh viên thuộc khoa tổ chức — tự động đăng ký")
+    @Comment("Bắt buộc đối với sinh viên thuộc khoa tổ chức — tự động đăng ký theo organizers của series")
     private boolean mandatoryForFacultyStudents = false;
+
+    @ManyToMany
+    @JoinTable(name = "activity_series_organizers",
+        joinColumns = @JoinColumn(name = "series_id"),
+        inverseJoinColumns = @JoinColumn(name = "department_id"))
+    @Comment("Danh sách khoa tổ chức của chuỗi — sự kiện con kế thừa và đồng bộ theo field này")
+    private Set<Department> organizers = new LinkedHashSet<>();
 
     @ManyToMany
     @JoinTable(name = "activity_series_departments",

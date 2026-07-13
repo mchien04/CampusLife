@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import vn.campuslife.entity.Activity;
 import vn.campuslife.entity.Department;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.StandardActivityCreateRequest;
@@ -26,6 +27,9 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class StandardActivityServiceImplScopeTest {
@@ -80,6 +84,32 @@ class StandardActivityServiceImplScopeTest {
 
         assertFalse(response.isStatus());
         assertEquals("Organizer departments must be within manager scope", response.getMessage());
+    }
+
+    @Test
+    void createActivity_ManagerWithCoOrganizerOutsideScope_Allowed() {
+        StandardActivityCreateRequest request = new StandardActivityCreateRequest();
+        request.setName("Co-organized Activity");
+        request.setOrganizerIds(List.of(deptA.getId(), deptB.getId()));
+
+        DepartmentScope scope = DepartmentScope.manager(Set.of(deptA.getId()));
+
+        Activity entity = new Activity();
+        entity.setName(request.getName());
+        when(mapper.toEntity(request)).thenReturn(entity);
+        when(departmentRepository.findAllById(List.of(deptA.getId(), deptB.getId())))
+                .thenReturn(List.of(deptA, deptB));
+        when(activityRepository.save(any(Activity.class))).thenAnswer(invocation -> {
+            Activity saved = invocation.getArgument(0);
+            saved.setId(10L);
+            return saved;
+        });
+        when(mapper.toResponse(any(Activity.class))).thenReturn(null);
+
+        Response response = standardActivityService.createActivity(request, scope);
+
+        assertTrue(response.isStatus());
+        assertEquals("Activity created successfully", response.getMessage());
     }
 
     @Test

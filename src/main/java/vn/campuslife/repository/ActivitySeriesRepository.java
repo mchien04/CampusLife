@@ -33,10 +33,12 @@ public interface ActivitySeriesRepository extends JpaRepository<ActivitySeries, 
             SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END
             FROM ActivitySeries s
             LEFT JOIN s.targetDepartments td
+            LEFT JOIN s.organizers so
             WHERE s.id = :seriesId
               AND s.isDeleted = false
               AND (
                   td.id IN :deptIds
+                  OR so.id IN :deptIds
                   OR EXISTS (
                       SELECT 1 FROM Activity a
                       JOIN a.organizers o

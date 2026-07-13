@@ -28,6 +28,8 @@ public class UpdateSeriesRequest {
     private Integer minimumPenaltyPoints;
     private ScoreRuleAudience audience;
     private List<Long> departmentIds;
+    /** Khoa tổ chức của chuỗi — cập nhật sẽ đồng bộ xuống mọi sự kiện con. */
+    private List<Long> organizerIds;
     private Boolean isImportant;
     private Boolean mandatoryForFacultyStudents;
     private Boolean isDraft;

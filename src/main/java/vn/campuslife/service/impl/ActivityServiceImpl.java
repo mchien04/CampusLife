@@ -728,7 +728,8 @@ public class ActivityServiceImpl implements ActivityService {
         }
 
         Set<Long> requestedIds = new LinkedHashSet<>(organizerIds);
-        if (!managerDepartmentIds.containsAll(requestedIds)) {
+        // Allow co-organizers outside manager scope; at least one must remain in scope.
+        if (requestedIds.stream().noneMatch(managerDepartmentIds::contains)) {
             throw new IllegalArgumentException("Organizer departments must be within manager scope");
         }
         return resolveOrganizers(organizerIds);

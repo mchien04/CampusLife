@@ -223,7 +223,8 @@ public class StandardActivityServiceImpl implements StandardActivityService {
             }
             throw new IllegalArgumentException("Manager quản lý nhiều Khoa phải chọn organizerIds trong scope");
         }
-        if (!managerDepartmentIds.containsAll(new LinkedHashSet<>(organizerIds))) {
+        // Allow co-organizers outside manager scope; at least one must remain in scope.
+        if (organizerIds.stream().noneMatch(managerDepartmentIds::contains)) {
             throw new IllegalArgumentException("Organizer departments must be within manager scope");
         }
         return resolveOrganizers(organizerIds);

@@ -19,6 +19,7 @@ import vn.campuslife.enumeration.ReminderCode;
 import vn.campuslife.enumeration.ReminderStatus;
 import vn.campuslife.enumeration.ReminderTargetType;
 import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ReminderScheduleRepository;
 import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
@@ -31,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,6 +47,9 @@ class ReminderScheduleServiceImplTest {
 
     @Mock
     private ActivityRegistrationRepository activityRegistrationRepository;
+
+    @Mock
+    private ActivityRepository activityRepository;
 
     @Mock
     private TaskAssignmentRepository taskAssignmentRepository;
@@ -90,15 +93,10 @@ class ReminderScheduleServiceImplTest {
         approvedRegistration.setActivity(firstActivity);
         approvedRegistration.setStudent(student);
 
-        ActivityRegistration attendedRegistration = new ActivityRegistration();
-        attendedRegistration.setStatus(RegistrationStatus.ATTENDED);
-        attendedRegistration.setActivity(lastActivity);
-        attendedRegistration.setStudent(student);
-
         when(activityRegistrationRepository.findBySeriesIdAndStudentId(99L, 10L))
                 .thenReturn(List.of(approvedRegistration));
-        when(activityRegistrationRepository.findBySeriesId(99L))
-                .thenReturn(List.of(approvedRegistration, attendedRegistration));
+        when(activityRepository.findBySeriesIdAndIsDeletedFalse(99L))
+                .thenReturn(List.of(firstActivity, lastActivity));
         when(reminderScheduleRepository.findByUserIdAndTargetTypeAndTargetIdAndReminderCode(
                 20L, ReminderTargetType.SERIES, 99L, ReminderCode.SERIES_MINIMUM_REQUIREMENT))
                 .thenReturn(Optional.empty());

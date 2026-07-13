@@ -28,6 +28,8 @@ public class CreateSeriesRequest {
     private Integer minimumPenaltyPoints;
     private ScoreRuleAudience audience;
     private List<Long> departmentIds;
+    /** Khoa tổ chức của chuỗi — sự kiện con kế thừa, không chỉnh riêng. */
+    private List<Long> organizerIds;
     private Boolean isImportant;
     private Boolean mandatoryForFacultyStudents;
     private Boolean isDraft;

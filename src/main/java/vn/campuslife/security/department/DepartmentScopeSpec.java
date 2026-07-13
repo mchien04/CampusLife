@@ -87,6 +87,7 @@ public final class DepartmentScopeSpec {
         return (root, query, cb) -> {
             query.distinct(true);
             Join<ActivitySeries, Department> targetDepartments = root.join("targetDepartments", JoinType.LEFT);
+            Join<ActivitySeries, Department> seriesOrganizers = root.join("organizers", JoinType.LEFT);
 
             Subquery<Long> childActivityExists = query.subquery(Long.class);
             Root<Activity> activity = childActivityExists.from(Activity.class);
@@ -99,7 +100,10 @@ public final class DepartmentScopeSpec {
 
             return cb.and(
                     cb.isFalse(root.get("isDeleted")),
-                    cb.or(targetDepartments.get("id").in(deptIds), cb.exists(childActivityExists)));
+                    cb.or(
+                            targetDepartments.get("id").in(deptIds),
+                            seriesOrganizers.get("id").in(deptIds),
+                            cb.exists(childActivityExists)));
         };
     }
 

@@ -11,6 +11,7 @@ import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.entity.ActivityScoreRule;
 import vn.campuslife.entity.ActivitySeries;
+import vn.campuslife.entity.MiniGame;
 import vn.campuslife.entity.MiniGameAttempt;
 import vn.campuslife.entity.Semester;
 import vn.campuslife.entity.Student;
@@ -18,6 +19,7 @@ import vn.campuslife.entity.StudentSeriesProgress;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.TaskSubmission;
 import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreEntrySourceType;
 import vn.campuslife.enumeration.ScoreRuleAudience;
@@ -28,6 +30,8 @@ import vn.campuslife.enumeration.AttemptStatus;
 import vn.campuslife.model.score.ScoreEntryCommand;
 import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.MiniGameAttemptRepository;
+import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.repository.SemesterRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivityScoreRuleService;
@@ -57,6 +61,8 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
     private final StudentSeriesProgressRepository progressRepository;
     private final ActivityRepository activityRepository;
     private final ActivityRegistrationRepository registrationRepository;
+    private final MiniGameRepository miniGameRepository;
+    private final MiniGameAttemptRepository miniGameAttemptRepository;
     private final SemesterHelperService semesterHelperService;
     private final SemesterRepository semesterRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -128,6 +134,12 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         }
 
         Student student = registration.getStudent();
+        if (hasMinigameAttemptThatCountsAsParticipation(activity, student)) {
+            log.info("Skipping no-show penalty for minigame activity {} because student {} already attempted",
+                    activity.getId(), student != null ? student.getId() : null);
+            return;
+        }
+
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.NO_SHOW);
 
         for (ActivityScoreRule rule : rules) {
@@ -177,6 +189,22 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
         }
 
         Student student = attempt.getStudent();
+        if (student == null || student.getId() == null || attempt.getMiniGame().getId() == null) {
+            return;
+        }
+
+        // Once the student has PASSED at least once, keep pass credit and never apply exhaust.
+        if (miniGameAttemptRepository.existsByStudentIdAndMiniGameIdAndStatus(
+                student.getId(),
+                attempt.getMiniGame().getId(),
+                AttemptStatus.PASSED)) {
+            log.info(
+                    "Skipping exhausted-attempt penalty for student {} on minigame {} — already passed previously",
+                    student.getId(),
+                    attempt.getMiniGame().getId());
+            return;
+        }
+
         List<ActivityScoreRule> rules = ruleService.getEnabledRules(
                 activity.getId(),
                 ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS);
@@ -502,6 +530,23 @@ public class ScoreRuleEngineImpl implements ScoreRuleEngine {
     private boolean hasAttended(Long activityId, Long studentId) {
         return registrationRepository.findByActivityIdAndStudentId(activityId, studentId)
                 .map(reg -> reg.getStatus() == RegistrationStatus.ATTENDED)
+                .orElse(false);
+    }
+
+    /**
+     * Minigame: at least one attempt counts as participation for NO_SHOW,
+     * even when the attempt did not pass and exhaust penalty is not configured.
+     */
+    private boolean hasMinigameAttemptThatCountsAsParticipation(Activity activity, Student student) {
+        if (activity == null || student == null || activity.getType() != ActivityType.MINIGAME
+                || activity.getId() == null || student.getId() == null) {
+            return false;
+        }
+
+        return miniGameRepository.findByActivityId(activity.getId())
+                .map(MiniGame::getId)
+                .map(miniGameId -> miniGameAttemptRepository.existsByStudentIdAndMiniGameId(
+                        student.getId(), miniGameId))
                 .orElse(false);
     }
 

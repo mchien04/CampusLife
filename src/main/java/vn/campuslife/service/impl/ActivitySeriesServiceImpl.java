@@ -85,6 +85,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             Boolean requiresApproval, Integer ticketQuantity,
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
+            java.util.List<Long> organizerIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents,
             Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode) {
@@ -96,6 +97,11 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             throw new IllegalArgumentException("ScoreType is required");
         }
         validateMinimumRequirementConfig(minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints);
+
+        Set<Department> organizers = resolveOrganizers(organizerIds);
+        if (organizers.isEmpty()) {
+            throw new IllegalArgumentException("At least one series organizer is required");
+        }
 
         ActivitySeries series = new ActivitySeries();
         series.setName(name);
@@ -117,9 +123,10 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             java.util.List<Department> depts = departmentRepository.findAllById(departmentIds);
             series.setTargetDepartments(new LinkedHashSet<>(depts));
         }
+        series.setOrganizers(organizers);
         series.setCreatedAt(LocalDateTime.now());
         series.setDeleted(false); // Set default value for isDeleted
-series.setPresetCode(presetCode);
+        series.setPresetCode(presetCode);
         series.setImportant(Boolean.TRUE.equals(isImportant));
         series.setMandatoryForFacultyStudents(Boolean.TRUE.equals(mandatoryForFacultyStudents));
         series.setDraft(Boolean.TRUE.equals(isDraft));
@@ -136,14 +143,8 @@ series.setPresetCode(presetCode);
         ActivitySeries saved = seriesRepository.save(series);
         logger.info("Created activity series: {} with scoreType: {}", saved.getId(), scoreType);
 
-        // Auto-register students to main activity if series flags require it (only when non-draft)
-        if (!saved.isDraft() && saved.getMainActivity() != null) {
-            autoRegisterService.autoRegisterStudents(
-                    saved.getMainActivity(),
-                    saved.isImportant(),
-                    saved.isMandatoryForFacultyStudents(),
-                    saved.getTargetDepartments());
-        }
+        // Không auto-register khi tạo series: series chưa có sự kiện con.
+        // Auto-register chạy khi tạo sự kiện con (autoRegisterStudentsForNewActivityInSeries).
 
         return Response.success("Activity series created successfully", toSeriesResponse(saved));
     }
@@ -190,9 +191,11 @@ series.setPresetCode(presetCode);
         activity.setRequirements(requirements);
         activity.setContactInfo(contactInfo);
 
-        // Xử lý organizers
-        Set<Department> organizers = resolveOrganizers(organizerIds);
-        activity.setOrganizers(organizers);
+        // Organizers luôn lấy từ series — không cho set riêng trên sự kiện con
+        if (series.getOrganizers() == null || series.getOrganizers().isEmpty()) {
+            throw new IllegalArgumentException("Series has no organizers configured");
+        }
+        activity.setOrganizers(new LinkedHashSet<>(series.getOrganizers()));
 
         // Cho phép tất cả các type (có thể chỉnh sửa sau)
         // Chỉ validate khi tạo minigame (trong MiniGameServiceImpl)
@@ -212,7 +215,8 @@ series.setPresetCode(presetCode);
         activity.setMandatoryForFacultyStudents(false); // Không cần
 
         activity.setRequiresSubmission(false);
-        activity.setDraft(false); // Mặc định published
+        // Inherit draft from series so draft-series children stay hidden from students
+        activity.setDraft(series.isDraft());
         activity.setDeleted(false);
 
         Activity saved = activityRepository.save(activity);
@@ -441,10 +445,13 @@ series.setPresetCode(presetCode);
             Activity activity = activityOpt.get();
             activity.setSeriesId(seriesId);
             activity.setSeriesOrder(order);
+            ActivitySeries series = seriesOpt.get();
+            if (series.getOrganizers() != null && !series.getOrganizers().isEmpty()) {
+                activity.setOrganizers(new LinkedHashSet<>(series.getOrganizers()));
+            }
             Activity savedActivity = activityRepository.save(activity);
 
             // Auto-register all students who already registered any activity in this series
-            ActivitySeries series = seriesOpt.get();
             if (!series.isDeleted()) {
                 autoRegisterStudentsForNewActivityInSeries(series, savedActivity);
                 reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
@@ -459,9 +466,14 @@ series.setPresetCode(presetCode);
     }
 
     /**
-     * Auto-register all students who already have at least one registration in this
-     * series
-     * for the newly created/added activity.
+     * Khi thêm sự kiện con vào series (không phải draft):
+     * <ol>
+     *   <li>Nếu series {@code isImportant}/{@code mandatoryForFacultyStudents}: đăng ký SV
+     *       theo organizers của series (khoa tổ chức).</li>
+     *   <li>Đồng bộ đăng ký chuỗi: ai đã có ít nhất 1 registration trong series phải có
+     *       registration trên mọi sự kiện con (đăng ký series là đăng ký cả chuỗi).
+     *       Giúp backfill khi sự kiện mới thêm khoa tổ chức khác.</li>
+     * </ol>
      */
     private void autoRegisterStudentsForNewActivityInSeries(ActivitySeries series, Activity newActivity) {
         try {
@@ -470,99 +482,89 @@ series.setPresetCode(presetCode);
                 return;
             }
 
-            // First: propagate existing series registrations (students who registered
-            // for any sibling activity) to the new activity.
-            Long seriesId = series.getId();
-
-            // Thu thập tất cả student đã đăng ký ít nhất 1 activity trong series
-            List<ActivityRegistration> allRegistrations = registrationRepository.findBySeriesId(seriesId);
-            Set<Long> studentIds = allRegistrations.stream()
-                    .filter(reg -> reg.getStudent() != null && reg.getStudent().getId() != null)
-                    .map(reg -> reg.getStudent().getId())
-                    .collect(Collectors.toSet());
-
-            if (studentIds.isEmpty()) {
-                logger.info("No existing registrations in series {} to auto-register for new activity {}", seriesId,
-                        newActivity.getId());
-                return;
-            }
-
-            // Load students từ IDs
-            List<Student> students = studentRepository.findAllById(studentIds);
-
-            List<ActivityRegistration> registrationsToCreate = new ArrayList<>();
-            for (Student student : students) {
-                // Bỏ qua nếu đã có registration cho activity mới
-                if (registrationRepository.existsByActivityIdAndStudentId(newActivity.getId(), student.getId())) {
-                    continue;
-                }
-
-                ActivityRegistration registration = new ActivityRegistration();
-                registration.setActivity(newActivity);
-                registration.setStudent(student);
-                registration.setRegisteredDate(LocalDateTime.now());
-                registration.setSeriesId(series.getId());
-                registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-
-                // Set status dựa trên requiresApproval của series
-                if (series.isRequiresApproval()) {
-                    registration.setStatus(RegistrationStatus.PENDING);
-                } else {
-                    registration.setStatus(RegistrationStatus.APPROVED);
-                }
-
-                registrationsToCreate.add(registration);
-            }
-
-            if (!registrationsToCreate.isEmpty()) {
-                registrationRepository.saveAll(registrationsToCreate);
-
-                // Tạo participation cho các registration có status APPROVED
-                List<ActivityParticipation> participationsToCreate = new ArrayList<>();
-                for (ActivityRegistration registration : registrationsToCreate) {
-                    if (registration.getStatus() == RegistrationStatus.APPROVED) {
-                        // Kiểm tra xem đã có participation chưa
-                        if (!participationRepository.existsByRegistration(registration)) {
-                            ActivityParticipation participation = new ActivityParticipation();
-                            participation.setRegistration(registration);
-                            participation.setParticipationType(ParticipationType.REGISTERED);
-                            participation.setPointsEarned(BigDecimal.ZERO);
-                            participation.setDate(LocalDateTime.now());
-                            participationsToCreate.add(participation);
-                        }
-                    }
-                }
-
-                if (!participationsToCreate.isEmpty()) {
-                    participationRepository.saveAll(participationsToCreate);
-                    logger.info("Created {} participations for auto-registered students",
-                            participationsToCreate.size());
-                }
-
-                logger.info(
-                        "Auto-registered {} students for new activity {} in series {} based on existing series registrations",
-                        registrationsToCreate.size(), newActivity.getId(), seriesId);
-            } else {
-                logger.info("No students needed auto-registration for new activity {} in series {}",
-                        newActivity.getId(),
-                        seriesId);
-            }
-
-            // Second: if the series itself is marked isImportant or mandatoryForFacultyStudents,
-            // auto-register ALL/faculty students to the new activity (regardless of whether
-            // they already have a registration in the series — they may not if the series
-            // was created without a main activity or the main activity was added later).
+            // 1) Auto-register theo flag series + khoa tổ chức của series
             if (series.isImportant() || series.isMandatoryForFacultyStudents()) {
                 autoRegisterService.autoRegisterStudents(
                         newActivity,
                         series.isImportant(),
                         series.isMandatoryForFacultyStudents(),
-                        series.getTargetDepartments());
+                        series.getOrganizers());
             }
+
+            // 2) Series đăng ký theo chuỗi: mọi SV đã trong series phải có đủ mọi sự kiện con
+            syncSeriesRegistrationsAcrossActivities(series);
         } catch (Exception e) {
             logger.error("Failed to auto-register students for new activity in series {}: {}", series.getId(),
                     e.getMessage(), e);
         }
+    }
+
+    /**
+     * Ensure every student who registered any activity in the series is registered
+     * for every active child activity (series registration is atomic).
+     */
+    private void syncSeriesRegistrationsAcrossActivities(ActivitySeries series) {
+        Long seriesId = series.getId();
+        List<Activity> activities = activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId);
+        if (activities.isEmpty()) {
+            return;
+        }
+
+        List<ActivityRegistration> allRegistrations = registrationRepository.findBySeriesId(seriesId);
+        Set<Long> studentIds = allRegistrations.stream()
+                .filter(reg -> reg.getStudent() != null && reg.getStudent().getId() != null)
+                .map(reg -> reg.getStudent().getId())
+                .collect(Collectors.toSet());
+        if (studentIds.isEmpty()) {
+            logger.info("No existing registrations in series {} to sync across activities", seriesId);
+            return;
+        }
+
+        List<Student> students = studentRepository.findAllById(studentIds);
+        List<ActivityRegistration> registrationsToCreate = new ArrayList<>();
+        for (Activity activity : activities) {
+            for (Student student : students) {
+                if (registrationRepository.existsByActivityIdAndStudentId(activity.getId(), student.getId())) {
+                    continue;
+                }
+
+                ActivityRegistration registration = new ActivityRegistration();
+                registration.setActivity(activity);
+                registration.setStudent(student);
+                registration.setRegisteredDate(LocalDateTime.now());
+                registration.setSeriesId(seriesId);
+                registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+                registration.setStatus(series.isRequiresApproval()
+                        ? RegistrationStatus.PENDING
+                        : RegistrationStatus.APPROVED);
+                registrationsToCreate.add(registration);
+            }
+        }
+
+        if (registrationsToCreate.isEmpty()) {
+            return;
+        }
+
+        registrationRepository.saveAll(registrationsToCreate);
+
+        List<ActivityParticipation> participationsToCreate = new ArrayList<>();
+        for (ActivityRegistration registration : registrationsToCreate) {
+            if (registration.getStatus() == RegistrationStatus.APPROVED
+                    && !participationRepository.existsByRegistration(registration)) {
+                ActivityParticipation participation = new ActivityParticipation();
+                participation.setRegistration(registration);
+                participation.setParticipationType(ParticipationType.REGISTERED);
+                participation.setPointsEarned(BigDecimal.ZERO);
+                participation.setDate(LocalDateTime.now());
+                participationsToCreate.add(participation);
+            }
+        }
+        if (!participationsToCreate.isEmpty()) {
+            participationRepository.saveAll(participationsToCreate);
+        }
+
+        logger.info("Synced {} series registrations across {} activities in series {}",
+                registrationsToCreate.size(), activities.size(), seriesId);
     }
 
     @Override
@@ -756,6 +758,12 @@ series.setPresetCode(presetCode);
                         seriesMap.put("isImportant", series.isImportant());
                         seriesMap.put("mandatoryForFacultyStudents", series.isMandatoryForFacultyStudents());
                         seriesMap.put("isDraft", series.isDraft());
+                        seriesMap.put("organizerIds", series.getOrganizers().stream()
+                                .map(Department::getId)
+                                .collect(Collectors.toList()));
+                        LocalDateTime latestEndDate = resolveSeriesLatestEndDate(series.getId());
+                        seriesMap.put("latestEndDate", latestEndDate);
+                        seriesMap.put("ended", latestEndDate != null && LocalDateTime.now().isAfter(latestEndDate));
 
                         // Đếm số activities trong series
                         Long totalActivities = activityRepository.countBySeriesId(series.getId());
@@ -847,10 +855,12 @@ series.setPresetCode(presetCode);
         try {
             seriesChildValidator.validate(request, seriesId);
             ActivitySeries series = seriesRepository.findById(seriesId).orElseThrow();
-            
-            Set<Department> organizers = resolveOrganizers(request.getOrganizerIds());
+            if (series.getOrganizers() == null || series.getOrganizers().isEmpty()) {
+                return Response.error("Series has no organizers configured");
+            }
+
             Activity entity = seriesChildMapper.toEntity(request, series);
-            entity.setOrganizers(organizers);
+            entity.setOrganizers(new LinkedHashSet<>(series.getOrganizers()));
             
             Activity saved = activityRepository.save(entity);
             if (saved.getCheckInCode() == null || saved.getCheckInCode().isBlank()) {
@@ -859,6 +869,8 @@ series.setPresetCode(presetCode);
                 saved.setCheckInCode(checkInCode);
                 saved = activityRepository.save(saved);
             }
+            autoRegisterStudentsForNewActivityInSeries(series, saved);
+            reminderScheduleService.syncSeriesMinimumRequirementReminders(series);
             return Response.success("Series activity created successfully", seriesChildMapper.toResponse(saved, series.getName()));
         } catch (IllegalArgumentException e) {
             return Response.error(e.getMessage());
@@ -880,11 +892,8 @@ series.setPresetCode(presetCode);
             }
             
             seriesChildMapper.applyUpdate(activity, request);
-            
-            if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
-                activity.setOrganizers(resolveOrganizers(request.getOrganizerIds()));
-            }
-            
+            // Organizers of series children are owned by the series — ignore request.organizerIds
+
             Activity saved = activityRepository.save(activity);
             return Response.success("Series activity updated successfully", seriesChildMapper.toResponse(saved, series.getName()));
         } catch (IllegalArgumentException e) {
@@ -1390,6 +1399,7 @@ series.setPresetCode(presetCode);
             Boolean requiresApproval, Integer ticketQuantity,
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, java.util.List<Long> departmentIds,
+            java.util.List<Long> organizerIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents,
             Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode) {
@@ -1478,7 +1488,17 @@ series.setPresetCode(presetCode);
                     series.getTargetDepartments().clear();
                 }
             }
-if (presetCode != null) {
+            boolean organizersChanged = false;
+            if (organizerIds != null) {
+                Set<Department> organizers = resolveOrganizers(organizerIds);
+                if (organizers.isEmpty()) {
+                    return Response.error("At least one series organizer is required");
+                }
+                series.getOrganizers().clear();
+                series.getOrganizers().addAll(organizers);
+                organizersChanged = true;
+            }
+            if (presetCode != null) {
                 series.setPresetCode(presetCode);
             }
             if (isImportant != null) {
@@ -1487,21 +1507,37 @@ if (presetCode != null) {
             if (mandatoryForFacultyStudents != null) {
                 series.setMandatoryForFacultyStudents(mandatoryForFacultyStudents);
             }
+            boolean draftChanged = false;
             if (isDraft != null) {
+                draftChanged = series.isDraft() != Boolean.TRUE.equals(isDraft);
                 series.setDraft(isDraft);
             }
 
             ActivitySeries saved = seriesRepository.save(series);
+
+            List<Activity> children = activityRepository.findBySeriesIdAndIsDeletedFalse(saved.getId());
+            if (organizersChanged) {
+                syncChildOrganizersFromSeries(saved, children);
+            }
+            if (draftChanged) {
+                syncChildDraftFromSeries(saved, children);
+            }
+
             reminderScheduleService.syncSeriesMinimumRequirementReminders(saved);
             logger.info("Updated activity series: {} with scoreType: {}", saved.getId(), saved.getScoreType());
 
-            // Auto-register students to main activity if series flags require it (only when non-draft)
-            if (!saved.isDraft() && saved.getMainActivity() != null) {
-                autoRegisterService.autoRegisterStudents(
-                        saved.getMainActivity(),
-                        saved.isImportant(),
-                        saved.isMandatoryForFacultyStudents(),
-                        saved.getTargetDepartments());
+            // Auto-register chỉ khi series đã publish.
+            if (!saved.isDraft() && (saved.isImportant() || saved.isMandatoryForFacultyStudents() || organizersChanged || draftChanged)) {
+                for (Activity child : children) {
+                    autoRegisterService.autoRegisterStudents(
+                            child,
+                            saved.isImportant(),
+                            saved.isMandatoryForFacultyStudents(),
+                            saved.getOrganizers());
+                }
+                if (!children.isEmpty()) {
+                    syncSeriesRegistrationsAcrossActivities(saved);
+                }
             }
 
             return Response.success("Activity series updated successfully", toSeriesResponse(saved));
@@ -1563,16 +1599,18 @@ if (presetCode != null) {
             Boolean requiresApproval, Integer ticketQuantity, Boolean minimumRequirementEnabled,
             Integer minimumRequiredEvents, Integer minimumPenaltyPoints, Long targetSemesterId,
             vn.campuslife.enumeration.ScoreRuleAudience audience, List<Long> departmentIds,
+            List<Long> organizerIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents, Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode, DepartmentScope scope) {
         validateSeriesDepartmentsForScope(departmentIds, scope);
+        List<Long> scopedOrganizerIds = normalizeOrganizerIds(organizerIds, scope);
         if (scope != null && scope.manager() && !scope.admin() && mainActivityId != null) {
             departmentAuthorizationService.requireActivityAccess(mainActivityId, scope);
         }
         return createSeries(name, description, milestonePointsJson, scoreType, mainActivityId,
                 registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                 minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, targetSemesterId,
-                audience, departmentIds, isImportant, mandatoryForFacultyStudents, isDraft, presetCode);
+                audience, departmentIds, scopedOrganizerIds, isImportant, mandatoryForFacultyStudents, isDraft, presetCode);
     }
 
     @Override
@@ -1582,9 +1620,9 @@ if (presetCode != null) {
             String benefits, String requirements, String contactInfo, List<Long> organizerIds,
             vn.campuslife.enumeration.ActivityType type, DepartmentScope scope) {
         departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
-        List<Long> scopedOrganizerIds = normalizeOrganizerIds(organizerIds, scope);
+        // Child organizers are inherited from series — ignore request organizerIds
         return createActivityInSeries(seriesId, name, description, startDate, endDate, location, order, shareLink,
-                bannerUrl, benefits, requirements, contactInfo, scopedOrganizerIds, type);
+                bannerUrl, benefits, requirements, contactInfo, null, type);
     }
 
     @Override
@@ -1608,11 +1646,7 @@ if (presetCode != null) {
     public Response createSeriesActivity(Long seriesId, vn.campuslife.model.activity.series.SeriesChildActivityCreateRequest request,
             DepartmentScope scope) {
         departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
-        if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
-            validateOrganizerIdsInScope(request.getOrganizerIds(), scope);
-        } else {
-            request.setOrganizerIds(new ArrayList<>(normalizeOrganizerIds(null, scope)));
-        }
+        // Child organizers inherited from series — ignore request.organizerIds
         return createSeriesActivity(seriesId, request);
     }
 
@@ -1622,9 +1656,7 @@ if (presetCode != null) {
             vn.campuslife.model.activity.series.SeriesChildActivityUpdateRequest request, DepartmentScope scope) {
         departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
         departmentAuthorizationService.requireActivityAccess(activityId, scope);
-        if (request.getOrganizerIds() != null && !request.getOrganizerIds().isEmpty()) {
-            validateOrganizerIdsInScope(request.getOrganizerIds(), scope);
-        }
+        // Organizer changes on child are ignored in updateSeriesActivity
         return updateSeriesActivity(seriesId, activityId, request);
     }
 
@@ -1665,17 +1697,22 @@ if (presetCode != null) {
             LocalDateTime registrationDeadline, Boolean requiresApproval, Integer ticketQuantity,
             Boolean minimumRequirementEnabled, Integer minimumRequiredEvents, Integer minimumPenaltyPoints,
             Long targetSemesterId, vn.campuslife.enumeration.ScoreRuleAudience audience, List<Long> departmentIds,
+            List<Long> organizerIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents, Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode, DepartmentScope scope) {
         departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
         validateSeriesDepartmentsForScope(departmentIds, scope);
+        if (organizerIds != null) {
+            // Empty list: auto-fill for single-dept manager, otherwise reject via normalize
+            organizerIds = normalizeOrganizerIds(organizerIds.isEmpty() ? null : organizerIds, scope);
+        }
         if (scope != null && scope.manager() && !scope.admin() && mainActivityId != null) {
             departmentAuthorizationService.requireActivityAccess(mainActivityId, scope);
         }
         return updateSeries(seriesId, name, description, milestonePointsJson, scoreType, mainActivityId,
                 registrationStartDate, registrationDeadline, requiresApproval, ticketQuantity,
                 minimumRequirementEnabled, minimumRequiredEvents, minimumPenaltyPoints, targetSemesterId,
-                audience, departmentIds, isImportant, mandatoryForFacultyStudents, isDraft, presetCode);
+                audience, departmentIds, organizerIds, isImportant, mandatoryForFacultyStudents, isDraft, presetCode);
     }
 
     @Override
@@ -1700,6 +1737,10 @@ if (presetCode != null) {
         }
     }
 
+    /**
+     * Manager may include co-organizer departments outside their assigned faculties,
+     * but at least one organizer must remain within manager scope so ownership is retained.
+     */
     private void validateOrganizerIdsInScope(List<Long> organizerIds, DepartmentScope scope) {
         if (scope == null || !scope.manager() || scope.admin()) {
             return;
@@ -1707,7 +1748,8 @@ if (presetCode != null) {
         if (organizerIds == null || organizerIds.isEmpty()) {
             return;
         }
-        if (!scope.departmentIds().containsAll(new HashSet<>(organizerIds))) {
+        boolean anyInScope = organizerIds.stream().anyMatch(scope.departmentIds()::contains);
+        if (!anyInScope) {
             throw new IllegalArgumentException("Organizer departments must be within manager scope");
         }
     }
@@ -1724,6 +1766,44 @@ if (presetCode != null) {
             return List.copyOf(scope.departmentIds());
         }
         throw new IllegalArgumentException("Manager with multiple departments must specify organizerIds within scope");
+    }
+
+    private void syncChildOrganizersFromSeries(ActivitySeries series, List<Activity> children) {
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+        Set<Department> organizers = series.getOrganizers() == null
+                ? Set.of()
+                : new LinkedHashSet<>(series.getOrganizers());
+        for (Activity child : children) {
+            child.getOrganizers().clear();
+            child.getOrganizers().addAll(organizers);
+        }
+        activityRepository.saveAll(children);
+        logger.info("Synced organizers from series {} to {} child activities", series.getId(), children.size());
+    }
+
+    private void syncChildDraftFromSeries(ActivitySeries series, List<Activity> children) {
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+        boolean draft = series.isDraft();
+        for (Activity child : children) {
+            child.setDraft(draft);
+        }
+        activityRepository.saveAll(children);
+        logger.info("Synced draft={} from series {} to {} child activities", draft, series.getId(), children.size());
+    }
+
+    private LocalDateTime resolveSeriesLatestEndDate(Long seriesId) {
+        if (seriesId == null) {
+            return null;
+        }
+        return activityRepository.findBySeriesIdAndIsDeletedFalse(seriesId).stream()
+                .map(Activity::getEndDate)
+                .filter(end -> end != null)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
     }
 
     private SeriesResponse toSeriesResponse(ActivitySeries series) {
@@ -1745,12 +1825,18 @@ if (presetCode != null) {
         response.setTargetDepartmentIds(series.getTargetDepartments().stream()
                 .map(Department::getId)
                 .collect(Collectors.toList()));
+        response.setOrganizerIds(series.getOrganizers().stream()
+                .map(Department::getId)
+                .collect(Collectors.toList()));
         response.setImportant(series.isImportant());
         response.setMandatoryForFacultyStudents(series.isMandatoryForFacultyStudents());
         response.setDraft(series.isDraft());
         response.setPresetCode(series.getPresetCode());
         response.setPresetConfig(null);
         response.setCreatedAt(series.getCreatedAt());
+        LocalDateTime latestEndDate = resolveSeriesLatestEndDate(series.getId());
+        response.setLatestEndDate(latestEndDate);
+        response.setEnded(latestEndDate != null && LocalDateTime.now().isAfter(latestEndDate));
         if (series.getMilestonePoints() != null && !series.getMilestonePoints().isBlank()) {
             try {
                 response.setMilestonePoints(objectMapper.readValue(

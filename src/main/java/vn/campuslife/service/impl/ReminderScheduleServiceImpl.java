@@ -19,6 +19,7 @@ import vn.campuslife.enumeration.ReminderStatus;
 import vn.campuslife.enumeration.ReminderTargetType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ReminderScheduleRepository;
 import vn.campuslife.repository.TaskAssignmentRepository;
 import vn.campuslife.repository.TaskSubmissionRepository;
@@ -68,6 +69,7 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
     private final ReminderScheduleRepository reminderScheduleRepository;
     private final ReminderRuntimeSchedulerService reminderRuntimeSchedulerService;
     private final ActivityRegistrationRepository activityRegistrationRepository;
+    private final ActivityRepository activityRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final TaskSubmissionRepository taskSubmissionRepository;
 
@@ -542,10 +544,9 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
             return null;
         }
 
-        LocalDateTime latestEndDate = activityRegistrationRepository.findBySeriesId(series.getId()).stream()
-                .map(ActivityRegistration::getActivity)
-                .filter(activity -> activity != null && activity.getEndDate() != null)
+        LocalDateTime latestEndDate = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId()).stream()
                 .map(Activity::getEndDate)
+                .filter(end -> end != null)
                 .max(LocalDateTime::compareTo)
                 .orElse(null);
 
