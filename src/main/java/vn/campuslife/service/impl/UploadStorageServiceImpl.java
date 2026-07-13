@@ -59,7 +59,22 @@ public class UploadStorageServiceImpl implements UploadStorageService {
 
     @Override
     public String toPublicUrl(String relativePath) {
-        return UrlUtils.toFullUrl(relativePath, uploadProperties.getPublicUrl());
+        if (relativePath == null || relativePath.isBlank()) {
+            return relativePath;
+        }
+
+        String trimmed = relativePath.trim().replace('\\', '/');
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+
+        // Legacy bare filenames (e.g. uuid.jpg) must resolve under /uploads/
+        String normalized = UrlUtils.normalizeUploadRelativePath(trimmed);
+        if (normalized != null) {
+            return UrlUtils.toFullUrl(normalized, uploadProperties.getPublicUrl());
+        }
+
+        return UrlUtils.toFullUrl(trimmed, uploadProperties.getPublicUrl());
     }
 
     @Override
@@ -68,21 +83,30 @@ public class UploadStorageServiceImpl implements UploadStorageService {
             return fileUrl;
         }
 
+        String trimmed = fileUrl.trim().replace('\\', '/');
         String publicPrefix = normalizedPublicPrefix();
         String publicUrl = uploadProperties.getPublicUrl();
-        if (publicUrl != null && !publicUrl.isBlank() && fileUrl.startsWith(publicUrl)) {
-            String suffix = fileUrl.substring(publicUrl.length());
-            if (suffix.startsWith(publicPrefix)) {
-                return suffix;
+        if (publicUrl != null && !publicUrl.isBlank()) {
+            String base = publicUrl.endsWith("/") ? publicUrl.substring(0, publicUrl.length() - 1) : publicUrl;
+            if (trimmed.startsWith(base)) {
+                String suffix = trimmed.substring(base.length());
+                if (suffix.startsWith(publicPrefix + "/") || suffix.equals(publicPrefix)) {
+                    return suffix;
+                }
             }
         }
 
-        int prefixIndex = fileUrl.indexOf(publicPrefix);
+        int prefixIndex = trimmed.indexOf(publicPrefix + "/");
         if (prefixIndex >= 0) {
-            return fileUrl.substring(prefixIndex);
+            return trimmed.substring(prefixIndex);
         }
 
-        return fileUrl;
+        String normalized = UrlUtils.normalizeUploadRelativePath(trimmed);
+        if (normalized != null) {
+            return normalized;
+        }
+
+        return trimmed;
     }
 
     @Override

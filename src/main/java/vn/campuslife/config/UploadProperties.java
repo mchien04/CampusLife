@@ -25,6 +25,7 @@ public class UploadProperties {
         private String activityPhotos = "activities";
         private String submissions = "submissions";
         private String scoreAppeals = "score-appeals";
+        private String avatars = "avatars";
     }
 
     @Getter

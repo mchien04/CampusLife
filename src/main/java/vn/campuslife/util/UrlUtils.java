@@ -1,92 +1,130 @@
 package vn.campuslife.util;
 
 /**
- * Utility class for URL conversion
+ * Utility class for URL conversion between stored relative paths and public URLs.
  */
 public class UrlUtils {
+
+    private UrlUtils() {
+    }
 
     /**
      * Converts a relative path to a full URL using the provided public URL base.
      * If the path is already a full URL (starts with http:// or https://), it is
      * returned as-is.
-     * If the path is a relative path (starts with /uploads/), it is prepended with
-     * the publicUrl.
-     * Otherwise, the original path is returned unchanged.
-     *
-     * @param relativePath The path to convert (can be relative or absolute)
-     * @param publicUrl    The base public URL (e.g.,
-     *                     "https://campuslife-v2iu.onrender.com")
-     * @return The full URL if conversion is needed, otherwise the original path
+     * Paths under /uploads/ (or legacy bare filenames) are prepended with publicUrl.
      */
     public static String toFullUrl(String relativePath, String publicUrl) {
         if (relativePath == null || relativePath.trim().isEmpty()) {
             return relativePath;
         }
 
-        String trimmedPath = relativePath.trim();
+        String trimmedPath = relativePath.trim().replace('\\', '/');
 
-        // If already a full URL, return as-is
         if (trimmedPath.startsWith("http://") || trimmedPath.startsWith("https://")) {
             return trimmedPath;
         }
 
-        // If relative path starting with /uploads/, prepend publicUrl
-        if (trimmedPath.startsWith("/uploads/")) {
-            // Remove trailing slash from publicUrl if present
-            String baseUrl = publicUrl != null ? publicUrl.trim() : "";
-            if (baseUrl.endsWith("/")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-            }
-            return baseUrl + trimmedPath;
+        String normalizedPath = normalizeUploadRelativePath(trimmedPath);
+        if (normalizedPath == null) {
+            return trimmedPath;
         }
 
-        // Return original if neither condition matches
-        return trimmedPath;
+        String baseUrl = publicUrl != null ? publicUrl.trim() : "";
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        if (baseUrl.isEmpty()) {
+            return normalizedPath;
+        }
+        return baseUrl + normalizedPath;
     }
 
     /**
      * Normalizes a URL to a relative path for storage in database.
-     * If the URL is a full URL (starts with http:// or https://), extracts the
-     * relative path.
-     * If the URL is already a relative path, returns it as-is.
-     * 
-     * @param url       The URL to normalize (can be full URL or relative path)
-     * @param publicUrl The base public URL to extract from (e.g.,
-     *                  "https://campuslife-v2iu.onrender.com")
-     * @return Relative path (e.g., "/uploads/abc123.jpg") or original if not a
-     *         valid upload URL
      */
     public static String toRelativePath(String url, String publicUrl) {
         if (url == null || url.trim().isEmpty()) {
             return url;
         }
 
-        String trimmedUrl = url.trim();
+        String trimmedUrl = url.trim().replace('\\', '/');
 
-        // If already a relative path starting with /uploads/, return as-is
-        if (trimmedUrl.startsWith("/uploads/")) {
-            return trimmedUrl;
+        String normalizedDirect = normalizeUploadRelativePath(trimmedUrl);
+        if (normalizedDirect != null && (trimmedUrl.startsWith("/uploads/")
+                || trimmedUrl.startsWith("uploads/")
+                || looksLikeBareUploadFilename(trimmedUrl))) {
+            return normalizedDirect;
         }
 
-        // If full URL, extract relative path
         if (trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://")) {
-            // Remove trailing slash from publicUrl if present
             String baseUrl = publicUrl != null ? publicUrl.trim() : "";
             if (baseUrl.endsWith("/")) {
                 baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
             }
 
-            // Check if URL starts with publicUrl
-            if (trimmedUrl.startsWith(baseUrl)) {
+            if (!baseUrl.isEmpty() && trimmedUrl.startsWith(baseUrl)) {
                 String relativePath = trimmedUrl.substring(baseUrl.length());
-                // Only return if it's a valid upload path
-                if (relativePath.startsWith("/uploads/")) {
-                    return relativePath;
+                String normalized = normalizeUploadRelativePath(relativePath);
+                if (normalized != null) {
+                    return normalized;
                 }
+            }
+
+            int uploadsIndex = trimmedUrl.indexOf("/uploads/");
+            if (uploadsIndex >= 0) {
+                return trimmedUrl.substring(uploadsIndex);
             }
         }
 
-        // Return original if cannot normalize
         return trimmedUrl;
+    }
+
+    /**
+     * Ensures paths are of the form /uploads/... when they refer to local upload files.
+     * Returns null when the value should be left unchanged (e.g. external CDN object key
+     * without uploads prefix that is not a bare filename).
+     */
+    public static String normalizeUploadRelativePath(String path) {
+        if (path == null || path.isBlank()) {
+            return path;
+        }
+
+        String trimmed = path.trim().replace('\\', '/');
+        while (trimmed.startsWith("./")) {
+            trimmed = trimmed.substring(2);
+        }
+
+        if (trimmed.startsWith("/uploads/")) {
+            return trimmed;
+        }
+        if (trimmed.startsWith("uploads/")) {
+            return "/" + trimmed;
+        }
+        if (looksLikeBareUploadFilename(trimmed)) {
+            return "/uploads/" + trimmed;
+        }
+        // Known local subfolders without public prefix (legacy)
+        if (trimmed.startsWith("avatars/")
+                || trimmed.startsWith("activities/")
+                || trimmed.startsWith("submissions/")
+                || trimmed.startsWith("score-appeals/")
+                || trimmed.startsWith("general/")) {
+            return "/uploads/" + trimmed;
+        }
+        return null;
+    }
+
+    private static boolean looksLikeBareUploadFilename(String value) {
+        if (value == null || value.isBlank() || value.contains("/")) {
+            return false;
+        }
+        String lower = value.toLowerCase();
+        return lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".png")
+                || lower.endsWith(".gif")
+                || lower.endsWith(".webp")
+                || lower.endsWith(".bmp");
     }
 }

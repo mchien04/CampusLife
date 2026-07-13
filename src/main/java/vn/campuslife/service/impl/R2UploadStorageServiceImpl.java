@@ -9,7 +9,6 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import vn.campuslife.config.UploadProperties;
 import vn.campuslife.service.UploadStorageService;
-import vn.campuslife.util.UrlUtils;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -60,9 +59,10 @@ public class R2UploadStorageServiceImpl implements UploadStorageService {
             return;
         }
 
+        String key = toObjectKey(relativePath);
         DeleteObjectRequest request = DeleteObjectRequest.builder()
                 .bucket(uploadProperties.getR2().getBucket())
-                .key(relativePath)
+                .key(key)
                 .build();
 
         s3Client.deleteObject(request);
@@ -70,12 +70,28 @@ public class R2UploadStorageServiceImpl implements UploadStorageService {
 
     @Override
     public String toPublicUrl(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return relativePath;
+        }
+
+        String trimmed = relativePath.trim().replace('\\', '/');
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+
+        String key = toObjectKey(trimmed);
         String cdnDomain = uploadProperties.getR2().getCdnDomain();
         if (cdnDomain != null && !cdnDomain.isBlank()) {
             String base = cdnDomain.replaceAll("/+$", "");
-            return base + "/" + (relativePath.startsWith("/") ? relativePath.substring(1) : relativePath);
+            return base + "/" + key;
         }
-        return UrlUtils.toFullUrl(relativePath, uploadProperties.getPublicUrl());
+
+        String publicUrl = uploadProperties.getPublicUrl();
+        String base = publicUrl != null ? publicUrl.trim().replaceAll("/+$", "") : "";
+        if (base.isEmpty()) {
+            return key;
+        }
+        return base + "/" + key;
     }
 
     @Override
@@ -84,20 +100,35 @@ public class R2UploadStorageServiceImpl implements UploadStorageService {
             return fileUrl;
         }
 
+        String trimmed = fileUrl.trim().replace('\\', '/');
+
         String cdnDomain = uploadProperties.getR2().getCdnDomain();
         if (cdnDomain != null && !cdnDomain.isBlank()) {
             String base = cdnDomain.replaceAll("/+$", "");
-            if (fileUrl.startsWith(base + "/")) {
-                return fileUrl.substring((base + "/").length());
+            if (trimmed.startsWith(base + "/")) {
+                return trimmed.substring((base + "/").length());
             }
         }
 
-        return fileUrl;
+        String publicUrl = uploadProperties.getPublicUrl();
+        if (publicUrl != null && !publicUrl.isBlank()) {
+            String base = publicUrl.trim().replaceAll("/+$", "");
+            if (trimmed.startsWith(base + "/")) {
+                return toObjectKey(trimmed.substring((base + "/").length()));
+            }
+        }
+
+        int uploadsIndex = trimmed.indexOf("/uploads/");
+        if (uploadsIndex >= 0) {
+            return toObjectKey(trimmed.substring(uploadsIndex + "/uploads/".length()));
+        }
+
+        return toObjectKey(trimmed);
     }
 
     @Override
     public Path resolveFilePath(String relativePath) {
-        return Paths.get(relativePath);
+        return Paths.get(toObjectKey(relativePath));
     }
 
     private String buildObjectKey(String relativeDirectory, String originalFilename) {
@@ -108,6 +139,22 @@ public class R2UploadStorageServiceImpl implements UploadStorageService {
             return fileName;
         }
         return dir + "/" + fileName;
+    }
+
+    private String toObjectKey(String path) {
+        if (path == null || path.isBlank()) {
+            return path;
+        }
+        String key = path.trim().replace('\\', '/');
+        if (key.startsWith("/uploads/")) {
+            key = key.substring("/uploads/".length());
+        } else if (key.startsWith("uploads/")) {
+            key = key.substring("uploads/".length());
+        }
+        while (key.startsWith("/")) {
+            key = key.substring(1);
+        }
+        return key;
     }
 
     private String extractExtension(String originalFilename) {

@@ -203,6 +203,7 @@ public class SecurityConfig {
                         // Student Profile
                         .requestMatchers(HttpMethod.GET, "/api/student/profile").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.PUT, "/api/student/profile").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/student/profile/avatar").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/api/student/profile/*").hasAnyRole("ADMIN", "MANAGER")
 
                         // Notifications
