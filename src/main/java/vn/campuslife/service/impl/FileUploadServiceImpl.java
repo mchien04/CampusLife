@@ -21,12 +21,17 @@ public class FileUploadServiceImpl implements FileUploadService {
 
     @Override
     public String uploadFile(MultipartFile file) {
-        return upload(false, file);
+        return upload(false, file, uploadProperties.getPaths().getGeneral());
     }
 
     @Override
     public String uploadImage(MultipartFile file) {
-        return upload(true, file);
+        return upload(true, file, uploadProperties.getPaths().getGeneral());
+    }
+
+    @Override
+    public String uploadImage(MultipartFile file, String relativeDirectory) {
+        return upload(true, file, relativeDirectory);
     }
 
     @Override
@@ -39,9 +44,9 @@ public class FileUploadServiceImpl implements FileUploadService {
         }
     }
 
-    private String upload(boolean imageOnly, MultipartFile file) {
+    private String upload(boolean imageOnly, MultipartFile file, String relativeDirectory) {
         try {
-            String relativePath = uploadStorageService.store(file, uploadProperties.getPaths().getGeneral(), imageOnly);
+            String relativePath = uploadStorageService.store(file, relativeDirectory, imageOnly);
             return uploadStorageService.toPublicUrl(relativePath);
         } catch (IOException | IllegalArgumentException e) {
             throw new RuntimeException("Failed to upload file: " + e.getMessage(), e);

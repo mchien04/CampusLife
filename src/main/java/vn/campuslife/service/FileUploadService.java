@@ -7,5 +7,10 @@ public interface FileUploadService {
 
     String uploadImage(MultipartFile file);
 
+    /**
+     * Upload an image into a specific subdirectory (e.g. avatars) and return the public URL.
+     */
+    String uploadImage(MultipartFile file, String relativeDirectory);
+
     void deleteFile(String fileName);
 }

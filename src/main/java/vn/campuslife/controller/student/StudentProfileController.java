@@ -2,9 +2,11 @@ package vn.campuslife.controller.student;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.StudentProfileUpdateRequest;
 import vn.campuslife.service.StudentProfileService;
@@ -56,6 +58,30 @@ public class StudentProfileController {
         } catch (Exception e) {
             return ResponseEntity.badRequest()
                     .body(new Response(false, "Failed to update profile: " + e.getMessage(), null));
+        }
+    }
+
+    /**
+     * Upload avatar cho student hiện tại (local uploads hoặc R2 tùy cấu hình).
+     */
+    @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Response> uploadMyAvatar(@RequestParam("file") MultipartFile file,
+            Authentication authentication) {
+        try {
+            Long studentId = getStudentIdFromAuth(authentication);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+
+            Response response = profileService.uploadStudentAvatar(studentId, file);
+            if (!response.isStatus()) {
+                return ResponseEntity.badRequest().body(response);
+            }
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(new Response(false, "Failed to upload avatar: " + e.getMessage(), null));
         }
     }
 

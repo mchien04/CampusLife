@@ -30,6 +30,7 @@ public class UploadStorageServiceImplTest {
         paths.setGeneral("general");
         paths.setActivityPhotos("activities");
         paths.setSubmissions("submissions");
+        paths.setAvatars("avatars");
         uploadProperties.setPaths(paths);
 
         uploadStorageService = new UploadStorageServiceImpl(uploadProperties);
@@ -106,6 +107,22 @@ public class UploadStorageServiceImplTest {
 
         // Assert
         assertEquals("http://localhost:8080/uploads/general/test.txt", publicUrl);
+    }
+
+    @Test
+    public void testToPublicUrl_BareFilename_UsesUploadsPrefix() {
+        String publicUrl = uploadStorageService.toPublicUrl("bd868987-18cd-4e12-befb-b5f853822813.jpg");
+
+        assertEquals(
+                "http://localhost:8080/uploads/bd868987-18cd-4e12-befb-b5f853822813.jpg",
+                publicUrl);
+    }
+
+    @Test
+    public void testExtractRelativePath_BareFilename() {
+        assertEquals(
+                "/uploads/bd868987-18cd-4e12-befb-b5f853822813.jpg",
+                uploadStorageService.extractRelativePath("bd868987-18cd-4e12-befb-b5f853822813.jpg"));
     }
 
     @Test
