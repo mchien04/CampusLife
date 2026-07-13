@@ -35,7 +35,14 @@ public interface MiniGameAttemptRepository extends JpaRepository<MiniGameAttempt
                         @Param("miniGameId") Long miniGameId,
                         @Param("status") AttemptStatus status);
 
-        boolean existsByStudentIdAndMiniGameIdAndStatus(Long studentId, Long miniGameId, AttemptStatus status);
+        @Query("SELECT CASE WHEN COUNT(mga) > 0 THEN true ELSE false END FROM MiniGameAttempt mga "
+                        + "WHERE mga.student.id = :studentId AND mga.miniGame.id = :miniGameId AND mga.status = :status")
+        boolean existsByStudentIdAndMiniGameIdAndStatus(
+                        @Param("studentId") Long studentId,
+                        @Param("miniGameId") Long miniGameId,
+                        @Param("status") AttemptStatus status);
+
+        boolean existsByStudentIdAndMiniGameId(Long studentId, Long miniGameId);
 
         /**
          * Đếm tổng số attempts

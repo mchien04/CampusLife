@@ -28,10 +28,15 @@ public class SeriesResponse {
     private Integer minimumPenaltyPoints;
     private ScoreRuleAudience audience;
     private List<Long> targetDepartmentIds;
+    private List<Long> organizerIds;
     private boolean isImportant;
     private boolean mandatoryForFacultyStudents;
     private boolean isDraft;
     private SeriesPresetCode presetCode;
     private SeriesPresetConfig presetConfig;
     private LocalDateTime createdAt;
+    /** Thời gian kết thúc muộn nhất trong các sự kiện con (null nếu chưa có child / chưa có endDate). */
+    private LocalDateTime latestEndDate;
+    /** true khi latestEndDate đã qua — chuỗi coi như đã kết thúc (mốc trừ điểm tối thiểu). */
+    private boolean ended;
 }

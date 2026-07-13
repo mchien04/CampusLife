@@ -49,7 +49,8 @@ public class SeriesChildActivityMapper {
         entity.setRequiresSubmission(false);
         entity.setImportant(false);
         entity.setMandatoryForFacultyStudents(false);
-        entity.setDraft(false); // Series children are auto-published
+        // Inherit draft from series so draft-series children stay hidden from students
+        entity.setDraft(series != null && series.isDraft());
         
         return entity;
     }

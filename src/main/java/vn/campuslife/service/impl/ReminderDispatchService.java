@@ -11,10 +11,12 @@ import vn.campuslife.entity.EmailHistory;
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.entity.ActivitySeries;
+import vn.campuslife.entity.MiniGame;
 import vn.campuslife.entity.ReminderSchedule;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.EmailStatus;
 import vn.campuslife.enumeration.RecipientType;
 import vn.campuslife.enumeration.ReminderCode;
@@ -26,8 +28,11 @@ import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.repository.ActivityParticipationRepository;
 import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.EmailHistoryRepository;
+import vn.campuslife.repository.MiniGameAttemptRepository;
+import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.repository.ReminderScheduleRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
@@ -62,6 +67,9 @@ public class ReminderDispatchService {
     private final TaskSubmissionRepository taskSubmissionRepository;
     private final ActivityRegistrationRepository activityRegistrationRepository;
     private final ActivityParticipationRepository activityParticipationRepository;
+    private final ActivityRepository activityRepository;
+    private final MiniGameRepository miniGameRepository;
+    private final MiniGameAttemptRepository miniGameAttemptRepository;
     private final TaskAssignmentRepository taskAssignmentRepository;
     private final ActivitySeriesRepository activitySeriesRepository;
     private final StudentSeriesProgressRepository studentSeriesProgressRepository;
@@ -265,6 +273,10 @@ public class ReminderDispatchService {
             return true;
         }
 
+        if (hasMinigameAttemptThatCountsAsParticipation(reminder.getTargetId(), studentOpt.get().getId())) {
+            return true;
+        }
+
         Optional<ActivityParticipation> participationOpt = activityParticipationRepository
                 .findByRegistration(registration);
         if (participationOpt.isEmpty()) {
@@ -279,6 +291,28 @@ public class ReminderDispatchService {
                 || registration.getStatus() == RegistrationStatus.ATTENDED
                 || participation.getCheckOutTime() != null
                 || Boolean.TRUE.equals(participation.getIsCompleted());
+    }
+
+    /**
+     * Minigame: any attempt (even failed / not passed) counts as participation for NO_SHOW,
+     * including when MINIGAME_EXHAUSTED_ATTEMPTS is not configured.
+     */
+    private boolean hasMinigameAttemptThatCountsAsParticipation(Long activityId, Long studentId) {
+        if (activityId == null || studentId == null) {
+            return false;
+        }
+
+        Optional<Activity> activityOpt = activityRepository.findById(activityId);
+        if (activityOpt.isEmpty() || activityOpt.get().getType() != ActivityType.MINIGAME) {
+            return false;
+        }
+
+        Optional<MiniGame> miniGameOpt = miniGameRepository.findByActivityId(activityId);
+        if (miniGameOpt.isEmpty()) {
+            return false;
+        }
+
+        return miniGameAttemptRepository.existsByStudentIdAndMiniGameId(studentId, miniGameOpt.get().getId());
     }
 
     private boolean isTaskOverdueReminderCancelled(ReminderSchedule reminder) {

@@ -39,6 +39,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Response.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Response> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(Response.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(InsufficientBudgetException.class)
     public ResponseEntity<Response> handleInsufficientBudget(InsufficientBudgetException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Response.error(ex.getMessage()));

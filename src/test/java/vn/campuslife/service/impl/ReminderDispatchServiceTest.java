@@ -12,11 +12,13 @@ import vn.campuslife.entity.ActivityTask;
 import vn.campuslife.entity.ActivityParticipation;
 import vn.campuslife.entity.ActivityRegistration;
 import vn.campuslife.entity.ActivitySeries;
+import vn.campuslife.entity.MiniGame;
 import vn.campuslife.entity.ReminderSchedule;
 import vn.campuslife.entity.Student;
 import vn.campuslife.entity.StudentSeriesProgress;
 import vn.campuslife.entity.TaskAssignment;
 import vn.campuslife.entity.User;
+import vn.campuslife.enumeration.ActivityType;
 import vn.campuslife.enumeration.ParticipationType;
 import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ReminderCode;
@@ -26,8 +28,11 @@ import vn.campuslife.enumeration.Role;
 import vn.campuslife.enumeration.TaskStatus;
 import vn.campuslife.repository.ActivityParticipationRepository;
 import vn.campuslife.repository.ActivityRegistrationRepository;
+import vn.campuslife.repository.ActivityRepository;
 import vn.campuslife.repository.ActivitySeriesRepository;
 import vn.campuslife.repository.EmailHistoryRepository;
+import vn.campuslife.repository.MiniGameAttemptRepository;
+import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.repository.ReminderScheduleRepository;
 import vn.campuslife.repository.StudentRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
@@ -70,6 +75,15 @@ class ReminderDispatchServiceTest {
 
     @Mock
     private ActivityParticipationRepository activityParticipationRepository;
+
+    @Mock
+    private ActivityRepository activityRepository;
+
+    @Mock
+    private MiniGameRepository miniGameRepository;
+
+    @Mock
+    private MiniGameAttemptRepository miniGameAttemptRepository;
 
     @Mock
     private TaskAssignmentRepository taskAssignmentRepository;
@@ -233,6 +247,7 @@ class ReminderDispatchServiceTest {
         when(studentRepository.findByUserIdAndIsDeletedFalse(10L)).thenReturn(Optional.of(student));
         when(activityRegistrationRepository.findByActivityIdAndStudentId(456L, 7L))
                 .thenReturn(Optional.of(registration));
+        when(activityRepository.findById(456L)).thenReturn(Optional.empty());
         when(activityParticipationRepository.findByRegistration(registration)).thenReturn(Optional.of(participation));
         when(userRepository.findAllByRoleInAndIsDeletedFalse(List.of(Role.ADMIN, Role.MANAGER)))
                 .thenReturn(List.of(sender));
@@ -244,6 +259,56 @@ class ReminderDispatchServiceTest {
         assertEquals(ReminderStatus.SENT, reminder.getStatus());
         verify(scoreRuleEngine).applyNoShowPenalty(registration, sender);
         verify(reminderRuntimeSchedulerService, never()).scheduleReminder(reminder);
+    }
+
+    @Test
+    void dispatchReminder_NoShow_MinigameWithOneFailedAttempt_CancelsWithoutPenalty() {
+        User studentUser = new User();
+        studentUser.setId(10L);
+        studentUser.setEmail("student@campuslife.vn");
+
+        Student student = new Student();
+        student.setId(7L);
+        student.setUser(studentUser);
+
+        ReminderSchedule reminder = new ReminderSchedule();
+        reminder.setId(2L);
+        reminder.setStatus(ReminderStatus.PENDING);
+        reminder.setTargetType(ReminderTargetType.EVENT);
+        reminder.setReminderCode(ReminderCode.EVENT_NO_SHOW_PENALTY);
+        reminder.setTargetId(456L);
+        reminder.setUser(studentUser);
+        reminder.setRecipientEmail(studentUser.getEmail());
+        reminder.setSubject("No-show");
+        reminder.setContent("No-show penalty");
+        reminder.setRemindAt(LocalDateTime.now().minusMinutes(2));
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+
+        Activity activity = new Activity();
+        activity.setId(456L);
+        activity.setType(ActivityType.MINIGAME);
+
+        MiniGame miniGame = new MiniGame();
+        miniGame.setId(88L);
+        miniGame.setActivity(activity);
+
+        when(reminderScheduleRepository.findById(2L)).thenReturn(Optional.of(reminder));
+        when(reminderScheduleRepository.save(any(ReminderSchedule.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(studentRepository.findByUserIdAndIsDeletedFalse(10L)).thenReturn(Optional.of(student));
+        when(activityRegistrationRepository.findByActivityIdAndStudentId(456L, 7L))
+                .thenReturn(Optional.of(registration));
+        when(activityRepository.findById(456L)).thenReturn(Optional.of(activity));
+        when(miniGameRepository.findByActivityId(456L)).thenReturn(Optional.of(miniGame));
+        when(miniGameAttemptRepository.existsByStudentIdAndMiniGameId(7L, 88L)).thenReturn(true);
+
+        reminderDispatchService.dispatchReminder(2L);
+
+        assertEquals(ReminderStatus.CANCELLED, reminder.getStatus());
+        verify(scoreRuleEngine, never()).applyNoShowPenalty(any(), any());
+        verify(emailUtil, never()).sendCustomEmail(any(), any(), any(), any(Boolean.class), any());
     }
 
     @Test

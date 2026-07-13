@@ -12,6 +12,8 @@ import vn.campuslife.enumeration.*;
 import vn.campuslife.model.score.AppliedScoreAward;
 import vn.campuslife.model.score.ScoreEntryCommand;
 import vn.campuslife.repository.ActivityRepository;
+import vn.campuslife.repository.MiniGameAttemptRepository;
+import vn.campuslife.repository.MiniGameRepository;
 import vn.campuslife.repository.SemesterRepository;
 import vn.campuslife.repository.StudentSeriesProgressRepository;
 import vn.campuslife.service.ActivityScoreRuleService;
@@ -43,6 +45,12 @@ public class ScoreRuleEngineImplTest {
 
     @Mock
     private ActivityRepository activityRepository;
+
+    @Mock
+    private MiniGameRepository miniGameRepository;
+
+    @Mock
+    private MiniGameAttemptRepository miniGameAttemptRepository;
 
     @Mock
     private SemesterHelperService semesterHelperService;
@@ -293,6 +301,7 @@ public class ScoreRuleEngineImplTest {
     @Test
     void applyMiniGameExhaustedAttempts_FinalFailedAttempt_UsesFailPoints() {
         MiniGame miniGame = new MiniGame();
+        miniGame.setId(150L);
         miniGame.setActivity(activity);
 
         MiniGameAttempt attempt = new MiniGameAttempt();
@@ -309,6 +318,8 @@ public class ScoreRuleEngineImplTest {
         rule.setFailPoints(BigDecimal.valueOf(-2));
         rule.setAudience(ScoreRuleAudience.ALL_PARTICIPANTS);
 
+        when(miniGameAttemptRepository.existsByStudentIdAndMiniGameIdAndStatus(
+                10L, 150L, AttemptStatus.PASSED)).thenReturn(false);
         when(ruleService.getEnabledRules(activity.getId(), ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS))
                 .thenReturn(Collections.singletonList(rule));
         when(semesterResolver.resolveSemester(eq(activity), eq(rule), any())).thenReturn(semester);
@@ -322,6 +333,28 @@ public class ScoreRuleEngineImplTest {
         assertEquals(BigDecimal.valueOf(-2), command.getPoints());
         assertEquals(ScoreEntrySourceType.MINIGAME_ATTEMPT, command.getSourceType());
         assertEquals(attempt.getId(), command.getSourceId());
+    }
+
+    @Test
+    void applyMiniGameExhaustedAttempts_AlreadyPassedPreviously_SkipsPenalty() {
+        MiniGame miniGame = new MiniGame();
+        miniGame.setId(150L);
+        miniGame.setActivity(activity);
+
+        MiniGameAttempt attempt = new MiniGameAttempt();
+        attempt.setId(702L);
+        attempt.setStatus(AttemptStatus.FAILED);
+        attempt.setMiniGame(miniGame);
+        attempt.setStudent(student);
+
+        when(miniGameAttemptRepository.existsByStudentIdAndMiniGameIdAndStatus(
+                10L, 150L, AttemptStatus.PASSED)).thenReturn(true);
+
+        scoreRuleEngine.applyMiniGameExhaustedAttempts(attempt, actor);
+
+        verify(miniGameAttemptRepository).existsByStudentIdAndMiniGameIdAndStatus(
+                10L, 150L, AttemptStatus.PASSED);
+        verifyNoInteractions(ruleService, scoreEntryService);
     }
 
     @Test

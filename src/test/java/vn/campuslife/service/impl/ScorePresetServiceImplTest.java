@@ -113,6 +113,47 @@ class ScorePresetServiceImplTest {
     }
 
     @Test
+    void previewActivityPreset_MinigamePassOnly_IncludesNoShowWhenEnabled() {
+        ActivityPresetConfig config = new ActivityPresetConfig();
+        config.setPrimaryScoreType(ScoreType.REN_LUYEN);
+        config.setParticipationPoints(BigDecimal.valueOf(5));
+        config.setMinigameExhaustedPenaltyPoints(BigDecimal.valueOf(5));
+        config.setNoShowPenaltyEnabled(true);
+        config.setNoShowPenaltyPoints(BigDecimal.valueOf(5));
+
+        ActivityPresetPreviewRequest request = new ActivityPresetPreviewRequest();
+        request.setPresetCode(ActivityPresetCode.MINIGAME_PASS_ONLY);
+        request.setType(ActivityType.MINIGAME);
+        request.setPresetConfig(config);
+
+        ActivityPresetPreviewResponse response = scorePresetService.previewActivityPreset(request);
+
+        List<ActivityScoreRuleRequest> rules = response.getScoreRules();
+        assertTrue(rules.stream().anyMatch(r -> r.getTriggerType() == ScoreRuleTrigger.MINIGAME_PASSED));
+        assertTrue(rules.stream().anyMatch(r -> r.getTriggerType() == ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS));
+        assertTrue(rules.stream().anyMatch(r -> r.getTriggerType() == ScoreRuleTrigger.NO_SHOW));
+        assertTrue(rules.stream().noneMatch(r -> r.getTriggerType() == ScoreRuleTrigger.PARTICIPATION_COMPLETED));
+    }
+
+    @Test
+    void getActivityPresetDefinitions_MinigamePassOnly_ExposesNoShow() {
+        List<ActivityPresetDefinitionResponse> responses = scorePresetService.getActivityPresetDefinitions();
+
+        ActivityPresetDefinitionResponse preset = responses.stream()
+                .filter(p -> p.getCode() == ActivityPresetCode.MINIGAME_PASS_ONLY)
+                .findFirst()
+                .orElseThrow();
+
+        List<String> ruleKeys = preset.getSupportedRules().stream()
+                .map(PresetRuleDescriptor::getRuleKey)
+                .toList();
+
+        assertTrue(ruleKeys.contains("MINIGAME_PASSED"));
+        assertTrue(ruleKeys.contains("MINIGAME_EXHAUSTED_ATTEMPTS"));
+        assertTrue(ruleKeys.contains("NO_SHOW"));
+    }
+
+    @Test
     void getActivityPresetDefinitions_ReturnsValidRichDescriptors() {
         List<ActivityPresetDefinitionResponse> responses = scorePresetService.getActivityPresetDefinitions();
         assertNotNull(responses);

@@ -866,16 +866,46 @@ public class MiniGameServiceImpl implements MiniGameService {
             return;
         }
 
-        if (attemptRepository.existsByStudentIdAndMiniGameIdAndStatus(
-                attempt.getStudent().getId(),
-                miniGame.getId(),
-                AttemptStatus.PASSED)) {
+        Long studentId = attempt.getStudent() != null ? attempt.getStudent().getId() : null;
+        Long miniGameId = miniGame.getId();
+        if (studentId == null || miniGameId == null) {
             return;
         }
 
-        int totalAttempts = attemptRepository.findByStudentIdAndMiniGameId(
-                attempt.getStudent().getId(),
-                miniGame.getId()).size();
+        // Already passed once → keep pass result; later failed/exhausted attempts must not penalize.
+        if (attemptRepository.existsByStudentIdAndMiniGameIdAndStatus(
+                studentId, miniGameId, AttemptStatus.PASSED)) {
+            logger.info(
+                    "Skip exhausted penalty for student {} on minigame {} — already passed previously",
+                    studentId, miniGameId);
+            return;
+        }
+
+        // Participation COMPLETED is another "already passed" signal (idempotent pass path).
+        Optional<ActivityRegistration> registrationOpt = registrationRepository
+                .findByActivityIdAndStudentId(activity.getId(), studentId);
+        if (registrationOpt.isPresent()) {
+            Optional<ActivityParticipation> participationOpt = participationRepository
+                    .findByRegistration(registrationOpt.get());
+            if (participationOpt.isPresent()) {
+                ActivityParticipation participation = participationOpt.get();
+                if (participation.getParticipationType() == ParticipationType.COMPLETED
+                        && Boolean.TRUE.equals(participation.getIsCompleted())) {
+                    logger.info(
+                            "Skip exhausted penalty for student {} on activity {} — participation already completed",
+                            studentId, activity.getId());
+                    return;
+                }
+            }
+            if (registrationOpt.get().getStatus() == RegistrationStatus.ATTENDED) {
+                logger.info(
+                        "Skip exhausted penalty for student {} on activity {} — registration already ATTENDED",
+                        studentId, activity.getId());
+                return;
+            }
+        }
+
+        int totalAttempts = attemptRepository.findByStudentIdAndMiniGameId(studentId, miniGameId).size();
         if (totalAttempts < maxAttempts) {
             return;
         }

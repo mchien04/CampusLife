@@ -90,6 +90,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                 List.of(
                         "Mac dinh sinh rule MINIGAME_PASSED.",
                         "Co the them rule MINIGAME_EXHAUSTED_ATTEMPTS de xu ly truong hop het luot ma van khong pass.",
+                        "Co the bat NO_SHOW cho sinh vien dang ky ma khong lam minigame.",
                         "Khong tao rule SUBMISSION_GRADED hoac PARTICIPATION_COMPLETED cho minigame.")));
         presets.add(activityPreset(
                 ActivityPresetCode.CUSTOM,
@@ -572,7 +573,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
             }
         }
 
-        if (merged.getNoShowPenaltyEnabled()) {
+        if (Boolean.TRUE.equals(merged.getNoShowPenaltyEnabled())) {
             ScoreType penaltyScoreType = merged.getNoShowPenaltyScoreType() != null
                     ? merged.getNoShowPenaltyScoreType()
                     : primaryScoreType;
@@ -598,11 +599,13 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         }
         if (hasDefaultNoShowEnabled(presetCode, activityType)) {
             notes.add("Preset nay mac dinh bat NO_SHOW, FE co the tat bang noShowPenaltyEnabled=false.");
-        } else if (activityType != ActivityType.MINIGAME) {
+        } else {
             notes.add("Preset nay mac dinh tat NO_SHOW; neu bat, nen cau hinh ro score type va penalty points.");
         }
         if (activityType == ActivityType.MINIGAME) {
-            notes.add("Minigame co the dung trigger MINIGAME_PASSED va MINIGAME_EXHAUSTED_ATTEMPTS.");
+            notes.add(
+                    "Minigame co the dung MINIGAME_PASSED, MINIGAME_EXHAUSTED_ATTEMPTS va NO_SHOW."
+                            + " Da lam it nhat 1 lan (ke ca chua pass) thi khong bi NO_SHOW.");
         }
         if (presetCode == ActivityPresetCode.ENTERPRISE_SEMINAR_BASIC
                 || presetCode == ActivityPresetCode.ENTERPRISE_SEMINAR_WITH_BONUS) {
@@ -931,8 +934,8 @@ public class ScorePresetServiceImpl implements ScorePresetService {
     }
 
     private boolean hasDefaultNoShowEnabled(ActivityPresetCode presetCode, ActivityType activityType) {
-        if (activityType == ActivityType.MINIGAME) {
-            return presetCode == ActivityPresetCode.MINIGAME_PASS_ONLY;
+        if (activityType == ActivityType.MINIGAME || presetCode == ActivityPresetCode.MINIGAME_PASS_ONLY) {
+            return false;
         }
         return presetCode == ActivityPresetCode.EVENT_BASIC
                 || presetCode == ActivityPresetCode.EVENT_WITH_SUBMISSION;
@@ -1096,7 +1099,9 @@ public class ScorePresetServiceImpl implements ScorePresetService {
         rules.add(buildNoShowDescriptor(empty));
         rules.get(rules.size() - 1).setSuggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED, ScoreRuleTrigger.SUBMISSION_GRADED, ScoreRuleTrigger.TASK_OVERDUE, ScoreRuleTrigger.MINIGAME_PASSED));
         rules.add(minigamePassedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_EXHAUSTED_ATTEMPTS, ScoreRuleTrigger.NO_SHOW)).build());
-        rules.add(minigameExhaustedDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED)).build());
+        rules.add(minigameExhaustedDescriptor(empty)
+                .suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED, ScoreRuleTrigger.NO_SHOW))
+                .build());
         rules.add(bonusPointsDescriptor(empty).suggestedCombinations(List.of(ScoreRuleTrigger.PARTICIPATION_COMPLETED)).build());
         return rules;
     }
@@ -1302,7 +1307,7 @@ public class ScorePresetServiceImpl implements ScorePresetService {
                 .required(false)
                 .enabledByDefault(false)
                 .fieldDefinitions(fields)
-                .suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED));
+                .suggestedCombinations(List.of(ScoreRuleTrigger.MINIGAME_PASSED, ScoreRuleTrigger.NO_SHOW));
     }
 
     private List<FieldDefinition> buildPerRuleAudienceFields(

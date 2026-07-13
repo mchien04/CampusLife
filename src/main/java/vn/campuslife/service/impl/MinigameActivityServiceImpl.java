@@ -117,11 +117,13 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
 
             return Response.success("Minigame created successfully", mapper.toResponse(savedShell, miniGame));
         } catch (IllegalArgumentException e) {
+            // Rethrow so nested @Transactional (e.g. replaceRules) rollback-only is not
+            // swallowed into UnexpectedRollbackException that masks the validation message.
             logger.warn("Invalid minigame create request: {}", e.getMessage());
-            return Response.error(e.getMessage());
-        } catch (Exception e) {
+            throw e;
+        } catch (RuntimeException e) {
             logger.error("Failed to create minigame activity: {}", e.getMessage(), e);
-            return Response.error("Failed to create minigame due to server error");
+            throw e;
         }
     }
 
@@ -199,10 +201,12 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
 
             return Response.success("Minigame updated successfully", mapper.toResponse(savedShell, miniGame));
         } catch (IllegalArgumentException e) {
-            return Response.error(e.getMessage());
-        } catch (Exception e) {
+            // Rethrow so nested TX rollback-only is not masked as UnexpectedRollbackException.
+            logger.warn("Invalid minigame update request: {}", e.getMessage());
+            throw e;
+        } catch (RuntimeException e) {
             logger.error("Failed to update minigame activity: {}", e.getMessage(), e);
-            return Response.error("Failed to update minigame");
+            throw e;
         }
     }
 
@@ -254,7 +258,8 @@ public class MinigameActivityServiceImpl implements MinigameActivityService {
             }
             throw new IllegalArgumentException("Manager quản lý nhiều Khoa phải chọn organizerIds trong scope");
         }
-        if (!managerDepartmentIds.containsAll(new LinkedHashSet<>(organizerIds))) {
+        // Allow co-organizers outside manager scope; at least one must remain in scope.
+        if (organizerIds.stream().noneMatch(managerDepartmentIds::contains)) {
             throw new IllegalArgumentException("Organizer departments must be within manager scope");
         }
         return resolveOrganizers(organizerIds);
