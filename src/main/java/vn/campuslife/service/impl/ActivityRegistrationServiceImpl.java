@@ -216,6 +216,11 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             ActivityRegistration registration = registrationOpt.get();
             Activity activity = registration.getActivity();
 
+            if (activity.getSeriesId() != null) {
+                return new Response(false,
+                        "Sự kiện này thuộc chuỗi. Vui lòng hủy toàn bộ chuỗi thay vì hủy từng sự kiện riêng lẻ.", null);
+            }
+
             if (registration.getStatus() == RegistrationStatus.CANCELLED) {
                 return new Response(false, "Registration already cancelled", null);
             }

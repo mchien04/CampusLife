@@ -15,6 +15,7 @@ import vn.campuslife.enumeration.SubmissionStatus;
 import vn.campuslife.enumeration.Role;
 import vn.campuslife.model.Response;
 import vn.campuslife.model.activity.ActivityParticipationRequest;
+import vn.campuslife.model.activity.ActivityRegistrationRequest;
 import vn.campuslife.model.activity.PersonalCalendarEventItem;
 import vn.campuslife.model.activity.PersonalCalendarResponse;
 import vn.campuslife.repository.*;
@@ -34,6 +35,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -530,5 +534,129 @@ public class ActivityRegistrationServiceImplTest {
         assertFalse(response.isStatus());
         assertEquals("from must be on or before to", response.getMessage());
         verifyNoInteractions(registrationRepository);
+    }
+
+    @Test
+    void registerForActivity_UsesPessimisticLockAndRejectsWhenFull() {
+        activity.setDraft(false);
+        activity.setImportant(false);
+        activity.setMandatoryForFacultyStudents(false);
+        activity.setRequiresApproval(false);
+        activity.setTicketQuantity(1);
+
+        when(activityRepository.findByIdAndIsDeletedFalseForUpdate(100L)).thenReturn(Optional.of(activity));
+        when(studentRepository.findByIdAndIsDeletedFalse(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.existsByActivityIdAndStudentId(100L, 10L)).thenReturn(false);
+        when(registrationRepository.existsCancelledByActivityIdAndStudentId(100L, 10L)).thenReturn(false);
+        when(registrationRepository.countByActivityIdAndStatus(100L, RegistrationStatus.APPROVED)).thenReturn(1L);
+
+        Response response = activityRegistrationService.registerForActivity(
+                new ActivityRegistrationRequest(100L), 10L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Activity is full", response.getMessage());
+        verify(activityRepository, atLeastOnce()).findByIdAndIsDeletedFalseForUpdate(100L);
+        verify(registrationRepository, never()).save(any(ActivityRegistration.class));
+    }
+
+    @Test
+    void registerForActivity_WaitlistTakesLastSlot_NewRegisterRejected() {
+        activity.setDraft(false);
+        activity.setImportant(false);
+        activity.setMandatoryForFacultyStudents(false);
+        activity.setRequiresApproval(false);
+        activity.setTicketQuantity(1);
+
+        Student waitlistStudent = new Student();
+        waitlistStudent.setId(11L);
+        waitlistStudent.setUser(studentUser);
+
+        ActivityRegistration waitlistReg = new ActivityRegistration();
+        waitlistReg.setId(60L);
+        waitlistReg.setActivity(activity);
+        waitlistReg.setStudent(waitlistStudent);
+        waitlistReg.setStatus(RegistrationStatus.WAITLIST);
+
+        when(activityRepository.findByIdAndIsDeletedFalseForUpdate(100L)).thenReturn(Optional.of(activity));
+        when(studentRepository.findByIdAndIsDeletedFalse(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.existsByActivityIdAndStudentId(100L, 10L)).thenReturn(false);
+        when(registrationRepository.existsCancelledByActivityIdAndStudentId(100L, 10L)).thenReturn(false);
+        when(registrationRepository.countByActivityIdAndStatus(100L, RegistrationStatus.APPROVED))
+                .thenReturn(0L)  // promoteWaitlist: still has slot
+                .thenReturn(1L)  // promoteWaitlist loop after promote
+                .thenReturn(1L); // registerForActivity slot check
+        when(registrationRepository.findFirstByActivityIdAndStatusOrderByRegisteredDateAsc(
+                100L, RegistrationStatus.WAITLIST)).thenReturn(Optional.of(waitlistReg));
+        when(registrationRepository.save(waitlistReg)).thenReturn(waitlistReg);
+
+        Response response = activityRegistrationService.registerForActivity(
+                new ActivityRegistrationRequest(100L), 10L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Activity is full", response.getMessage());
+        assertEquals(RegistrationStatus.APPROVED, waitlistReg.getStatus());
+        verify(registrationRepository).save(waitlistReg);
+        verify(reminderScheduleService).createEventRemindersForApprovedRegistration(waitlistReg);
+    }
+
+    @Test
+    void promoteWaitlist_PromotesToApprovedEvenWhenRequiresApproval() {
+        activity.setRequiresApproval(true);
+        activity.setTicketQuantity(1);
+
+        ActivityRegistration waitlistReg = new ActivityRegistration();
+        waitlistReg.setId(60L);
+        waitlistReg.setActivity(activity);
+        waitlistReg.setStudent(student);
+        waitlistReg.setStatus(RegistrationStatus.WAITLIST);
+
+        when(activityRepository.findByIdAndIsDeletedFalseForUpdate(100L)).thenReturn(Optional.of(activity));
+        when(registrationRepository.countByActivityIdAndStatus(100L, RegistrationStatus.APPROVED))
+                .thenReturn(0L)
+                .thenReturn(1L);
+        when(registrationRepository.findFirstByActivityIdAndStatusOrderByRegisteredDateAsc(
+                100L, RegistrationStatus.WAITLIST)).thenReturn(Optional.of(waitlistReg));
+        when(registrationRepository.save(waitlistReg)).thenReturn(waitlistReg);
+
+        activityRegistrationService.promoteWaitlist(100L);
+
+        assertEquals(RegistrationStatus.APPROVED, waitlistReg.getStatus());
+        verify(registrationRepository).save(waitlistReg);
+        verify(reminderScheduleService).createEventRemindersForApprovedRegistration(waitlistReg);
+        verify(notificationService).sendNotification(
+                eq(33L), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelRegistration_PromotesWaitlistToApproved() {
+        activity.setRequiresApproval(false);
+        activity.setTicketQuantity(1);
+        activity.setRegistrationDeadline(LocalDateTime.now().plusDays(10));
+        registration.setStatus(RegistrationStatus.APPROVED);
+        registration.setHasCancelledBefore(false);
+
+        ActivityRegistration waitlistReg = new ActivityRegistration();
+        waitlistReg.setId(60L);
+        waitlistReg.setActivity(activity);
+        waitlistReg.setStudent(student);
+        waitlistReg.setStatus(RegistrationStatus.WAITLIST);
+
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+        when(registrationRepository.save(any(ActivityRegistration.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(activityRepository.findByIdAndIsDeletedFalseForUpdate(100L)).thenReturn(Optional.of(activity));
+        when(registrationRepository.countByActivityIdAndStatus(100L, RegistrationStatus.APPROVED))
+                .thenReturn(0L)
+                .thenReturn(1L);
+        when(registrationRepository.findFirstByActivityIdAndStatusOrderByRegisteredDateAsc(
+                100L, RegistrationStatus.WAITLIST)).thenReturn(Optional.of(waitlistReg));
+
+        Response response = activityRegistrationService.cancelRegistration(100L, 10L);
+
+        assertTrue(response.isStatus());
+        assertEquals(RegistrationStatus.CANCELLED, registration.getStatus());
+        assertEquals(RegistrationStatus.APPROVED, waitlistReg.getStatus());
+        verify(activityRepository).findByIdAndIsDeletedFalseForUpdate(100L);
     }
 }

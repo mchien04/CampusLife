@@ -7,6 +7,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import vn.campuslife.entity.*;
+import vn.campuslife.enumeration.RegistrationStatus;
 import vn.campuslife.enumeration.ScoreType;
 import vn.campuslife.model.Response;
 import vn.campuslife.repository.*;
@@ -15,10 +16,13 @@ import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.ScoreRuleEngine;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -187,6 +191,90 @@ activitySeriesService.createSeries(
                         2, null, null, null, null, null, null, null, null));
 
         assertTrue(ex.getMessage().contains("minimumRequiredEvents"));
+    }
+
+    @Test
+    void registerForSeries_UsesPessimisticLockAndRejectsWhenFull() {
+        series.setTicketQuantity(1);
+        series.setRequiresApproval(false);
+
+        when(seriesRepository.findByIdAndIsDeletedFalseForUpdate(800L)).thenReturn(Optional.of(series));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.countDistinctStudentBySeriesIdAndStatus(800L, RegistrationStatus.APPROVED))
+                .thenReturn(1L);
+
+        Response response = activitySeriesService.registerForSeries(800L, 10L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Series is full", response.getMessage());
+        verify(seriesRepository).findByIdAndIsDeletedFalseForUpdate(800L);
+        verify(registrationRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void registerForSeries_UnderCapacity_CreatesApprovedRegistrations() {
+        series.setTicketQuantity(5);
+        series.setRequiresApproval(false);
+
+        when(seriesRepository.findByIdAndIsDeletedFalseForUpdate(800L)).thenReturn(Optional.of(series));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.countDistinctStudentBySeriesIdAndStatus(800L, RegistrationStatus.APPROVED))
+                .thenReturn(0L);
+        when(activityRepository.findBySeriesIdAndIsDeletedFalse(800L)).thenReturn(List.of(activity));
+        when(registrationRepository.existsByActivityIdAndStudentId(100L, 10L)).thenReturn(false);
+        when(registrationRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(participationRepository.existsByRegistration(any())).thenReturn(false);
+        when(participationRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Response response = activitySeriesService.registerForSeries(800L, 10L);
+
+        assertTrue(response.isStatus());
+        verify(seriesRepository).findByIdAndIsDeletedFalseForUpdate(800L);
+        verify(registrationRepository).saveAll(any());
+        verify(participationRepository).saveAll(any());
+        verify(reminderScheduleService).syncSeriesMinimumRequirementReminder(series, student);
+    }
+
+    @Test
+    void registerForSeriesWaitlist_WhenFull_JoinsWaitlist() {
+        series.setTicketQuantity(1);
+
+        when(seriesRepository.findByIdAndIsDeletedFalseForUpdate(800L)).thenReturn(Optional.of(series));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.existsBySeriesIdAndStudentId(800L, 10L)).thenReturn(false);
+        when(registrationRepository.countDistinctStudentBySeriesIdAndStatus(800L, RegistrationStatus.APPROVED))
+                .thenReturn(1L);
+        when(activityRepository.findBySeriesIdAndIsDeletedFalse(800L)).thenReturn(List.of(activity));
+        when(registrationRepository.existsByActivityIdAndStudentId(100L, 10L)).thenReturn(false);
+        when(registrationRepository.saveAll(any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            List<ActivityRegistration> regs = (List<ActivityRegistration>) inv.getArgument(0);
+            assertEquals(RegistrationStatus.WAITLIST, regs.get(0).getStatus());
+            return regs;
+        });
+
+        Response response = activitySeriesService.registerForSeriesWaitlist(800L, 10L);
+
+        assertTrue(response.isStatus());
+        verify(seriesRepository).findByIdAndIsDeletedFalseForUpdate(800L);
+        verify(registrationRepository).saveAll(any());
+    }
+
+    @Test
+    void registerForSeriesWaitlist_WhenSlotsRemain_ReturnsError() {
+        series.setTicketQuantity(2);
+
+        when(seriesRepository.findByIdAndIsDeletedFalseForUpdate(800L)).thenReturn(Optional.of(series));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.existsBySeriesIdAndStudentId(800L, 10L)).thenReturn(false);
+        when(registrationRepository.countDistinctStudentBySeriesIdAndStatus(800L, RegistrationStatus.APPROVED))
+                .thenReturn(0L);
+
+        Response response = activitySeriesService.registerForSeriesWaitlist(800L, 10L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Series still has slots. Please register normally.", response.getMessage());
+        verify(registrationRepository, never()).saveAll(any());
     }
 }
 
