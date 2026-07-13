@@ -9,6 +9,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import vn.campuslife.config.UploadProperties;
 import vn.campuslife.service.UploadStorageService;
+import vn.campuslife.util.UrlUtils;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -84,6 +85,12 @@ public class R2UploadStorageServiceImpl implements UploadStorageService {
         if (cdnDomain != null && !cdnDomain.isBlank()) {
             String base = cdnDomain.replaceAll("/+$", "");
             return base + "/" + key;
+        }
+
+        // No CDN: keep /uploads/... style when present so local-style public URLs still work.
+        String normalized = UrlUtils.normalizeUploadRelativePath(trimmed);
+        if (normalized != null) {
+            return UrlUtils.toFullUrl(normalized, uploadProperties.getPublicUrl());
         }
 
         String publicUrl = uploadProperties.getPublicUrl();
