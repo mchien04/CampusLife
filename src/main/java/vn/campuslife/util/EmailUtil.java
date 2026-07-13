@@ -108,18 +108,30 @@ public class EmailUtil {
 
     public boolean sendStudentCredentialsEmail(String to, String username, String password) {
         String loginLink = frontendUrl + "/login";
-        String content = "<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;\">" +
-                "<h2 style=\"color: #007bff;\">Chào mừng đến với CampusLife!</h2>" +
-                "<p>Xin chào,</p>" +
-                "<p>Bạn đã được tạo tài khoản trên hệ thống CampusLife. Dưới đây là thông tin đăng nhập của bạn:</p>" +
-                "<div style=\"background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;\">" +
-                "<p style=\"margin: 5px 0;\"><strong>Tên đăng nhập:</strong> " + username + "</p>" +
-                "<p style=\"margin: 5px 0;\"><strong>Mật khẩu:</strong> " + password + "</p>" +
+        String content = "<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #eaeaea;\">" +
+                "<div style=\"text-align: center; margin-bottom: 30px;\">" +
+                "<h2 style=\"color: #2563eb; margin: 0; font-size: 28px;\">CampusLife</h2>" +
+                "<p style=\"color: #64748b; font-size: 16px; margin-top: 5px;\">Nền tảng Quản lý Sinh viên</p>" +
                 "</div>" +
-                "<p>Vui lòng đăng nhập tại: <a href=\"" + loginLink + "\" style=\"color: #007bff;\">" + loginLink + "</a></p>" +
-                "<p style=\"color: #dc3545; font-weight: bold;\">⚠️ Lưu ý: Vui lòng đổi mật khẩu sau khi đăng nhập lần đầu để bảo mật tài khoản.</p>" +
-                "<p>Nếu bạn có bất kỳ câu hỏi nào, vui lòng liên hệ với quản trị viên.</p>" +
-                "<p>Trân trọng,<br>CampusLife Team</p>" +
+                "<h3 style=\"color: #1e293b; font-size: 20px;\">Chào mừng bạn đến với CampusLife! 🎉</h3>" +
+                "<p style=\"color: #334155; line-height: 1.6; font-size: 16px;\">Xin chào,</p>" +
+                "<p style=\"color: #334155; line-height: 1.6; font-size: 16px;\">Tài khoản của bạn đã được tạo thành công trên hệ thống CampusLife. Dưới đây là thông tin đăng nhập dành cho bạn:</p>" +
+                "<div style=\"background-color: #f1f5f9; border-left: 4px solid #2563eb; padding: 20px; border-radius: 4px; margin: 25px 0;\">" +
+                "<p style=\"margin: 0 0 10px 0; color: #0f172a; font-size: 16px;\"><span style=\"color: #64748b; display: inline-block; width: 120px;\">Tên đăng nhập:</span> <strong>" + username + "</strong></p>" +
+                "<p style=\"margin: 0; color: #0f172a; font-size: 16px;\"><span style=\"color: #64748b; display: inline-block; width: 120px;\">Mật khẩu:</span> <strong>" + password + "</strong></p>" +
+                "</div>" +
+                "<div style=\"text-align: center; margin: 35px 0;\">" +
+                "<a href=\"" + loginLink + "\" style=\"background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 16px; display: inline-block; transition: background-color 0.3s;\">Đăng nhập ngay</a>" +
+                "</div>" +
+                "<div style=\"background-color: #fff7ed; border: 1px solid #fed7aa; padding: 15px; border-radius: 6px; margin-bottom: 25px;\">" +
+                "<p style=\"color: #c2410c; margin: 0; font-size: 14px; display: flex; align-items: center;\">" +
+                "<span style=\"font-size: 18px; margin-right: 8px;\">⚠️</span>" +
+                "<strong>Quan trọng:</strong>&nbsp;Vui lòng đổi mật khẩu ngay sau khi đăng nhập lần đầu để đảm bảo an toàn cho tài khoản của bạn." +
+                "</p>" +
+                "</div>" +
+                "<p style=\"color: #334155; line-height: 1.6; font-size: 16px;\">Nếu bạn gặp khó khăn trong quá trình đăng nhập, vui lòng liên hệ với bộ phận hỗ trợ hoặc quản trị viên để được giúp đỡ.</p>" +
+                "<hr style=\"border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;\" />" +
+                "<p style=\"color: #64748b; font-size: 14px; margin: 0;\">Trân trọng,<br><strong style=\"color: #0f172a;\">CampusLife Team</strong></p>" +
                 "</div>";
         return sendViaResend(to, "Thông tin tài khoản CampusLife", content, null);
     }
