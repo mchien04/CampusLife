@@ -539,22 +539,31 @@ public class ReminderScheduleServiceImpl implements ReminderScheduleService {
         return activity.isRequiresSubmission() && activity.getSeriesId() == null;
     }
 
+    /**
+     * Đánh giá điều kiện tối thiểu sau khi buổi cuối kết thúc + cửa sổ check-in (3 giờ),
+     * để SV check-in muộn vẫn được tính trước khi phạt.
+     */
     private LocalDateTime calculateSeriesMinimumRequirementAt(ActivitySeries series) {
         if (series == null || series.getId() == null) {
             return null;
         }
 
-        LocalDateTime latestEndDate = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId()).stream()
-                .map(Activity::getEndDate)
-                .filter(end -> end != null)
+        LocalDateTime latestSessionEnd = activityRepository.findBySeriesIdAndIsDeletedFalse(series.getId()).stream()
+                .map(activity -> activity.getEndDate() != null ? activity.getEndDate() : activity.getStartDate())
+                .filter(time -> time != null)
                 .max(LocalDateTime::compareTo)
                 .orElse(null);
 
-        if (latestEndDate != null) {
-            return latestEndDate.plusMinutes(1);
+        if (latestSessionEnd != null) {
+            return latestSessionEnd.plusHours(3);
         }
-        if (series.getMainActivity() != null && series.getMainActivity().getEndDate() != null) {
-            return series.getMainActivity().getEndDate().plusMinutes(1);
+        if (series.getMainActivity() != null) {
+            LocalDateTime mainEnd = series.getMainActivity().getEndDate() != null
+                    ? series.getMainActivity().getEndDate()
+                    : series.getMainActivity().getStartDate();
+            if (mainEnd != null) {
+                return mainEnd.plusHours(3);
+            }
         }
         return null;
     }

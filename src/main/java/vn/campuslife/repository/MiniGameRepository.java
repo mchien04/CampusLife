@@ -1,7 +1,9 @@
 package vn.campuslife.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -15,6 +17,14 @@ public interface MiniGameRepository extends JpaRepository<MiniGame, Long>, JpaSp
 
     @Query("SELECT mg FROM MiniGame mg WHERE mg.activity.id = :activityId")
     Optional<MiniGame> findByActivityId(@Param("activityId") Long activityId);
+
+    /**
+     * Pessimistic lock so concurrent startAttempt cannot exceed maxAttempts.
+     * Must be called inside an active transaction.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT mg FROM MiniGame mg WHERE mg.id = :id")
+    Optional<MiniGame> findByIdForUpdate(@Param("id") Long id);
 
     @Query("""
             SELECT CASE WHEN COUNT(mg) > 0 THEN true ELSE false END

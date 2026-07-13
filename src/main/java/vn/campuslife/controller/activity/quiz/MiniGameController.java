@@ -152,12 +152,20 @@ public class MiniGameController {
     }
 
     /**
-     * Lấy danh sách câu hỏi và options của minigame (không có đáp án đúng)
+     * Lấy danh sách câu hỏi và options của minigame (không có đáp án đúng).
+     * Yêu cầu đã đăng ký sự kiện / series.
      */
     @GetMapping("/{miniGameId}/questions")
-    public ResponseEntity<Response> getQuestions(@PathVariable Long miniGameId) {
+    public ResponseEntity<Response> getQuestions(
+            @PathVariable Long miniGameId,
+            Authentication authentication) {
         try {
-            Response response = miniGameService.getQuestions(miniGameId);
+            Long studentId = getStudentIdFromAuth(authentication);
+            if (studentId == null) {
+                return ResponseEntity.badRequest()
+                        .body(new Response(false, "Student not found", null));
+            }
+            Response response = miniGameService.getQuestions(miniGameId, studentId);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Failed to get questions: {}", e.getMessage(), e);
