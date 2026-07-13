@@ -434,8 +434,48 @@ public class MiniGameServiceImplTest {
 
         assertTrue(response.isStatus());
         assertEquals(AttemptStatus.FAILED, attempt.getStatus());
+        assertEquals(RegistrationStatus.APPROVED, registration.getStatus());
         verify(scoreRuleEngine, never()).applyMiniGameExhaustedAttempts(any(), any());
+        verify(activitySeriesService, never()).updateStudentProgress(anyLong(), anyLong());
         verifyNoInteractions(activitySeriesService);
+    }
+
+    @Test
+    void submitAttempt_Passed_InSeries_UpdatesMilestoneOnly() {
+        activity.setSeriesId(888L);
+        when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
+        when(participationRepository.save(any(ActivityParticipation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
+        q1.setId(1L);
+        MiniGameQuizQuestion q2 = new MiniGameQuizQuestion();
+        q2.setId(2L);
+        MiniGameQuizOption opt1 = new MiniGameQuizOption();
+        opt1.setId(11L);
+        opt1.setCorrect(true);
+        MiniGameQuizOption opt2 = new MiniGameQuizOption();
+        opt2.setId(12L);
+        opt2.setCorrect(true);
+
+        when(questionRepository.findById(1L)).thenReturn(Optional.of(q1));
+        when(questionRepository.findById(2L)).thenReturn(Optional.of(q2));
+        when(optionRepository.findById(11L)).thenReturn(Optional.of(opt1));
+        when(optionRepository.findById(12L)).thenReturn(Optional.of(opt2));
+
+        Response response = miniGameService.submitAttempt(700L, 10L, Map.of(1L, 11L, 2L, 12L));
+
+        assertTrue(response.isStatus());
+        assertEquals(AttemptStatus.PASSED, attempt.getStatus());
+        verify(activitySeriesService).updateStudentProgress(10L, 100L);
+        verify(scoreRuleEngine, never()).applyMiniGamePassed(any(), any());
+        verify(scoreRuleEngine, never()).applyMiniGameExhaustedAttempts(any(), any());
     }
 
     @Test
