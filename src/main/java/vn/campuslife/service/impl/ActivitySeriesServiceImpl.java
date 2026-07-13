@@ -255,7 +255,8 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     @Transactional
     public Response registerForSeries(Long seriesId, Long studentId) {
         try {
-            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            // Khóa series (SELECT FOR UPDATE) để serialize check capacity
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findByIdAndIsDeletedFalseForUpdate(seriesId);
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
             }
@@ -278,7 +279,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 return Response.error("Registration has not started yet");
             }
 
-            // Kiểm tra ticketQuantity (đếm số student APPROVED trong series)
+            // Kiểm tra ticketQuantity (đếm số student APPROVED trong series) — dưới khóa bi quan
             if (series.getTicketQuantity() != null) {
                 long approvedCount = registrationRepository.countDistinctStudentBySeriesIdAndStatus(
                         seriesId, RegistrationStatus.APPROVED);
@@ -364,7 +365,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     @Transactional
     public Response registerForSeriesWaitlist(Long seriesId, Long studentId) {
         try {
-            Optional<ActivitySeries> seriesOpt = seriesRepository.findById(seriesId);
+            Optional<ActivitySeries> seriesOpt = seriesRepository.findByIdAndIsDeletedFalseForUpdate(seriesId);
             if (seriesOpt.isEmpty()) {
                 return Response.error("Series not found");
             }
@@ -385,7 +386,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
                 return Response.error("Already registered or in waitlist for this series");
             }
 
-            // Only allow waitlist if series is full
+            // Only allow waitlist if series is full (under series row lock)
             if (series.getTicketQuantity() != null) {
                 long approvedCount = registrationRepository.countDistinctStudentBySeriesIdAndStatus(
                         seriesId, RegistrationStatus.APPROVED);

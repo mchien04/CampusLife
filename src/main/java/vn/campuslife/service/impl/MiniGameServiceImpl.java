@@ -49,6 +49,7 @@ import vn.campuslife.security.department.DepartmentScope;
 import vn.campuslife.security.department.DepartmentScopeSpec;
 import vn.campuslife.service.ActivitySeriesService;
 import vn.campuslife.service.MiniGameService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.util.UrlUtils;
@@ -85,6 +86,7 @@ public class MiniGameServiceImpl implements MiniGameService {
     private final ScoreEntryRepository scoreEntryRepository;
     private final UploadProperties uploadProperties;
     private final DepartmentAuthorizationService departmentAuthorizationService;
+    private final ReminderScheduleService reminderScheduleService;
 
     @Override
     @Transactional
@@ -219,7 +221,7 @@ public class MiniGameServiceImpl implements MiniGameService {
     @Transactional
     public Response startAttempt(Long miniGameId, Long studentId) {
         try {
-            Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
+            Optional<MiniGame> miniGameOpt = miniGameRepository.findByIdForUpdate(miniGameId);
             if (miniGameOpt.isEmpty()) {
                 return Response.error("MiniGame not found");
             }
@@ -234,15 +236,25 @@ public class MiniGameServiceImpl implements MiniGameService {
                 return Response.error("MiniGame is not active");
             }
 
+            Activity activity = miniGame.getActivity();
+            String registrationError = validateRegisteredForQuiz(activity, studentId);
+            if (registrationError != null) {
+                return Response.error(registrationError);
+            }
+
             // Kiểm tra xem có attempt đang làm chưa
             Optional<MiniGameAttempt> inProgressOpt = attemptRepository.findInProgressAttempt(
                     studentId, miniGameId, AttemptStatus.IN_PROGRESS);
             if (inProgressOpt.isPresent()) {
+                // Chỉ standalone: làm quiz = ATTENDED (series cần PASS mới tính)
+                if (activity.getSeriesId() == null) {
+                    markAttendedForQuizAttempt(activity, studentId);
+                }
                 StartAttemptResponse response = StartAttemptResponse.fromEntity(inProgressOpt.get());
                 return Response.success("Resuming existing attempt", response);
             }
 
-            // Kiểm tra maxAttempts cho attempt mới
+            // Kiểm tra maxAttempts cho attempt mới (dưới khóa MiniGame)
             if (miniGame.getMaxAttempts() != null) {
                 List<MiniGameAttempt> allAttempts = attemptRepository.findByStudentIdAndMiniGameId(studentId,
                         miniGameId);
@@ -260,6 +272,11 @@ public class MiniGameServiceImpl implements MiniGameService {
             attempt.setStatus(AttemptStatus.IN_PROGRESS);
             attempt.setStartedAt(LocalDateTime.now());
             MiniGameAttempt savedAttempt = attemptRepository.save(attempt);
+
+            // Standalone minigame: làm quiz = đã tham dự (tránh no-show). Series: chỉ PASS mới tính milestone.
+            if (activity.getSeriesId() == null) {
+                markAttendedForQuizAttempt(activity, studentId);
+            }
 
             logger.info("Started attempt {} for student {} and minigame {}", savedAttempt.getId(), studentId,
                     miniGameId);
@@ -287,6 +304,12 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             if (attempt.getStatus() != AttemptStatus.IN_PROGRESS) {
                 return Response.error("Attempt is not in progress");
+            }
+
+            Activity activity = attempt.getMiniGame().getActivity();
+            String registrationError = validateRegisteredForQuiz(activity, studentId);
+            if (registrationError != null) {
+                return Response.error(registrationError);
             }
 
             // Lưu answers và tính điểm
@@ -334,13 +357,17 @@ public class MiniGameServiceImpl implements MiniGameService {
 
             attemptRepository.save(attempt);
 
+            // Standalone: làm quiz (pass/fail) = ATTENDED. Series: chỉ PASS mới cập nhật milestone.
+            if (activity.getSeriesId() == null) {
+                markAttendedForQuizAttempt(activity, studentId);
+            }
+
             // Tính điểm và tạo ActivityParticipation nếu đạt
             Object participation = null;
             if (attempt.getStatus() == AttemptStatus.PASSED) {
-                // Đạt: Cộng điểm từ rewardPoints
+                // Đạt: Cộng điểm từ rewardPoints (standalone) hoặc series progress (series)
                 calculateScoreAndCreateParticipation(attemptId);
                 // Tìm participation vừa tạo
-                Activity activity = miniGame.getActivity();
                 Optional<ActivityRegistration> registrationOpt = registrationRepository
                         .findByActivityIdAndStudentId(activity.getId(), studentId);
                 if (registrationOpt.isPresent()) {
@@ -400,30 +427,15 @@ public class MiniGameServiceImpl implements MiniGameService {
             Activity activity = miniGame.getActivity();
             Student student = attempt.getStudent();
 
-            // Tìm hoặc tạo ActivityRegistration
+            // Bắt buộc đã đăng ký sự kiện (standalone) hoặc đăng ký series (nếu thuộc series)
             Optional<ActivityRegistration> registrationOpt = registrationRepository
                     .findByActivityIdAndStudentId(activity.getId(), student.getId());
-
-            ActivityRegistration registration;
-            if (registrationOpt.isPresent()) {
-                registration = registrationOpt.get();
-                if (registration.getStatus() != RegistrationStatus.APPROVED) {
-                    registration.setStatus(RegistrationStatus.APPROVED);
-                    registrationRepository.save(registration);
-                }
-            } else {
-                // Tạo registration mới
-                registration = new ActivityRegistration();
-                registration.setActivity(activity);
-                registration.setStudent(student);
-                registration.setStatus(RegistrationStatus.APPROVED);
-                registration.setRegisteredDate(LocalDateTime.now());
-                // Nếu activity thuộc series, lưu seriesId để đồng bộ đăng ký chuỗi
-                if (activity.getSeriesId() != null) {
-                    registration.setSeriesId(activity.getSeriesId());
-                }
-                registration.setTicketCode(java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-                registration = registrationRepository.save(registration);
+            if (registrationOpt.isEmpty()) {
+                return Response.error(registrationRequiredMessage(activity));
+            }
+            ActivityRegistration registration = registrationOpt.get();
+            if (!isEligibleQuizRegistrationStatus(registration.getStatus())) {
+                return Response.error(registrationRequiredMessage(activity));
             }
 
             // QUAN TRỌNG: Kiểm tra xem đã có participation COMPLETED chưa
@@ -462,9 +474,8 @@ public class MiniGameServiceImpl implements MiniGameService {
             registration.setStatus(RegistrationStatus.ATTENDED);
             registrationRepository.save(registration);
 
-            // Xử lý cập nhật điểm và series progress
+            // Series: chỉ cập nhật milestone/progress — không cộng điểm rule của activity
             if (activity.getSeriesId() != null) {
-                // Update series progress (điểm milestone sẽ được tính tự động)
                 try {
                     activitySeriesService.updateStudentProgress(
                             student.getId(),
@@ -473,7 +484,6 @@ public class MiniGameServiceImpl implements MiniGameService {
                             activity.getName(), activity.getSeriesId());
                 } catch (Exception e) {
                     logger.warn("Failed to update series progress: {}", e.getMessage());
-                    // Không fail nếu update series progress lỗi
                 }
             } else {
                 scoreRuleEngine.applyMiniGamePassed(attempt, attempt.getStudent().getUser());
@@ -490,7 +500,7 @@ public class MiniGameServiceImpl implements MiniGameService {
 
     @Override
     @Transactional(readOnly = true)
-    public Response getQuestions(Long miniGameId) {
+    public Response getQuestions(Long miniGameId, Long studentId) {
         try {
             Optional<MiniGame> miniGameOpt = miniGameRepository.findById(miniGameId);
             if (miniGameOpt.isEmpty()) {
@@ -500,6 +510,11 @@ public class MiniGameServiceImpl implements MiniGameService {
             MiniGame miniGame = miniGameOpt.get();
             if (!miniGame.isActive()) {
                 return Response.error("MiniGame is not active");
+            }
+
+            String registrationError = validateRegisteredForQuiz(miniGame.getActivity(), studentId);
+            if (registrationError != null) {
+                return Response.error(registrationError);
             }
 
             // Lấy quiz
@@ -897,12 +912,7 @@ public class MiniGameServiceImpl implements MiniGameService {
                     return;
                 }
             }
-            if (registrationOpt.get().getStatus() == RegistrationStatus.ATTENDED) {
-                logger.info(
-                        "Skip exhausted penalty for student {} on activity {} — registration already ATTENDED",
-                        studentId, activity.getId());
-                return;
-            }
+            // ATTENDED chỉ nghĩa là đã làm quiz (tránh no-show), vẫn có thể phạt hết lượt nếu fail hết attempts
         }
 
         int totalAttempts = attemptRepository.findByStudentIdAndMiniGameId(studentId, miniGameId).size();
@@ -911,5 +921,91 @@ public class MiniGameServiceImpl implements MiniGameService {
         }
 
         scoreRuleEngine.applyMiniGameExhaustedAttempts(attempt, attempt.getStudent().getUser());
+    }
+
+    /**
+     * Chỉ dùng cho minigame standalone (không thuộc series).
+     * Minigame không quét QR: bắt đầu/nộp quiz → ATTENDED để tránh phạt no-show.
+     * Series: không gọi method này — chỉ PASS mới COMPLETED + updateStudentProgress (milestone).
+     */
+    private void markAttendedForQuizAttempt(Activity activity, Long studentId) {
+        if (activity == null || studentId == null || activity.getSeriesId() != null) {
+            return;
+        }
+        Optional<ActivityRegistration> registrationOpt = registrationRepository
+                .findByActivityIdAndStudentId(activity.getId(), studentId);
+        if (registrationOpt.isEmpty()) {
+            return;
+        }
+
+        ActivityRegistration registration = registrationOpt.get();
+        if (registration.getStatus() != RegistrationStatus.APPROVED
+                && registration.getStatus() != RegistrationStatus.ATTENDED) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        Optional<ActivityParticipation> participationOpt = participationRepository.findByRegistration(registration);
+        if (participationOpt.isEmpty()) {
+            ActivityParticipation participation = new ActivityParticipation();
+            participation.setRegistration(registration);
+            participation.setParticipationType(ParticipationType.ATTENDED);
+            participation.setDate(now);
+            participation.setCheckInTime(now);
+            participation.setIsCompleted(false);
+            participation.setPointsEarned(BigDecimal.ZERO);
+            participationRepository.save(participation);
+        } else {
+            ActivityParticipation participation = participationOpt.get();
+            // Không hạ COMPLETED (đã pass quiz) về ATTENDED
+            if (participation.getParticipationType() != ParticipationType.COMPLETED
+                    && !Boolean.TRUE.equals(participation.getIsCompleted())) {
+                if (participation.getCheckInTime() == null) {
+                    participation.setCheckInTime(now);
+                }
+                participation.setParticipationType(ParticipationType.ATTENDED);
+                participation.setDate(now);
+                participationRepository.save(participation);
+            }
+        }
+
+        if (registration.getStatus() != RegistrationStatus.ATTENDED) {
+            registration.setStatus(RegistrationStatus.ATTENDED);
+            registrationRepository.save(registration);
+            try {
+                reminderScheduleService.cancelPendingEventRemindersForRegistration(registration);
+            } catch (Exception e) {
+                logger.warn("Failed to cancel no-show reminders after quiz attendance: {}", e.getMessage());
+            }
+            logger.info("Marked registration {} as ATTENDED after quiz attempt on activity {}",
+                    registration.getId(), activity.getId());
+        }
+    }
+
+    /**
+     * Quiz chỉ dành cho SV đã đăng ký sự kiện MINIGAME (standalone) hoặc đã đăng ký series
+     * (registration được tạo trên từng activity con khi register series).
+     */
+    private String validateRegisteredForQuiz(Activity activity, Long studentId) {
+        if (activity == null || studentId == null) {
+            return "Activity not found";
+        }
+        Optional<ActivityRegistration> registrationOpt = registrationRepository
+                .findByActivityIdAndStudentId(activity.getId(), studentId);
+        if (registrationOpt.isEmpty() || !isEligibleQuizRegistrationStatus(registrationOpt.get().getStatus())) {
+            return registrationRequiredMessage(activity);
+        }
+        return null;
+    }
+
+    private boolean isEligibleQuizRegistrationStatus(RegistrationStatus status) {
+        return status == RegistrationStatus.APPROVED || status == RegistrationStatus.ATTENDED;
+    }
+
+    private String registrationRequiredMessage(Activity activity) {
+        if (activity != null && activity.getSeriesId() != null) {
+            return "Bạn phải đăng ký chuỗi sự kiện trước khi làm quiz này";
+        }
+        return "Bạn phải đăng ký sự kiện trước khi làm quiz này";
     }
 }

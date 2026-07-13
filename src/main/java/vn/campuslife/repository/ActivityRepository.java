@@ -1,7 +1,9 @@
 package vn.campuslife.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +26,14 @@ public interface ActivityRepository extends JpaRepository<Activity, Long>,
   List<Activity> findByIsDeletedFalse();
 
   Optional<Activity> findByIdAndIsDeletedFalse(Long id);
+
+  /**
+   * Pessimistic lock on activity row (SELECT ... FOR UPDATE) to serialize slot checks.
+   * Must be called inside an active transaction.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT a FROM Activity a WHERE a.id = :id AND a.isDeleted = false")
+  Optional<Activity> findByIdAndIsDeletedFalseForUpdate(@Param("id") Long id);
 
   @Query("SELECT DISTINCT a FROM ActivityScoreRule r JOIN r.activity a WHERE r.scoreType = :scoreType AND a.isDeleted = false ORDER BY a.startDate ASC")
   List<Activity> findByScoreTypeAndIsDeletedFalseOrderByStartDateAsc(@Param("scoreType") ScoreType scoreType);

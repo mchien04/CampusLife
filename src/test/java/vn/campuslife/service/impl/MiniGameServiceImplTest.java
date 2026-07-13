@@ -15,6 +15,7 @@ import vn.campuslife.model.activity.quiz.StartAttemptResponse;
 import vn.campuslife.model.activity.quiz.SubmitAttemptResponse;
 import vn.campuslife.repository.*;
 import vn.campuslife.service.ActivitySeriesService;
+import vn.campuslife.service.ReminderScheduleService;
 import vn.campuslife.service.SemesterHelperService;
 import vn.campuslife.service.ScoreRuleEngine;
 import vn.campuslife.config.UploadProperties;
@@ -76,6 +77,9 @@ public class MiniGameServiceImplTest {
     @Mock
     private UploadProperties uploadProperties;
 
+    @Mock
+    private ReminderScheduleService reminderScheduleService;
+
     @InjectMocks
     private MiniGameServiceImpl miniGameService;
 
@@ -136,6 +140,7 @@ public class MiniGameServiceImplTest {
         registration.setId(50L);
         registration.setActivity(activity);
         registration.setStudent(student);
+        registration.setStatus(RegistrationStatus.APPROVED);
         when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
                 .thenReturn(Optional.of(registration));
 
@@ -161,26 +166,169 @@ public class MiniGameServiceImplTest {
     }
 
     @Test
+    void submitAttempt_NotRegistered_ReturnsError() {
+        when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.empty());
+
+        Response response = miniGameService.submitAttempt(700L, 10L, Map.of(1L, 11L));
+
+        assertFalse(response.isStatus());
+        assertEquals("Bạn phải đăng ký sự kiện trước khi làm quiz này", response.getMessage());
+        verify(attemptRepository, never()).save(any());
+    }
+
+    @Test
     void startAttempt_InProgressExistsAtMaxAttempts_ResumesInsteadOfBlocking() {
         miniGame.setMaxAttempts(1);
         attempt.setStartedAt(java.time.LocalDateTime.now());
 
-        when(miniGameRepository.findById(150L)).thenReturn(Optional.of(miniGame));
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+
+        when(miniGameRepository.findByIdForUpdate(150L)).thenReturn(Optional.of(miniGame));
         when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
         when(attemptRepository.findInProgressAttempt(10L, 150L, AttemptStatus.IN_PROGRESS))
                 .thenReturn(Optional.of(attempt));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
+        when(participationRepository.save(any(ActivityParticipation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         Response response = miniGameService.startAttempt(150L, 10L);
 
         assertTrue(response.isStatus());
         assertInstanceOf(StartAttemptResponse.class, response.getBody());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
         verify(attemptRepository, never()).save(any());
+    }
+
+    @Test
+    void startAttempt_NotRegistered_ReturnsError() {
+        when(miniGameRepository.findByIdForUpdate(150L)).thenReturn(Optional.of(miniGame));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.empty());
+
+        Response response = miniGameService.startAttempt(150L, 10L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Bạn phải đăng ký sự kiện trước khi làm quiz này", response.getMessage());
+        verify(attemptRepository, never()).save(any());
+    }
+
+    @Test
+    void startAttempt_SeriesActivity_DoesNotMarkAttendedOnStart() {
+        activity.setSeriesId(888L);
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setId(50L);
+        registration.setStatus(RegistrationStatus.APPROVED);
+
+        when(miniGameRepository.findByIdForUpdate(150L)).thenReturn(Optional.of(miniGame));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+        when(attemptRepository.findInProgressAttempt(10L, 150L, AttemptStatus.IN_PROGRESS))
+                .thenReturn(Optional.empty());
+        when(attemptRepository.save(any(MiniGameAttempt.class))).thenAnswer(inv -> {
+            MiniGameAttempt a = inv.getArgument(0);
+            a.setId(701L);
+            return a;
+        });
+
+        Response response = miniGameService.startAttempt(150L, 10L);
+
+        assertTrue(response.isStatus());
+        assertEquals(RegistrationStatus.APPROVED, registration.getStatus());
+        verify(participationRepository, never()).save(any());
+        verify(reminderScheduleService, never()).cancelPendingEventRemindersForRegistration(any());
+    }
+
+    @Test
+    void startAttempt_NewAttempt_MarksRegistrationAttended() {
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setId(50L);
+        registration.setStatus(RegistrationStatus.APPROVED);
+
+        when(miniGameRepository.findByIdForUpdate(150L)).thenReturn(Optional.of(miniGame));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(student));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+        when(attemptRepository.findInProgressAttempt(10L, 150L, AttemptStatus.IN_PROGRESS))
+                .thenReturn(Optional.empty());
+        when(attemptRepository.save(any(MiniGameAttempt.class))).thenAnswer(inv -> {
+            MiniGameAttempt a = inv.getArgument(0);
+            a.setId(701L);
+            return a;
+        });
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
+        when(participationRepository.save(any(ActivityParticipation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(registrationRepository.save(registration)).thenReturn(registration);
+
+        Response response = miniGameService.startAttempt(150L, 10L);
+
+        assertTrue(response.isStatus());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
+        verify(participationRepository).save(argThat(p ->
+                p.getParticipationType() == ParticipationType.ATTENDED));
+        verify(reminderScheduleService).cancelPendingEventRemindersForRegistration(registration);
+    }
+
+    @Test
+    void submitAttempt_Failed_StillMarksAttended() {
+        miniGame.setMaxAttempts(null);
+        when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setId(50L);
+        registration.setStatus(RegistrationStatus.APPROVED);
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
+        when(participationRepository.save(any(ActivityParticipation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(registrationRepository.save(registration)).thenReturn(registration);
+
+        MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
+        q1.setId(1L);
+        MiniGameQuizQuestion q2 = new MiniGameQuizQuestion();
+        q2.setId(2L);
+        MiniGameQuizOption opt1 = new MiniGameQuizOption();
+        opt1.setId(11L);
+        opt1.setCorrect(false);
+        MiniGameQuizOption opt2 = new MiniGameQuizOption();
+        opt2.setId(12L);
+        opt2.setCorrect(false);
+
+        when(questionRepository.findById(1L)).thenReturn(Optional.of(q1));
+        when(questionRepository.findById(2L)).thenReturn(Optional.of(q2));
+        when(optionRepository.findById(11L)).thenReturn(Optional.of(opt1));
+        when(optionRepository.findById(12L)).thenReturn(Optional.of(opt2));
+
+        Response response = miniGameService.submitAttempt(700L, 10L, Map.of(1L, 11L, 2L, 12L));
+
+        assertTrue(response.isStatus());
+        assertEquals(AttemptStatus.FAILED, attempt.getStatus());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
+        verify(scoreRuleEngine, never()).applyMiniGamePassed(any(), any());
+        verify(scoreRuleEngine, never()).applyMiniGameExhaustedAttempts(any(), any());
     }
 
     @Test
     void submitAttempt_FinalFailedAttempt_Standalone_AppliesExhaustedPenalty() {
         miniGame.setMaxAttempts(2);
         when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+        when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
+        when(participationRepository.save(any(ActivityParticipation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(registrationRepository.save(registration)).thenReturn(registration);
 
         MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
         q1.setId(1L);
@@ -212,6 +360,7 @@ public class MiniGameServiceImplTest {
 
         assertTrue(response.isStatus());
         assertEquals(AttemptStatus.FAILED, attempt.getStatus());
+        assertEquals(RegistrationStatus.ATTENDED, registration.getStatus());
         verify(scoreRuleEngine).applyMiniGameExhaustedAttempts(attempt, studentUser);
         verify(scoreRuleEngine, never()).applyMiniGamePassed(any(), any());
     }
@@ -220,6 +369,11 @@ public class MiniGameServiceImplTest {
     void submitAttempt_FinalFailedAttempt_AfterPriorPass_DoesNotApplyExhaustedPenalty() {
         miniGame.setMaxAttempts(2);
         when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
 
         MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
         q1.setId(1L);
@@ -259,6 +413,11 @@ public class MiniGameServiceImplTest {
         activity.setSeriesId(888L);
         when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
 
+        ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.of(registration));
+
         MiniGameQuizQuestion q1 = new MiniGameQuizQuestion();
         q1.setId(1L);
         MiniGameQuizOption opt1 = new MiniGameQuizOption();
@@ -285,6 +444,7 @@ public class MiniGameServiceImplTest {
         when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
 
         ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
         when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
                 .thenReturn(Optional.of(registration));
         when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
@@ -305,6 +465,7 @@ public class MiniGameServiceImplTest {
         when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
 
         ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
         when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
                 .thenReturn(Optional.of(registration));
         when(participationRepository.findByRegistration(registration)).thenReturn(Optional.empty());
@@ -322,6 +483,7 @@ public class MiniGameServiceImplTest {
         when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
 
         ActivityRegistration registration = new ActivityRegistration();
+        registration.setStatus(RegistrationStatus.APPROVED);
         ActivityParticipation existingParticipation = new ActivityParticipation();
         existingParticipation.setParticipationType(ParticipationType.COMPLETED);
         existingParticipation.setIsCompleted(true); // Already completed
@@ -337,5 +499,19 @@ public class MiniGameServiceImplTest {
         assertEquals("Participation already exists. Points already awarded.", response.getMessage());
         verify(participationRepository, never()).save(any());
         verify(scoreRuleEngine, never()).applyMiniGamePassed(any(), any());
+    }
+
+    @Test
+    void calculateScoreAndCreateParticipation_NoRegistration_ReturnsError() {
+        attempt.setStatus(AttemptStatus.PASSED);
+        when(attemptRepository.findById(700L)).thenReturn(Optional.of(attempt));
+        when(registrationRepository.findByActivityIdAndStudentId(100L, 10L))
+                .thenReturn(Optional.empty());
+
+        Response response = miniGameService.calculateScoreAndCreateParticipation(700L);
+
+        assertFalse(response.isStatus());
+        assertEquals("Bạn phải đăng ký sự kiện trước khi làm quiz này", response.getMessage());
+        verify(participationRepository, never()).save(any());
     }
 }

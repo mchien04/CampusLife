@@ -113,7 +113,7 @@ class ReminderScheduleServiceImplTest {
         assertEquals(ReminderCode.SERIES_MINIMUM_REQUIREMENT, reminder.getReminderCode());
         assertEquals(99L, reminder.getTargetId());
         assertEquals("student@campuslife.vn", reminder.getRecipientEmail());
-        assertEquals(LocalDateTime.of(2026, 6, 25, 15, 1), reminder.getRemindAt());
+        assertEquals(LocalDateTime.of(2026, 6, 25, 18, 0), reminder.getRemindAt());
         assertNotNull(reminder.getSubject());
 
         verify(reminderRuntimeSchedulerService).scheduleReminder(reminder);

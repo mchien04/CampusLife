@@ -41,9 +41,10 @@ public interface MiniGameService {
     Response calculateScoreAndCreateParticipation(Long attemptId);
 
     /**
-     * Lấy danh sách câu hỏi và options của minigame (không có đáp án đúng)
+     * Lấy danh sách câu hỏi và options của minigame (không có đáp án đúng).
+     * Student phải đã đăng ký sự kiện / series trước.
      */
-    Response getQuestions(Long miniGameId);
+    Response getQuestions(Long miniGameId, Long studentId);
 
     /**
      * Lấy chi tiết attempt (bao gồm kết quả và đáp án đúng nếu đã submit)

@@ -74,8 +74,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Transactional
     public Response registerForActivity(ActivityRegistrationRequest request, Long studentId) {
         try {
-            // 1) Kiểm tra activity
-            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(request.getActivityId());
+            // 1) Khóa Activity (SELECT FOR UPDATE) để serialize check slot khi nhiều người đăng ký cùng lúc
+            Optional<Activity> activityOpt = activityRepository
+                    .findByIdAndIsDeletedFalseForUpdate(request.getActivityId());
             if (activityOpt.isEmpty()) {
                 return new Response(false, "Activity not found", null);
             }
@@ -121,7 +122,8 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 return new Response(false, "Registration is not yet open", null);
             }
 
-            // 7) Kiểm tra số lượng vé (nếu giới hạn theo APPROVED)
+            // 7) Waitlist ưu tiên slot trống; sau đó mới nhận đăng ký mới
+            promoteWaitlist(activity.getId());
             if (!hasRemainingSlots(activity.getId(), activity.getTicketQuantity())) {
                 return new Response(false, "Activity is full", null);
             }
@@ -363,10 +365,14 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             RegistrationStatus previousStatus = registration.getStatus();
             RegistrationStatus newStatus = RegistrationStatus.valueOf(status.toUpperCase());
             if (newStatus == RegistrationStatus.APPROVED
-                    && registration.getStatus() != RegistrationStatus.APPROVED
-                    && !hasRemainingSlots(registration.getActivity().getId(),
-                            registration.getActivity().getTicketQuantity())) {
-                return new Response(false, "Activity is full. Cannot approve more registrations.", null);
+                    && registration.getStatus() != RegistrationStatus.APPROVED) {
+                // Khóa activity trước khi check/approve slot
+                Activity lockedActivity = activityRepository
+                        .findByIdAndIsDeletedFalseForUpdate(registration.getActivity().getId())
+                        .orElse(registration.getActivity());
+                if (!hasRemainingSlots(lockedActivity.getId(), lockedActivity.getTicketQuantity())) {
+                    return new Response(false, "Activity is full. Cannot approve more registrations.", null);
+                }
             }
 
             registration.setStatus(newStatus);
@@ -1417,7 +1423,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Transactional
     public Response registerForWaitlist(Long activityId, Long studentId) {
         try {
-            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+            Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalseForUpdate(activityId);
             if (activityOpt.isEmpty()) {
                 return new Response(false, "Activity not found", null);
             }
@@ -1442,7 +1448,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
                 return new Response(false, "Registration deadline has passed", null);
             }
 
-            // Only allow waitlist if the activity is actually full
+            // Only allow waitlist if the activity is actually full (under activity row lock)
             if (hasRemainingSlots(activity.getId(), activity.getTicketQuantity())) {
                 return new Response(false, "Activity still has slots. Please register normally.", null);
             }
@@ -1470,7 +1476,7 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
     @Override
     @Transactional
     public void promoteWaitlist(Long activityId) {
-        Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalse(activityId);
+        Optional<Activity> activityOpt = activityRepository.findByIdAndIsDeletedFalseForUpdate(activityId);
         if (activityOpt.isEmpty()) return;
         Activity activity = activityOpt.get();
 
@@ -1480,11 +1486,9 @@ public class ActivityRegistrationServiceImpl implements ActivityRegistrationServ
             if (nextOpt.isEmpty()) break;
 
             ActivityRegistration waitlistReg = nextOpt.get();
-            if (activity.isRequiresApproval()) {
-                waitlistReg.setStatus(RegistrationStatus.PENDING);
-            } else {
-                waitlistReg.setStatus(RegistrationStatus.APPROVED);
-            }
+            // Promote luôn sang APPROVED để giữ chỗ (waitlist đã xếp hàng cho slot thật).
+            // Nếu để PENDING thì slot vẫn trống và đăng ký mới có thể tranh mất.
+            waitlistReg.setStatus(RegistrationStatus.APPROVED);
             registrationRepository.save(waitlistReg);
 
             try {

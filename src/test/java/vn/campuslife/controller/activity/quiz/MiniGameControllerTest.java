@@ -164,7 +164,8 @@ public class MiniGameControllerTest {
     @Test
     @WithMockUser(roles = {"STUDENT", "ADMIN", "MANAGER"})
     void getQuestions_ReturnsOk() throws Exception {
-        when(miniGameService.getQuestions(1L))
+        when(studentService.getStudentIdByUsername(any())).thenReturn(10L);
+        when(miniGameService.getQuestions(1L, 10L))
                 .thenReturn(new Response(true, "Questions", null));
 
         mockMvc.perform(get("/api/minigames/1/questions"))
