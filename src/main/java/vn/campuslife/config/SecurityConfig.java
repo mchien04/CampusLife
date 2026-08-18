@@ -76,6 +76,9 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers(
+                                "/*.jpg", "/*.jpeg", "/*.png", "/*.gif", "/*.webp", "/*.bmp")
+                        .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/upload/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/upload/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/departments/**").permitAll()
@@ -91,6 +94,8 @@ public class SecurityConfig {
 
                         // Specific admin endpoints - must be before general /api/admin/** rule
                         // Department and manager assignment administration is ADMIN-only.
+                        .requestMatchers(HttpMethod.GET, "/api/admin/departments", "/api/admin/departments/**")
+                        .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/admin/departments/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/articles/**").hasAnyRole("ADMIN", "MANAGER")

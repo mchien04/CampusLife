@@ -1603,7 +1603,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             List<Long> organizerIds,
             Boolean isImportant, Boolean mandatoryForFacultyStudents, Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode, DepartmentScope scope) {
-        validateSeriesDepartmentsForScope(departmentIds, scope);
+        // Score audience target departments may include any faculty — not limited to manager scope.
         List<Long> scopedOrganizerIds = normalizeOrganizerIds(organizerIds, scope);
         if (scope != null && scope.manager() && !scope.admin() && mainActivityId != null) {
             departmentAuthorizationService.requireActivityAccess(mainActivityId, scope);
@@ -1702,7 +1702,7 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
             Boolean isImportant, Boolean mandatoryForFacultyStudents, Boolean isDraft,
             vn.campuslife.enumeration.SeriesPresetCode presetCode, DepartmentScope scope) {
         departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
-        validateSeriesDepartmentsForScope(departmentIds, scope);
+        // Score audience target departments may include any faculty — not limited to manager scope.
         if (organizerIds != null) {
             // Empty list: auto-fill for single-dept manager, otherwise reject via normalize
             organizerIds = normalizeOrganizerIds(organizerIds.isEmpty() ? null : organizerIds, scope);
@@ -1721,21 +1721,6 @@ public class ActivitySeriesServiceImpl implements ActivitySeriesService {
     public Response deleteSeries(Long seriesId, DepartmentScope scope) {
         departmentAuthorizationService.requireSeriesAccess(seriesId, scope);
         return deleteSeries(seriesId);
-    }
-
-    private void validateSeriesDepartmentsForScope(List<Long> departmentIds, DepartmentScope scope) {
-        if (scope == null || !scope.manager() || scope.admin()) {
-            return;
-        }
-        if (departmentIds == null || departmentIds.isEmpty()) {
-            if (scope.departmentIds().size() == 1) {
-                return;
-            }
-            throw new IllegalArgumentException("Manager with multiple departments must specify departmentIds within scope");
-        }
-        if (!scope.departmentIds().containsAll(new HashSet<>(departmentIds))) {
-            throw new IllegalArgumentException("Target departments must be within manager scope");
-        }
     }
 
     /**
