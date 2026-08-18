@@ -22,7 +22,25 @@ public class WebConfig implements WebMvcConfigurer {
             publicPrefix = "/" + publicPrefix;
         }
 
+        String uploadDir = uploadProperties.getDir();
+        if (!uploadDir.endsWith("/")) {
+            uploadDir = uploadDir + "/";
+        }
+        String fileLocation = "file:" + uploadDir;
+
         registry.addResourceHandler(publicPrefix + "/**")
-                .addResourceLocations("file:" + uploadProperties.getDir() + "/");
+                .addResourceLocations(fileLocation);
+
+        // Legacy clients may request bare filenames at root (e.g. /uuid.jpg instead of /uploads/uuid.jpg)
+        UploadProperties.Paths paths = uploadProperties.getPaths();
+        registry.addResourceHandler(
+                        "/*.jpg", "/*.jpeg", "/*.png", "/*.gif", "/*.webp", "/*.bmp")
+                .addResourceLocations(
+                        fileLocation,
+                        fileLocation + paths.getGeneral() + "/",
+                        fileLocation + paths.getAvatars() + "/",
+                        fileLocation + paths.getActivityPhotos() + "/",
+                        fileLocation + paths.getSubmissions() + "/",
+                        fileLocation + paths.getScoreAppeals() + "/");
     }
 }

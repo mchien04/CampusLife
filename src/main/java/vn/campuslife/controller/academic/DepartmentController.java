@@ -35,6 +35,15 @@ public class DepartmentController {
         }
         return ResponseEntity.ok(list);
     }
+
+    /**
+     * Full department list for configuring score rule audience (DEPARTMENT_ONLY / OUTSIDE_DEPARTMENTS_ONLY).
+     * Managers may select any faculty as score recipients even when their management scope is narrower.
+     */
+    @GetMapping(value = "/score-audience-options", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<Department>> getScoreAudienceOptions() {
+        return ResponseEntity.ok(service.findAll());
+    }
 }
 
 
