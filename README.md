@@ -132,5 +132,4 @@ GitHub Actions [CI](.github/workflows/ci.yml) runs tests and packages the JAR on
 
 ## Author
 
-- GitHub profile: **add URL**
-- LinkedIn profile: **add URL**
+- GitHub profile: https://github.com/mchien04
