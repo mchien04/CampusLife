@@ -4,6 +4,8 @@
 > Nhóm chức năng: Score & Submission  
 > Các participant: Admin/Manager/Student, Client, Controller, Service, Repository, Database, FileStorage
 
+> Sequence cấu hình và áp dụng quy tắc tính điểm: [Score Rule](sequence-diagram-score-rule.md).
+
 ---
 
 ## 1. Chấm điểm bài thu hoạch (POST /api/admin/submissions/{id}/grade)
