@@ -133,7 +133,7 @@ sequenceDiagram
             ES->>ES: "Tạo ExportFile(filename, contentType, bytes) filename = preparation_financial_activity_{id}_{timestamp}.{ext}"
             ES-->>EC:' "ExportFile"'
 
-            EC->>EC: "fileResponse(file) Set Content-Disposition: attachment; filename=... Set Content-Type: application/pdf hoặc application/vnd.openxmlformats..."
+            EC->>EC: fileResponse(file)<br/>Set Content-Disposition with attachment filename<br/>Set Content-Type for PDF or XLSX
             EC-->>Client: '200 OK Body: byte[] (file download)'
             Client->>Client: Tự động tải file xuống máy / Hiển thị preview
             Client-->>Admin:' Thông báo "Xuất báo cáo tài chính thành công"'
@@ -243,7 +243,7 @@ sequenceDiagram
             DB-->>Repo:' "AuditLog record"'
             Repo-->>ES:' "AuditLog"'
         and TRẢ VỀ FILE
-            EC->>EC: fileResponse(file)<br/>Set Content-Disposition: attachment; filename="..."
+            EC->>EC: fileResponse(file)<br/>Set Content-Disposition with attachment filename
             EC-->>Client: '200 OK Body: byte[] (file download)'
         end
 
